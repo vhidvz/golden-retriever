@@ -107,7 +107,6 @@ pub fn simulate(args: &[String]) -> Result<()> {
         start_age_days: option("--age").and_then(|s| s.parse().ok()).unwrap_or(400.0),
         adult_days: 365.0,
     };
-    // Written this way so that piping into `head` ends quietly.
-    let _ = write!(std::io::stdout(), "{}", run(&scenario));
+    print!("{}", run(&scenario));
     Ok(())
 }

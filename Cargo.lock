@@ -36,6 +36,7 @@ dependencies = [
  "anyhow",
  "buddy-core",
  "chrono",
+ "libc",
  "serde",
  "serde_json",
  "signal-hook",

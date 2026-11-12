@@ -31,6 +31,12 @@ Usage:
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let arg = |i: usize| args.get(i).map(String::as_str);
+    if arg(0) != Some("daemon") {
+        // A command whose output is piped into `head` should end quietly when the pipe closes.
+        // (Not for the daemon: there a client hanging up must never be fatal.)
+        // SAFETY: called once, before any other thread exists; SIG_DFL is always a valid handler.
+        unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
+    }
     let command: (&str, Value) = match (arg(0), arg(1)) {
         (Some("daemon"), flag) => return daemon::run(flag == Some("--no-renderer")),
         (Some("status"), flag) => return client::status(flag == Some("--json")),
