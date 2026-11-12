@@ -5,6 +5,8 @@ use crate::behavior::{self, Considered, Context, Decision, Memory, Record};
 use crate::model::{self, Activity, Body, Identity, Life, Settings};
 use crate::mood::Mood;
 use crate::needs::Needs;
+use crate::patterns::Patterns;
+use crate::perception::Stimulus;
 use crate::personality::{Personality, drift};
 use crate::proto::StateMsg;
 use crate::rng::Rng;
@@ -23,6 +25,8 @@ const NEWBORN_SCALE: f64 = 0.45;
 const LOUD_SOUNDS_PER_WINDOW: usize = 6;
 const SOUND_WINDOW_SECS: f64 = 600.0;
 const REST_SPOT_BINS: usize = 12;
+/// With no input for this long, he takes it that you have gone.
+pub const AWAY_AFTER_SECS: f64 = 600.0;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
@@ -49,6 +53,13 @@ pub enum Command {
     SetAdultDays(f64),
     SetSize(f64),
     Rename(String),
+    /// Turn one sense on or off.
+    Sense {
+        source: String,
+        on: bool,
+    },
+    StayInFullscreen(bool),
+    VisionModel(String),
 }
 
 /// Something worth remembering; the daemon writes these to the journal.
@@ -70,7 +81,9 @@ pub enum Output {
         intensity: f64,
     },
     /// He looks at the person in front of the screen for about this long.
-    Glance {
+    Look {
+        /// "you", "screen", "notification" or "sound".
+        at: &'static str,
         secs: f64,
     },
 }
@@ -112,6 +125,8 @@ pub struct Mind {
     pub habits: Habits,
     pub food_out: bool,
     pub water_out: bool,
+    /// Recurring sequences of applications he has noticed.
+    pub patterns: Patterns,
 }
 
 /// 0 by day, 1 in the middle of the night, with a small after-lunch dip.
@@ -167,6 +182,19 @@ pub struct Sim {
     ask_patience: f64,
     loud_sounds: VecDeque<f64>,
     last_glance: f64,
+
+    // What his senses currently tell him.
+    patterns: Patterns,
+    user_away: bool,
+    away_since: f64,
+    busy: f64,
+    idle_secs: f64,
+    locked: bool,
+    fullscreen: bool,
+    overview: bool,
+    load: f64,
+    last_startle: f64,
+    glimpse: Option<(f64, String)>,
     rng: Rng,
     out: Vec<Output>,
 }
@@ -211,6 +239,17 @@ impl Sim {
             ask_patience: 1.0,
             loud_sounds: VecDeque::new(),
             last_glance: 0.0,
+            patterns: mind.patterns,
+            user_away: false,
+            away_since: 0.0,
+            busy: 0.0,
+            idle_secs: 0.0,
+            locked: false,
+            fullscreen: false,
+            overview: false,
+            load: 0.0,
+            last_startle: f64::NEG_INFINITY,
+            glimpse: None,
             rng,
             out: Vec::new(),
         }
@@ -224,6 +263,7 @@ impl Sim {
             habits: self.habits.clone(),
             food_out: self.food_out,
             water_out: self.water_out,
+            patterns: self.patterns.clone(),
         }
     }
 
@@ -363,7 +403,8 @@ impl Sim {
         );
         // These already hold your eye as part of what they are.
         let already_looking = matches!(self.activity, Activity::Greet | Activity::SeekAttention | Activity::PlayBow);
-        if absorbed || already_looking || now - self.last_glance < 12.0 {
+        // And there is no point looking for someone who is not there.
+        if absorbed || already_looking || self.user_away || now - self.last_glance < 12.0 {
             return;
         }
         let per_second = (0.5 + self.personality.affection) * (0.6 + 0.8 * self.attended) / 75.0;
@@ -375,7 +416,7 @@ impl Sim {
 
     fn look_at_you(&mut self, secs: f64, now: f64) {
         self.last_glance = now + secs;
-        self.out.push(Output::Glance { secs });
+        self.out.push(Output::Look { at: "you", secs });
     }
 
     /// Accelerate towards his pace, then brake so he stops on the target
@@ -458,6 +499,8 @@ impl Sim {
             greet_urge: self.greet_urge,
             attended: self.attended,
             secs_since_asking: (now - self.last_asked) / self.ask_patience,
+            user_busy: self.busy,
+            user_away: self.user_away,
             at_favourite_spot: favourite.is_some_and(|f| (f - self.x_frac()).abs() < 0.06),
             current: self.activity,
         }
@@ -740,12 +783,117 @@ impl Sim {
                 self.settings.size_px = px.clamp(120.0, 900.0);
                 self.out.push(journal("setting", json!({ "size_px": self.settings.size_px })));
             }
+            Command::Sense { source, on } => {
+                if self.settings.senses.set(&source, on) {
+                    self.out.push(journal("sense", json!({ "source": source, "on": on })));
+                }
+            }
+            Command::StayInFullscreen(on) => self.settings.stay_in_fullscreen = on,
+            Command::VisionModel(model) => self.settings.vision_model = model,
             Command::Rename(name) => {
                 self.identity.name = name;
                 self.out.push(journal("setting", json!({ "name": self.identity.name })));
             }
         }
         std::mem::take(&mut self.out)
+    }
+
+    /// Takes in something perceived. Ignored unless that sense is allowed and privacy mode is off.
+    pub fn sense(&mut self, stimulus: Stimulus, now: f64) -> Vec<Output> {
+        if self.settings.privacy_mode || self.settings.senses.get(stimulus.source()) != Some(true) {
+            return Vec::new();
+        }
+        match stimulus {
+            Stimulus::UserIdle(secs) => {
+                // A running impression of how steadily you are working (settles over a couple of minutes).
+                let active = if secs < 3.0 { 1.0 } else { 0.0 };
+                self.busy += (active - self.busy) * 0.02;
+                self.idle_secs = secs;
+                if !self.user_away && secs >= AWAY_AFTER_SECS {
+                    self.left(now - secs);
+                } else if self.user_away && !self.locked && secs < 5.0 {
+                    self.came_back(now);
+                }
+            }
+            Stimulus::Locked(on) => {
+                let was_locked = std::mem::replace(&mut self.locked, on);
+                if on && !self.user_away {
+                    self.left(now);
+                } else if was_locked && !on && self.user_away {
+                    self.came_back(now);
+                }
+            }
+            Stimulus::Fullscreen(on) => self.fullscreen = on,
+            Stimulus::Overview(on) => self.overview = on,
+            Stimulus::Focus { app } => {
+                if let Some(habit) = self.patterns.focus(&app, now) {
+                    // He has worked out something about how you work; for now he just perks up at it.
+                    self.mood.lift(0.05, 0.1);
+                    self.look("screen", 2.0, now);
+                    self.out.push(journal("habit_noticed", json!({ "apps": habit.apps, "times": habit.times, "days": habit.days })));
+                }
+            }
+            Stimulus::Notification { .. } => {
+                if self.activity != Activity::Sleep && !self.user_away {
+                    let secs = self.rng.range(1.5, 3.0);
+                    self.look("notification", secs, now);
+                }
+            }
+            Stimulus::Presence(here) => {
+                if here && self.user_away && !self.locked {
+                    self.came_back(now);
+                } else if !here && !self.user_away && self.idle_secs > 60.0 {
+                    // Sitting still at the keyboard looks like an empty room to the camera; typing says otherwise.
+                    self.left(now);
+                }
+            }
+            Stimulus::Sound { level } => {
+                if level > 0.6 && now - self.last_startle > 20.0 {
+                    self.last_startle = now;
+                    self.mood.lift(0.0, 0.25 * level);
+                    let dozing = self.activity == Activity::Sleep && self.needs.fatigue < 0.35 && !self.settings.asleep_by_user;
+                    if dozing {
+                        self.finish(now);
+                        self.begin(Activity::Stand, "a noise woke him", now);
+                    }
+                    if self.activity != Activity::Sleep {
+                        self.look("sound", 2.5, now);
+                    }
+                }
+            }
+            Stimulus::Glimpse { summary } => {
+                self.glimpse = Some((now, summary));
+                self.needs.boredom = (self.needs.boredom - 0.1).max(0.0);
+                if self.activity != Activity::Sleep {
+                    self.look("screen", 2.5, now);
+                }
+            }
+            Stimulus::Load(level) => self.load = level,
+        }
+        std::mem::take(&mut self.out)
+    }
+
+    fn left(&mut self, since: f64) {
+        self.user_away = true;
+        self.away_since = since;
+        self.out.push(journal("user_away", Value::Null));
+    }
+
+    fn came_back(&mut self, now: f64) {
+        let away_secs = now - self.away_since;
+        self.user_away = false;
+        self.ask_patience = 1.0;
+        if away_secs > AWAY_AFTER_SECS {
+            self.greet_urge = 1.0;
+        } else if self.activity != Activity::Sleep {
+            self.look("you", 2.5, now);
+        }
+        self.out.push(journal("user_back", json!({ "away_secs": away_secs })));
+    }
+
+    fn look(&mut self, at: &'static str, secs: f64, now: f64) {
+        self.last_glance = now + secs;
+        self.out.push(Output::Look { at, secs });
     }
 
     /// Something changed that he should respond to: cut a rest short.
@@ -782,6 +930,9 @@ impl Sim {
             arousal: (self.mood.arousal * 50.0).round() / 50.0,
             sleepiness: (self.needs.fatigue * 50.0).round() / 50.0,
             being_dragged: self.dragging,
+            ducked: self.locked || self.overview || (self.fullscreen && !self.settings.stay_in_fullscreen),
+            user_here: !self.user_away,
+            load: (self.load * 10.0).round() / 10.0,
             food_out: self.food_out,
             water_out: self.water_out,
         }
@@ -799,6 +950,9 @@ impl Sim {
             "emotions": self.mood.emotions(&self.needs, &self.personality),
             "personality": self.personality,
             "favourite_spot": self.habits.favourite(),
+            "you": { "away": self.user_away, "busy": (self.busy * 100.0).round() / 100.0 },
+            "last_look_at_the_screen": self.glimpse.as_ref().filter(|(at, _)| now - at < 600.0).map(|(_, what)| what),
+            "habits_noticed": self.patterns.habits(),
         })
     }
 }
@@ -919,6 +1073,65 @@ mod tests {
             s.voice("bark", 1.0, 2.0 + f64::from(i));
         }
         assert_eq!(s.out.len(), LOUD_SOUNDS_PER_WINDOW);
+    }
+
+    #[test]
+    fn a_sense_that_is_off_or_privacy_mode_perceives_nothing() {
+        let mut s = sim(0);
+        s.tick(1.0, 12.0);
+        s.sense(Stimulus::Sound { level: 1.0 }, 2.0);
+        assert!(s.last_startle < 0.0, "the microphone is off by default");
+        s.apply(Command::Sense { source: "microphone".into(), on: true }, 2.0);
+        s.apply(Command::Privacy(true), 2.0);
+        s.sense(Stimulus::Sound { level: 1.0 }, 3.0);
+        s.sense(Stimulus::Locked(true), 3.0);
+        assert!(s.last_startle < 0.0 && !s.snapshot(3.0).ducked, "privacy mode shuts every sense");
+        s.apply(Command::Privacy(false), 3.0);
+        let heard = s.sense(Stimulus::Sound { level: 1.0 }, 4.0);
+        assert!(matches!(heard[..], [Output::Look { at: "sound", .. }]), "{heard:?}");
+    }
+
+    #[test]
+    fn he_notices_you_leave_and_is_glad_when_you_return() {
+        let mut s = sim(0);
+        let (mut now, _) = live(&mut s, 0.0, 5.0, 12.0);
+        assert!(s.snapshot(now).user_here);
+        // Twelve minutes without a keypress.
+        let gone = s.sense(Stimulus::UserIdle(720.0), now);
+        assert!(gone.iter().any(|o| matches!(o, Output::Journal(j) if j.kind == "user_away")) && !s.snapshot(now).user_here);
+        let (later, alone) = live(&mut s, now, 1800.0, 12.0);
+        assert!(!alone.iter().any(|o| matches!(o, Output::Look { at: "you", .. })), "he does not look for someone who is not there");
+        now = later;
+        s.sense(Stimulus::UserIdle(0.5), now);
+        live(&mut s, now, 3.0, 12.0);
+        assert_eq!(s.activity(), Activity::Greet);
+    }
+
+    #[test]
+    fn he_steps_aside_for_the_lock_screen_and_fullscreen() {
+        let mut s = sim(0);
+        s.tick(1.0, 12.0);
+        s.sense(Stimulus::Fullscreen(true), 2.0);
+        assert!(s.snapshot(2.0).ducked);
+        s.apply(Command::StayInFullscreen(true), 2.0);
+        assert!(!s.snapshot(2.0).ducked, "unless told to stay");
+        s.sense(Stimulus::Locked(true), 3.0);
+        assert!(s.snapshot(3.0).ducked && !s.snapshot(3.0).user_here);
+        s.sense(Stimulus::Locked(false), 4.0);
+        assert!(!s.snapshot(4.0).ducked && s.snapshot(4.0).user_here);
+    }
+
+    #[test]
+    fn a_loud_noise_wakes_a_dozing_dog_but_a_quiet_one_does_not() {
+        let mut s = sim(0);
+        s.apply(Command::Sense { source: "microphone".into(), on: true }, 0.0);
+        s.tick(1.0, 12.0);
+        s.begin(Activity::Sleep, "test", 1.0);
+        s.needs.fatigue = 0.2;
+        s.sense(Stimulus::Sound { level: 0.3 }, 2.0);
+        assert_eq!(s.activity(), Activity::Sleep);
+        s.sense(Stimulus::Sound { level: 0.9 }, 3.0);
+        assert_eq!(s.activity(), Activity::Stand);
     }
 
     #[test]

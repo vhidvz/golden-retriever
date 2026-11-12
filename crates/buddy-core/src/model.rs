@@ -39,11 +39,27 @@ pub struct Settings {
     pub privacy_mode: bool,
     /// No sounds and no asking for attention.
     pub quiet: bool,
+    /// What he is allowed to perceive.
+    pub senses: crate::perception::Senses,
+    /// Stay visible over fullscreen applications instead of stepping aside.
+    pub stay_in_fullscreen: bool,
+    /// The local model used to make sense of images.
+    pub vision_model: String,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { adult_days: 365.0, size_px: 420.0, hidden_until: None, asleep_by_user: false, privacy_mode: false, quiet: false }
+        Self {
+            adult_days: 365.0,
+            size_px: 420.0,
+            hidden_until: None,
+            asleep_by_user: false,
+            privacy_mode: false,
+            quiet: false,
+            senses: Default::default(),
+            stay_in_fullscreen: false,
+            vision_model: "gemma4:e4b".into(),
+        }
     }
 }
 

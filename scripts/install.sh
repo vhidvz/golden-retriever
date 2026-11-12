@@ -8,11 +8,14 @@ repo=$(cd "$(dirname "$0")/.." && pwd)
 bin="$HOME/.local/bin"
 share="${XDG_DATA_HOME:-$HOME/.local/share}/buddy"
 units="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+extension="buddy@buddy.local"
+extensions="${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions"
 
 if [ "${1:-}" = "--remove" ]; then
     systemctl --user disable --now buddy.service 2>/dev/null || true
     rm -f "$units/buddy.service" "$bin/buddy"
-    rm -rf "$share/renderer"
+    rm -rf "$share/renderer" "$share/perception" "$extensions/$extension"
+    gnome-extensions disable "$extension" 2>/dev/null || true
     systemctl --user daemon-reload
     echo "Buddy removed. His memory is still in $share (delete it yourself if you really mean it)."
     exit 0
@@ -29,6 +32,26 @@ rm -rf "$share/renderer"
 mkdir "$share/renderer"
 cp "$repo"/renderer/project.godot "$repo"/renderer/*.tscn "$repo"/renderer/*.gd "$repo"/renderer/*.gdshader "$share/renderer/"
 cp -r "$repo/renderer/sounds" "$share/renderer/sounds"
+rm -rf "$share/perception"
+mkdir "$share/perception"
+cp "$repo"/perception/*.py "$share/perception/"
+
+# The desktop sense is a GNOME Shell extension. On Wayland a newly installed extension
+# is only loaded at the next login, so it is switched on now and starts working then.
+if command -v gnome-extensions >/dev/null 2>&1; then
+    rm -rf "$extensions/$extension"
+    mkdir -p "$extensions/$extension"
+    cp "$repo/shell-extension/$extension"/* "$extensions/$extension/"
+    if ! gnome-extensions enable "$extension" 2>/dev/null; then
+        current=$(gsettings get org.gnome.shell enabled-extensions)
+        case "$current" in
+            *"$extension"*) ;;
+            "@as []") gsettings set org.gnome.shell enabled-extensions "['$extension']" ;;
+            *) gsettings set org.gnome.shell enabled-extensions "${current%]}, '$extension']" ;;
+        esac
+        echo "Buddy's desktop sense will start working after you next log in."
+    fi
+fi
 install -m 644 "$repo/dist/buddy.service" "$units/buddy.service"
 systemctl --user daemon-reload
 systemctl --user enable --now buddy.service

@@ -17,12 +17,24 @@ pub enum ClientMsg {
         #[serde(default)]
         args: Value,
     },
+    /// A perception provider reports something. `source` is the provider ("shell", "system", …).
+    Sense {
+        source: String,
+        kind: String,
+        #[serde(default)]
+        data: Value,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerMsg {
     State(StateMsg),
+    /// Tells a perception provider what it may currently observe.
+    Policy {
+        desktop: bool,
+        window_titles: bool,
+    },
     /// A one-off the renderer should act on now, such as a sound to make.
     Event {
         name: String,
@@ -73,6 +85,12 @@ pub struct StateMsg {
     pub arousal: f64,
     pub sleepiness: f64,
     pub being_dragged: bool,
+    /// Out of the way for now (screen locked, overview open, a fullscreen application): draw nothing.
+    pub ducked: bool,
+    /// Whether there is anyone to look at. False when the user has been away a while.
+    pub user_here: bool,
+    /// How hard the machine is working, 0..=1; the renderer eases off when it is high.
+    pub load: f64,
     pub food_out: bool,
     pub water_out: bool,
 }

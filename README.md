@@ -3,10 +3,10 @@
 A Golden Retriever who lives on a Linux desktop. He is born as a puppy, grows
 with real time, and keeps living when every AI service is unavailable.
 
-This repository is at **Phase 2 (autonomous life)**: he has needs, moods and a
-temperament of his own, chooses what to do from them, and expresses it in
-movement and sound. He does not yet perceive anything, and the dog you see is a
-stand-in model.
+This repository is at **Phase 3 (perception)**: on top of a life of his own
+(needs, moods, a temperament, 19 activities), he now notices what goes on
+around him, through senses that each have their own switch. The dog you see is
+still a stand-in model.
 
 ## What is here
 
@@ -15,6 +15,7 @@ stand-in model.
 | Brain | `crates/buddy-core` | Identity, age, needs, mood, temperament, behaviour selection, memory (SQLite), and a long-run simulator. No graphics, no models. |
 | Daemon and CLI | `crates/buddy` | Runs the brain, serves a Unix socket, supervises the renderer. |
 | Renderer | `renderer/` | Godot 4 project: a transparent, click-through overlay window, a fur-covered placeholder dog animated procedurally, and his recorded sounds. |
+| Senses | `shell-extension/`, `perception/`, `crates/buddy/src/system.rs` | What he perceives: a GNOME Shell extension for the desktop, small helpers for screen, camera and microphone, and a poller for idle time, lock and load. |
 | Service | `dist/buddy.service`, `scripts/install.sh` | Starts him with the graphical session, as the user, without root. |
 | Evidence | `spikes/` | The measurements the design rests on, with the harnesses that produced them. |
 
@@ -40,7 +41,10 @@ buddy why               # what he is doing, why, how he feels, what else he cons
 buddy sleep | wake
 buddy feed | water | praise
 buddy quiet on|off      # no sounds and no asking for attention
-buddy privacy on|off    # suspends every perception source (none exist yet)
+buddy privacy on|off    # suspends every sense at once
+buddy senses            # what he may perceive, and what is actually reporting
+buddy sense screen on   # switch one sense: system, desktop, window_titles, screen, camera, microphone
+buddy look              # have him look at the screen once and say what he makes of it
 buddy set adult_days 30 # re-time growth without resetting him
 buddy journal | export  # what happened; everything he knows, as JSON
 buddy simulate 90 --user absent   # live 90 days offline and report how varied they were
@@ -73,6 +77,33 @@ camera that is taken to be the middle of the monitor, a little above him.
 His memory lives in `~/.local/share/buddy/buddy.db`, with a daily backup beside
 it that is restored automatically if the database is ever damaged.
 
+## What he perceives
+
+| Sense | Default | What it tells him | How |
+|---|---|---|---|
+| `system` | on | Seconds since you touched the computer, screen lock, system load | Session bus and `/proc`, polled every 2 s |
+| `desktop` | on | Which application is in front, fullscreen, overview, pointer position, that a notification arrived | A GNOME Shell extension |
+| `window_titles` | off | Window titles as well | The same extension |
+| `screen` | off | A one-line description of what is on screen, when asked to look | One frame through the desktop portal, described by a local model |
+| `camera` | off | Whether someone is there | Movement in a 64×48 greyscale picture; no frame is kept |
+| `microphone` | off | That there was a sound, and how loud | Loudness only; nothing is recorded |
+
+A sense that is off is not consulted at all: the extension is told to send
+nothing, and the camera and microphone helpers are not running. Privacy mode
+does the same for all of them at once. `buddy senses` shows what is allowed and
+what has actually reported; the journal records when each sense first became
+active and each look at the screen. A look keeps only its one-line summary, in
+memory; the frame is deleted as soon as the model has seen it, and nothing
+leaves the machine.
+
+What he does with it: he greets you when you come back, steps aside for the
+lock screen, the overview and fullscreen applications, glances up at a
+notification, watches the pointer when it comes near, stays calmer and does
+not ask for attention while you are busy, and takes less of the machine when
+it is working hard. He also keeps count of which applications follow which,
+and notes a sequence as a habit of yours once it has recurred on different
+days (`buddy why` lists them). Acting on those habits is a later phase.
+
 ## Ground rules
 
 - **Local first.** His life never depends on a language model or a network.
@@ -97,18 +128,20 @@ by providing the same methods the renderer calls: `apply_growth`,
 - Only barks and a grunt have recordings; whines, yawns, sniffs and the rest are
   silent until freely licensed recordings are added (see `renderer/sounds/SOURCES.md`).
 - No toys yet, so no fetch.
-- He stays above fullscreen windows, and his behaviour over the overview and
-  lock screen is unverified; hiding in those cases needs shell signals (Phase 3).
-- Petting, dragging and the right-click menu are untested with a real pointer.
+- The desktop sense needs GNOME; on other desktops he still has the system sense.
+- Looking at the screen is on request only (`buddy look`), sees the whole monitor
+  at reduced size, and has no OCR, so small text is beyond it.
+- The camera and microphone senses detect presence and loudness only, and have
+  been tested with synthetic input, not real devices.
+- Habits are noticed at the level of application order, not of what is done in them.
 - Suspend is handled by time accounting only; there is no lock or sleep signal yet.
 - The renderer needs Godot installed; it is not yet exported as a standalone binary.
 
 ## Roadmap
 
 1. Foundation — done.
-2. Autonomous life — this phase.
-3. Perception: system signals, screen understanding, camera and microphone
-   providers, and noticing recurring patterns in how the computer is used.
+2. Autonomous life — done.
+3. Perception — this phase.
 4. Language and training in English and Persian, with feedback he learns from
    (correction, approval, "remember this", praise and treats).
 5. Skills and learned workflows: local models through Ollama and optional

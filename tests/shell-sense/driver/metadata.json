@@ -1,0 +1,1 @@
+{"uuid": "buddydriver@test", "name": "Buddy sense test driver", "description": "Test only: makes things happen on a headless desktop for Buddy's shell extension to notice.", "shell-version": ["50"]}

@@ -9,6 +9,7 @@ extends Node3D
 
 const GROUND_MARGIN := 0.11        # of his height, kept below the paws for the shadow and for limbs that reach towards the viewer
 const CAMERA_PITCH := 0.14         # radians; a slight look down so the ground reads as a surface
+const POINTER_REACH := 650.0        # pixels: how near the pointer must come before he watches it
 const DRAG_THRESHOLD := 8.0        # pixels the pointer must travel before a press becomes a drag
 const RECONNECT_SECONDS := 1.0
 const ORPHAN_SECONDS := 10.0       # a supervised renderer exits if its daemon stays gone this long
@@ -129,10 +130,12 @@ func _ready() -> void:
 			"activity": option.call("--activity", "stand"), "variant": int(option.call("--variant", "0")), "intensity": 0.7,
 			"started": Time.get_unix_time_from_system(), "planned_secs": 2.0 * _selftest_at, "seed": 7,
 			"growth": growth, "scale": lerpf(0.45, 1.0, growth), "size_px": 420.0, "x_frac": 0.7, "facing": int(option.call("--facing", "1")),
-			"hidden": false, "privacy": false, "quiet": false, "valence": 0.6, "arousal": float(option.call("--arousal", "0.3")), "sleepiness": 0.2,
+			"hidden": false, "privacy": false, "quiet": false, "ducked": false, "user_here": true, "load": 0.0, "valence": 0.6, "arousal": float(option.call("--arousal", "0.3")), "sleepiness": 0.2,
 		})
 		if option.call("--gaze", "0") == "1":
 			_dog.look_at_viewer(60.0)
+		elif option.call("--look", "") != "":
+			_look.call_deferred(option.call("--look", ""), 60.0)
 
 
 func _socket_path() -> String:
@@ -187,8 +190,37 @@ func _pump_socket(delta: float) -> void:
 			match message.get("name"):
 				"vocalize":
 					_voice.say(args.get("kind", ""), args.get("intensity", 0.5), _state["growth"])
-				"glance":
-					_dog.look_at_viewer(args.get("secs", 2.0))
+				"look":
+					_look(args.get("at", "you"), args.get("secs", 2.0))
+				"pointer":
+					# He watches the pointer when it comes near, as a dog watches a hand.
+					var offset := Vector2(args.get("x", 0.0), args.get("y", 0.0)) - _head_on_screen()
+					if offset.length() < POINTER_REACH * _layout_key.x + 150.0:
+						_dog.look_towards(_towards(offset), 0.9)
+
+
+## Where his head is on the screen, in pixels.
+func _head_on_screen() -> Vector2:
+	var window := get_window()
+	return Vector2(window.position) + Vector2(window.size.x * 0.5, window.size.y - _margin - 0.85 * _pixels_per_unit * _layout_key.x)
+
+
+## A direction in the scene for something `offset` pixels from his head on the
+## screen. It leans out of the glass a little so his face stays towards the viewer.
+func _towards(offset: Vector2) -> Vector3:
+	return Vector3(offset.x, -offset.y, 0.3 * offset.length() + 1.0)
+
+
+func _look(at: String, secs: float) -> void:
+	match at:
+		"screen":          # the middle of the screen, above him
+			_dog.look_towards(_towards(Vector2(_usable.get_center()) - _head_on_screen()), secs)
+		"notification":    # GNOME shows them at the top centre
+			_dog.look_towards(_towards(Vector2(_usable.get_center().x, _usable.position.y) - _head_on_screen()), secs)
+		"sound":           # he cannot tell where it came from: up and to one side
+			_dog.look_towards(Vector3(randf_range(-1.0, 1.0), 0.35, 0.5), secs)
+		_:
+			_dog.look_at_viewer(secs)
 
 
 func _apply_state(state: Dictionary) -> void:
@@ -206,7 +238,7 @@ func _apply_state(state: Dictionary) -> void:
 		# Joining part-way through (after a restart, say) picks the activity up where it is.
 		var already := maxf(Time.get_unix_time_from_system() - float(state["started"]), 0.0)
 		_dog.begin(state["activity"], int(state["variant"]), state["intensity"], state["planned_secs"], _instance, already)
-	_voice.muted = state["quiet"]
+	_voice.muted = state["quiet"] or state.get("ducked", false)
 	for i in _menu.item_count:
 		var what = _menu.get_item_metadata(i)
 		if what in ["quiet", "privacy"]:
@@ -272,6 +304,11 @@ func _process(delta: float) -> void:
 	else:
 		_shown_x = lerpf(_shown_x, target_x, 1.0 - exp(-18.0 * delta))
 	var window := get_window()
+	if _state.get("ducked", false):
+		# Out of the way (lock screen, overview, something fullscreen): off the screen and barely ticking.
+		window.position = Vector2i(-30000, -30000)
+		Engine.max_fps = 2
+		return
 	var position := Vector2i(_usable.position.x + roundi(_shown_x), _usable.end.y - window.size.y)
 	if window.position != position:
 		window.position = position
@@ -284,7 +321,9 @@ func _process(delta: float) -> void:
 	# Draw only as often as what he is doing needs.
 	var activity: String = _state["activity"]
 	var fps: int = 50 if activity in QUICK or _state.get("being_dragged", false) else SLOW.get(activity, 30)
-	Engine.max_fps = maxi(fps, 40) if _dog.is_lively() else fps
+	fps = maxi(fps, 40) if _dog.is_lively() else fps
+	# When the machine is working hard he takes less of it.
+	Engine.max_fps = fps if float(_state.get("load", 0.0)) < 0.8 else maxi(fps * 3 / 5, 8)
 
 	if _selftest_path != "" and _clock >= _selftest_at:
 		_finish_selftest()

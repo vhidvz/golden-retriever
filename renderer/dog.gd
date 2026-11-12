@@ -8,7 +8,7 @@ extends Node3D
 ## Units: the adult stands 1.0 tall, +X is forward, the paws rest on Y = 0.
 ## A better model replaces this file by offering the same methods the renderer
 ## calls: apply_growth, begin, set_facing, set_mood, set_viewer_offset,
-## look_at_viewer, advance, get_reach.
+## look_at_viewer, look_towards, advance, get_reach.
 
 const SHELLS := 20
 const FUR := preload("res://fur.gdshader")
@@ -57,7 +57,9 @@ var _wag := 0.0
 var _panting := 0.0
 var _next_blink := 3.0
 var _eye_contact := 0.0           # seconds of looking at the viewer still owed
-var _attention := 0.0             # 0..1, how much of his gaze the viewer has right now
+var _attention := 0.0             # 0..1, how much of his gaze is held by the viewer or by something on screen
+var _aim := Vector3.RIGHT         # the direction of something on the screen he is looking at
+var _aim_left := 0.0              # seconds of looking that way still owed
 var _wander_yaw := 0.0            # where an idle glance is pointing
 var _wander_pitch := 0.0
 var _wander_left := 0.0
@@ -136,6 +138,13 @@ func look_at_viewer(secs: float) -> void:
 	_eye_contact = maxf(_eye_contact, secs)
 
 
+## Look in a direction (in scene space: +X right, +Y up, +Z out of the screen)
+## for about this long: at the pointer, at a notification, towards a sound.
+func look_towards(direction: Vector3, secs: float) -> void:
+	_aim = direction.normalized()
+	_aim_left = secs
+
+
 ## Advance the animation. `travelled` is how far he actually moved along the
 ## ground this frame (in units), so the legs keep pace with the window.
 func advance(delta: float, travelled: float) -> void:
@@ -194,14 +203,17 @@ func advance(delta: float, travelled: float) -> void:
 
 	# --- attention: the eyes go first, the head follows
 	_eye_contact = maxf(_eye_contact - delta, 0.0)
-	var wants_viewer: bool = (_eye_contact > 0.0 or motion.get("hold_gaze", 0.0) > 0.5) and awake > 0.5
+	_aim_left = maxf(_aim_left - delta, 0.0)
+	var at_you: bool = _eye_contact > 0.0 or motion.get("hold_gaze", 0.0) > 0.5
+	var gaze := _viewer if at_you or _aim_left <= 0.0 else _aim
+	var wants_viewer: bool = (at_you or _aim_left > 0.0) and awake > 0.5
 	_attention = lerpf(_attention, 1.0 if wants_viewer else 0.0, 1.0 - exp(-(7.0 if wants_viewer else 3.0) * delta))
 	_idle_glances(delta, awake, wants_viewer)
 
 	var forward_angle: float = rotation.y - deg_to_rad(p["spine_yaw"])
-	var to_viewer: float = clampf(wrapf(atan2(-_viewer.z, _viewer.x) - forward_angle, -PI, PI), -1.25, 1.25)
+	var to_viewer: float = clampf(wrapf(atan2(-gaze.z, gaze.x) - forward_angle, -PI, PI), -1.25, 1.25)
 	var own_yaw: float = -deg_to_rad(p["head_yaw"] + _wander_yaw)
-	_neck.rotation.z = deg_to_rad(p["neck"] + 3.0 * minf(_gait, 1.0) * sin(2.0 * _phase) - 6.0 * _sleepiness * awake + 9.0 * _attention)
+	_neck.rotation.z = deg_to_rad(p["neck"] + 3.0 * minf(_gait, 1.0) * sin(2.0 * _phase) - 6.0 * _sleepiness * awake + (9.0 + 22.0 * gaze.y) * _attention)
 	_head.rotation = Vector3(
 		deg_to_rad(p["head_tilt"]),
 		lerpf(own_yaw, to_viewer, _attention),
@@ -237,7 +249,7 @@ func advance(delta: float, travelled: float) -> void:
 		_next_blink = _chance.randf_range(2.0, 6.0) * lerpf(1.0, 0.5, _sleepiness)
 	var lids: float = awake * lerpf(1.0, 0.55, _sleepiness * (1.0 - _attention)) * (0.1 if _next_blink < 0.0 else 1.0)
 	var head_basis := _head.global_transform.basis.orthonormalized()
-	var look: Vector3 = (head_basis.inverse() * _viewer).lerp(Vector3.RIGHT, 1.0 - _attention).normalized()
+	var look: Vector3 = (head_basis.inverse() * gaze).lerp(Vector3.RIGHT, 1.0 - _attention).normalized()
 	for i in 2:
 		_eyes[i].scale.y = maxf(lids, 0.08)
 		var radius: float = _eyes[i].get_meta("radius")

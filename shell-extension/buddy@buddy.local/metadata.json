@@ -1,0 +1,6 @@
+{
+  "uuid": "buddy@buddy.local",
+  "name": "Buddy's desktop sense",
+  "description": "Tells Buddy, the desktop dog, which application is in front, whether something is fullscreen, where the pointer is and that a notification arrived. Never sends window contents; sends window titles only if that is switched on in Buddy.",
+  "shell-version": ["48", "49", "50"]
+}

@@ -1,8 +1,10 @@
 //! `buddy` — the daemon that keeps Buddy alive, and the command-line remote for it.
 
+mod ai;
 mod client;
 mod daemon;
 mod renderer;
+mod system;
 
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -20,7 +22,11 @@ Usage:
   buddy quiet on|off             no sounds and no asking for attention
   buddy why                      what he is doing, why, and how he feels
   buddy privacy on|off           suspend / resume every perception source
-  buddy set KEY VALUE            name | size_px (adult height) | adult_days (growth timeline)
+  buddy senses                   what he may perceive, and what is actually reporting
+  buddy look [--file IMAGE]      have him look at the screen once (or at an image) and say what he makes of it
+  buddy sense SOURCE on|off      system | desktop | window_titles | screen | camera | microphone
+  buddy set KEY VALUE            name | size_px (adult height) | adult_days (growth timeline) |
+                                 stay_in_fullscreen (on/off) | vision_model
   buddy journal [N]              the last N things that happened (default 20)
   buddy export                   everything he knows, as JSON
   buddy quit                     stop the daemon
@@ -44,6 +50,9 @@ fn main() -> Result<()> {
         (Some("show"), _) => ("show", Value::Null),
         (Some("simulate"), _) => return client::simulate(&args[1..]),
         (Some("why"), _) => return client::why(),
+        (Some("senses"), _) => return client::senses(),
+        (Some("look"), flag) => return client::look(if flag == Some("--file") { arg(2) } else { None }),
+        (Some("sense"), Some(source)) if matches!(arg(2), Some("on" | "off")) => ("sense", json!({ "source": source, "on": arg(2) == Some("on") })),
         (Some(simple @ ("feed" | "water" | "praise")), _) => (simple, Value::Null),
         (Some("quiet"), Some(v @ ("on" | "off"))) => ("quiet", json!({ "on": v == "on" })),
         (Some("sleep"), _) => ("sleep", Value::Null),

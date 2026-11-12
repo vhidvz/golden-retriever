@@ -9,6 +9,8 @@ pub mod model;
 pub mod mood;
 pub mod needs;
 pub mod paths;
+pub mod patterns;
+pub mod perception;
 pub mod personality;
 pub mod proto;
 pub mod rng;
@@ -18,6 +20,7 @@ pub mod store;
 
 pub use behavior::Record;
 pub use model::{Activity, Body, Identity, Life, Settings, Stage};
+pub use perception::{Senses, Stimulus};
 pub use proto::{ClientMsg, ServerMsg, StateMsg};
 pub use sim::{Command, JournalEntry, Mind, Output, Sim};
 pub use store::Store;

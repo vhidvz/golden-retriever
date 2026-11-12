@@ -138,6 +138,10 @@ pub struct Context<'a> {
     /// 1 just after any interaction; fades over minutes.
     pub attended: f64,
     pub secs_since_asking: f64,
+    /// 0..=1: how steadily the user has been typing and pointing for the last couple of minutes.
+    pub user_busy: f64,
+    /// Nobody has touched the computer for a while, or the screen is locked.
+    pub user_away: bool,
     pub at_favourite_spot: bool,
     pub current: Activity,
 }
@@ -194,6 +198,7 @@ pub fn appeal(activity: Activity, c: &Context) -> (f64, &'static str) {
             ("tired", 0.45 * n.fatigue),
             ("calm", 0.25 * t.calmness * (1.0 - n.boredom)),
             ("his favourite spot", if c.at_favourite_spot { 0.3 } else { 0.0 }),
+            ("nobody is around", if c.user_away { 0.2 } else { 0.0 }),
         ]),
         Activity::Sit => total(&[("settled", 0.28), ("keeping you company", 0.2 * t.sociability), ("calm", 0.1 * t.calmness)]),
         Activity::Stand => total(&[("watching", 0.28 + 0.25 * c.mood.arousal)]),
@@ -202,7 +207,8 @@ pub fn appeal(activity: Activity, c: &Context) -> (f64, &'static str) {
             total(&[("curious", 0.9 * t.curiosity * drive), ("looking for food", if c.food_out { 0.0 } else { 0.3 * excess(n.hunger) })])
         }
         Activity::Zoomies if energy > 0.55 && c.mood.valence > 0.2 && !c.quiet && day => {
-            total(&[("bursting with energy", 2.2 * drive * drive * t.playfulness * youth)])
+            // Less of a whirlwind while you are concentrating.
+            total(&[("bursting with energy", 2.2 * drive * drive * t.playfulness * youth * (1.0 - 0.5 * c.user_busy))])
         }
         Activity::TailChase if energy > 0.4 => total(&[("playful", 1.4 * drive * t.playfulness * youth * youth)]),
         Activity::PlayBow if energy > 0.4 => total(&[("wants to play with you", 0.9 * drive * t.playfulness * c.attended)]),
@@ -214,7 +220,8 @@ pub fn appeal(activity: Activity, c: &Context) -> (f64, &'static str) {
         Activity::Shake => total(&[("shaking off", 0.6 * n.itch), ("loosening up", 0.4 * n.stiffness)]),
         Activity::Greet => total(&[("happy to see you", 2.5 * c.greet_urge)]),
         // Rare by construction: never in quiet mode or at night, never twice within twenty minutes.
-        Activity::SeekAttention if !c.quiet && day && c.secs_since_asking > ASKING_INTERVAL => {
+        // He does not ask when nobody is there to answer, or when you are plainly busy.
+        Activity::SeekAttention if !c.quiet && day && c.secs_since_asking > ASKING_INTERVAL && !c.user_away && c.user_busy < 0.7 => {
             total(&[("wants company", 1.1 * excess(n.social) * t.attention_seeking * (1.0 - 0.6 * t.independence))])
         }
         Activity::Eat if c.food_out && n.hunger > 0.2 => total(&[("hungry", 0.4 + 2.0 * n.hunger)]),
@@ -302,6 +309,8 @@ mod tests {
             greet_urge: 0.0,
             attended: 0.0,
             secs_since_asking: 1e9,
+            user_busy: 0.0,
+            user_away: false,
             at_favourite_spot: false,
             current: Activity::Stand,
         }
@@ -357,6 +366,12 @@ mod tests {
         c.quiet = true;
         assert_eq!(appeal(Activity::SeekAttention, &c).0, 0.0);
         c.quiet = false;
+        c.user_busy = 0.9;
+        assert_eq!(appeal(Activity::SeekAttention, &c).0, 0.0, "not while you are busy");
+        c.user_busy = 0.0;
+        c.user_away = true;
+        assert_eq!(appeal(Activity::SeekAttention, &c).0, 0.0, "not when nobody is there");
+        c.user_away = false;
         c.night = 1.0;
         assert_eq!(appeal(Activity::SeekAttention, &c).0, 0.0, "never at night");
     }

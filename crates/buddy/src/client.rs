@@ -7,9 +7,14 @@ use std::time::Duration;
 
 /// Sends one command to the running daemon and returns its reply data.
 pub fn request(name: &str, args: Value) -> Result<Value> {
+    request_within(name, args, Duration::from_secs(5))
+}
+
+/// As `request`, for commands that take a while to answer.
+pub fn request_within(name: &str, args: Value, patience: Duration) -> Result<Value> {
     let path = paths::socket_path();
     let mut stream = UnixStream::connect(&path).with_context(|| format!("Buddy is not running (no daemon at {})", path.display()))?;
-    stream.set_read_timeout(Some(Duration::from_secs(5)))?;
+    stream.set_read_timeout(Some(patience))?;
     for msg in [ClientMsg::Hello { role: "cli".into() }, ClientMsg::Command { name: name.into(), args }] {
         writeln!(stream, "{}", serde_json::to_string(&msg)?)?;
     }
@@ -83,6 +88,19 @@ pub fn why() -> Result<()> {
         items.sort_by(|a, b| b.1.total_cmp(&a.1));
         println!("{title}: {}", items.iter().map(|(k, v)| format!("{k} {v:.2}")).collect::<Vec<_>>().join(", "));
     }
+    let busy = match w["you"]["busy"].as_f64().unwrap_or(0.0) {
+        b if b > 0.7 => "busy",
+        b if b > 0.3 => "working on and off",
+        _ => "not doing much at the keyboard",
+    };
+    println!("You: {}, {busy}", if w["you"]["away"] == true { "away" } else { "here" });
+    if let Some(saw) = w["last_look_at_the_screen"].as_str() {
+        println!("Last look at the screen: {saw}");
+    }
+    for habit in w["habits_noticed"].as_array().into_iter().flatten() {
+        let apps: Vec<&str> = habit["apps"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+        println!("A habit of yours he has noticed: {} ({} times on {} days)", apps.join(", then "), habit["times"], habit["days"]);
+    }
     match w["favourite_spot"].as_f64() {
         Some(spot) => println!("Favourite spot: {:.0}% of the way across the screen", spot * 100.0),
         None => println!("Favourite spot: none yet"),
@@ -108,5 +126,38 @@ pub fn simulate(args: &[String]) -> Result<()> {
         adult_days: 365.0,
     };
     print!("{}", run(&scenario));
+    Ok(())
+}
+
+pub fn senses() -> Result<()> {
+    let s = request("senses", Value::Null)?;
+    if s["privacy_mode"] == true {
+        println!("Privacy mode is ON: nothing is being observed, whatever is switched on below.");
+    }
+    for sense in s["senses"].as_array().into_iter().flatten() {
+        let allowed = if sense["allowed"] == true { "on " } else { "off" };
+        println!("  {:<14} {}  {}", sense["source"].as_str().unwrap_or("?"), allowed, sense["what"].as_str().unwrap_or(""));
+        if let Some(reporting) = sense["reporting"].as_str() {
+            println!("  {:<14}      {}", "", reporting);
+        }
+    }
+    Ok(())
+}
+
+pub fn look(file: Option<&str>) -> Result<()> {
+    let args = match file {
+        Some(path) => serde_json::json!({ "file": std::fs::canonicalize(path).with_context(|| format!("no such image: {path}"))? }),
+        None => {
+            eprintln!("Looking… (the first time, GNOME asks which screen to share)");
+            Value::Null
+        }
+    };
+    let seen = request_within("look", args, Duration::from_secs(240))?;
+    println!("He sees: {}", seen["summary"].as_str().unwrap_or("?"));
+    println!(
+        "  (looked at by {} on this machine in {:.1} s; only this summary is kept, in memory)",
+        seen["model"].as_str().unwrap_or("?"),
+        seen["secs"].as_f64().unwrap_or(0.0)
+    );
     Ok(())
 }

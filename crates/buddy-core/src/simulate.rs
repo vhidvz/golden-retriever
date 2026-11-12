@@ -152,7 +152,7 @@ pub fn run(scenario: &Scenario) -> Report {
         for output in sim.tick(now, hour) {
             match output {
                 Output::Behaved(record) => records.push(record),
-                Output::Glance { secs } => {
+                Output::Look { at: "you", secs } => {
                     glances += 1;
                     glance_secs += secs;
                 }
