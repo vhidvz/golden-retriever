@@ -1,0 +1,14 @@
+[Unit]
+Description=Buddy, a dog who lives on the desktop
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/buddy daemon
+Restart=on-failure
+RestartSec=3
+# Optional overrides, e.g. BUDDY_GODOT=/path/to/godot
+EnvironmentFile=-%h/.config/buddy/env
+
+[Install]
+WantedBy=graphical-session.target

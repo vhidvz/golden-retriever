@@ -1,0 +1,289 @@
+extends Node3D
+## Draws Buddy in a transparent overlay window and passes on what the user does
+## to him. All decisions are made by the daemon; this process renders the state
+## it is sent and can be killed and restarted without Buddy noticing.
+##
+## Self-test (no daemon needed):
+##   godot --path renderer --display-driver x11 -- --selftest out.png [--activity sit] [--growth 0.2] [--facing -1]
+
+const GROUND_MARGIN := 24          # pixels below the paws, room for the contact shadow
+const CAMERA_PITCH := 0.14         # radians; a slight look down so the ground reads as a surface
+const DRAG_THRESHOLD := 8.0        # pixels the pointer must travel before a press becomes a drag
+const RECONNECT_SECONDS := 1.0
+const ORPHAN_SECONDS := 10.0       # a supervised renderer exits if its daemon stays gone this long
+const FPS := {"walk": 50, "stand": 25, "sit": 25, "lie": 20, "sleep": 10}
+const Dog := preload("res://dog.gd")   # swap this file to change the dog model
+
+var _dog := Dog.new()
+var _camera := Camera3D.new()
+var _shadow := MeshInstance3D.new()
+var _menu := PopupMenu.new()
+
+var _peer := StreamPeerUDS.new()
+var _inbox := PackedByteArray()
+var _online := false
+var _since_attempt := RECONNECT_SECONDS
+var _offline_for := 0.0
+
+var _state := {}
+var _layout_key := Vector2(-1.0, -1.0)   # (scale, size_px) the window is currently laid out for
+var _pixels_per_unit := 420.0
+var _usable := Rect2i()
+var _walk_px := 1000.0
+var _shown_x := -1.0                     # where the window's left edge is drawn, in walk pixels
+
+var _pressed := false
+var _dragging := false
+var _press_at := Vector2.ZERO
+var _grab_offset := 0.0
+
+var _selftest_path := ""
+var _frames := 0
+
+
+func _ready() -> void:
+	get_viewport().transparent_bg = true
+	var window := get_window()
+	window.borderless = true
+	window.always_on_top = true
+	window.transparent = true
+	# Unfocusable makes this an override-redirect X11 window: always on top, on every
+	# workspace, out of the taskbar, and never taking keyboard focus when clicked.
+	window.unfocusable = true
+	window.unresizable = true
+	window.title = "Buddy"
+
+	var environment := Environment.new()
+	environment.background_mode = Environment.BG_CLEAR_COLOR
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	environment.ambient_light_color = Color(1.0, 0.97, 0.92)
+	environment.ambient_light_energy = 0.55
+	var world := WorldEnvironment.new()
+	world.environment = environment
+	add_child(world)
+
+	var sun := DirectionalLight3D.new()
+	sun.rotation = Vector3(deg_to_rad(-50.0), deg_to_rad(-35.0), 0.0)   # from the upper left, like most desktop themes
+	sun.light_energy = 1.1
+	add_child(sun)
+
+	_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	_camera.near = 0.1
+	_camera.far = 20.0
+	add_child(_camera)
+
+	var ground := PlaneMesh.new()
+	ground.size = Vector2(1.7, 0.6)
+	var shade := ShaderMaterial.new()
+	shade.shader = preload("res://shadow.gdshader")
+	_shadow.mesh = ground
+	_shadow.material_override = shade
+	_shadow.position.y = 0.002
+	add_child(_shadow)
+	add_child(_dog)
+
+	_menu.add_item("Hide for 15 minutes", 0)
+	_menu.add_item("Go to sleep", 1)
+	_menu.add_item("Wake up", 2)
+	_menu.add_separator()
+	_menu.add_check_item("Privacy mode", 3)
+	_menu.add_separator()
+	_menu.add_item("Quit Buddy", 4)
+	_menu.id_pressed.connect(_on_menu)
+	add_child(_menu)
+
+	var args := OS.get_cmdline_user_args()
+	var option := func(flag: String, fallback: String) -> String:
+		var i := args.find(flag)
+		return args[i + 1] if i >= 0 and i + 1 < args.size() else fallback
+	_selftest_path = option.call("--selftest", "")
+	if _selftest_path != "":
+		RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
+		_apply_state({
+			"activity": option.call("--activity", "stand"), "growth": float(option.call("--growth", "1.0")),
+			"scale": lerpf(0.45, 1.0, float(option.call("--growth", "1.0"))), "size_px": 420.0, "x_frac": 0.7,
+			"facing": int(option.call("--facing", "1")), "hidden": false, "privacy": false, "excitement": 0.0,
+		})
+
+
+func _socket_path() -> String:
+	var explicit := OS.get_environment("BUDDY_SOCKET")
+	return explicit if explicit != "" else OS.get_environment("XDG_RUNTIME_DIR").path_join("buddy/buddy.sock")
+
+
+func _send(message: Dictionary) -> void:
+	if _online:
+		_peer.put_data((JSON.stringify(message) + "\n").to_utf8_buffer())
+
+
+func _command(command_name: String, args: Dictionary = {}) -> void:
+	_send({"type": "command", "name": command_name, "args": args})
+
+
+func _pump_socket(delta: float) -> void:
+	_peer.poll()
+	var connected := _peer.get_status() == StreamPeerSocket.STATUS_CONNECTED
+	if connected and not _online:
+		_online = true
+		_offline_for = 0.0
+		_send({"type": "hello", "role": "renderer"})
+		_send({"type": "screen", "walk_px": _walk_px})
+	elif not connected:
+		_online = false
+		_offline_for += delta
+		_since_attempt += delta
+		if OS.get_environment("BUDDY_SUPERVISED") != "" and _offline_for > ORPHAN_SECONDS:
+			get_tree().quit()
+		if _since_attempt >= RECONNECT_SECONDS and _peer.get_status() != StreamPeerSocket.STATUS_CONNECTING:
+			_since_attempt = 0.0
+			_peer = StreamPeerUDS.new()
+			_peer.connect_to_host(_socket_path())
+		return
+
+	var waiting := _peer.get_available_bytes()
+	if waiting > 0:
+		_inbox.append_array(_peer.get_data(waiting)[1])
+	while true:
+		var newline := _inbox.find(10)
+		if newline < 0:
+			break
+		var message = JSON.parse_string(_inbox.slice(0, newline).get_string_from_utf8())
+		_inbox = _inbox.slice(newline + 1)
+		if message is Dictionary and message.get("type") == "state":
+			_apply_state(message)
+
+
+func _apply_state(state: Dictionary) -> void:
+	_state = state
+	_dog.apply_growth(state["growth"])
+	_dog.scale = Vector3.ONE * float(state["scale"])
+	_dog.set_activity(state["activity"])
+	_dog.set_facing(int(state["facing"]))
+	_dog.set_excitement(state["excitement"])
+	_menu.set_item_checked(_menu.get_item_index(3), state["privacy"])
+
+	var key := Vector2(state["scale"], state["size_px"])
+	if not key.is_equal_approx(_layout_key):
+		_layout_key = key
+		_layout()
+
+	if state["hidden"]:
+		# The daemon stops this process while he is hidden; leave rather than draw an unwanted dog.
+		get_tree().quit()
+	Engine.max_fps = FPS.get(state["activity"], 25)
+	if state.get("being_dragged", false) or float(state["excitement"]) > 0.05:
+		Engine.max_fps = 50
+
+
+## Size the window to everything the dog can reach at his current size, so no
+## pose is ever cut off, and aim the camera so his paws sit on the window's ground line.
+func _layout() -> void:
+	_pixels_per_unit = _layout_key.y
+	var reach: Vector2 = _dog.get_reach() * _layout_key.x
+	var size := Vector2i(ceili(2.0 * reach.x * _pixels_per_unit), ceili(reach.y * _pixels_per_unit) + GROUND_MARGIN)
+	var window := get_window()
+	if window.size != size:
+		window.size = size
+
+	var height_units := float(size.y) / _pixels_per_unit
+	_camera.size = height_units
+	var aim_y := (height_units * 0.5 - float(GROUND_MARGIN) / _pixels_per_unit) / cos(CAMERA_PITCH)
+	var toward_viewer := Vector3(0.0, sin(CAMERA_PITCH), cos(CAMERA_PITCH))
+	_camera.position = Vector3(0.0, aim_y, 0.0) + toward_viewer * 6.0
+	_camera.rotation = Vector3(-CAMERA_PITCH, 0.0, 0.0)
+	_shadow.scale = Vector3.ONE * _layout_key.x
+
+	_usable = DisplayServer.screen_get_usable_rect(DisplayServer.window_get_current_screen())
+	_walk_px = maxf(float(_usable.size.x - size.x), 100.0)
+	_send({"type": "screen", "walk_px": _walk_px})
+
+	# Only an ellipse around his body takes clicks; the rest of the window is click-through.
+	var centre := Vector2(size.x * 0.5, size.y - GROUND_MARGIN - reach.y * _pixels_per_unit * 0.45)
+	var radii := Vector2(reach.x * 0.78, reach.y * 0.5) * _pixels_per_unit
+	var outline := PackedVector2Array()
+	for i in 24:
+		outline.append(centre + Vector2(cos(i * TAU / 24.0), sin(i * TAU / 24.0)) * radii)
+	DisplayServer.window_set_mouse_passthrough(outline)
+	_shown_x = -1.0
+
+
+func _process(delta: float) -> void:
+	if _selftest_path == "":
+		_pump_socket(delta)
+	if _state.is_empty():
+		return
+
+	var target_x := float(_state["x_frac"]) * _walk_px
+	var previous := _shown_x
+	if _shown_x < 0.0 or _dragging:
+		_shown_x = target_x
+		previous = target_x
+	else:
+		_shown_x = lerpf(_shown_x, target_x, 1.0 - exp(-18.0 * delta))
+	var window := get_window()
+	var position := Vector2i(_usable.position.x + roundi(_shown_x), _usable.end.y - window.size.y)
+	if window.position != position:
+		window.position = position
+	_dog.advance(delta, (_shown_x - previous) / (_pixels_per_unit * _layout_key.x))
+
+	if _selftest_path != "":
+		_frames += 1
+		if _frames == 90:
+			_finish_selftest()
+
+
+func _input(event: InputEvent) -> void:
+	if _state.is_empty():
+		return
+	var pointer := Vector2(DisplayServer.mouse_get_position())
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			_pressed = true
+			_dragging = false
+			_press_at = pointer
+			_grab_offset = pointer.x - float(get_window().position.x)
+		elif _pressed:
+			_pressed = false
+			if _dragging:
+				_dragging = false
+				_command("drag_end")
+			else:
+				_command("pet")
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+		_menu.popup(Rect2i(Vector2i(pointer), Vector2i.ZERO))
+	elif event is InputEventMouseMotion and _pressed:
+		if not _dragging and pointer.distance_to(_press_at) > DRAG_THRESHOLD:
+			_dragging = true
+		if _dragging:
+			var left := pointer.x - _grab_offset - float(_usable.position.x)
+			var x_frac := clampf(left / _walk_px, 0.0, 1.0)
+			_state["x_frac"] = x_frac
+			_command("drag", {"x_frac": x_frac})
+
+
+func _on_menu(id: int) -> void:
+	match id:
+		0: _command("hide", {"minutes": 15})
+		1: _command("sleep")
+		2: _command("wake")
+		3: _command("privacy", {"on": not _state.get("privacy", false)})
+		4: _command("quit")
+
+
+## Saves what was drawn and reports whether the dog fits inside the window.
+func _finish_selftest() -> void:
+	var image := get_viewport().get_texture().get_image()
+	image.save_png(_selftest_path)
+	# Bounding box of everything clearly visible (the shadow's faint outer edge does not count).
+	var used := Rect2i()
+	for y in image.get_height():
+		for x in image.get_width():
+			if image.get_pixel(x, y).a > 0.2:
+				used = used.expand(Vector2i(x, y)) if used.has_area() else Rect2i(x, y, 1, 1)
+	var clipped := used.position.x <= 0 or used.position.y <= 0 or used.end.x >= image.get_width() - 1 or used.end.y >= image.get_height() - 1
+	var rid := get_viewport().get_viewport_rid()
+	print("SELFTEST activity=%s growth=%.2f window=%dx%d drawn=%dx%d at %d,%d clipped=%s gpu_ms=%.2f cpu_ms=%.2f renderer=%s" % [
+		_state["activity"], _state["growth"], image.get_width(), image.get_height(), used.size.x, used.size.y, used.position.x, used.position.y,
+		clipped, RenderingServer.viewport_get_measured_render_time_gpu(rid), RenderingServer.viewport_get_measured_render_time_cpu(rid),
+		RenderingServer.get_video_adapter_name()])
+	get_tree().quit()

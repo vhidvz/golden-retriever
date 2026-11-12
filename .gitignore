@@ -1,0 +1,6 @@
+target/
+.godot/
+*.import
+assets/local/
+spikes/overlay-gnome/out/
+spikes/overlay-gnome/furtest
