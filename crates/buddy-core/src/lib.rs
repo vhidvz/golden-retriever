@@ -5,6 +5,7 @@
 //! ever sees the `StateMsg` snapshots.
 
 pub mod behavior;
+pub mod language;
 pub mod model;
 pub mod mood;
 pub mod needs;
@@ -17,8 +18,10 @@ pub mod rng;
 pub mod sim;
 pub mod simulate;
 pub mod store;
+pub mod training;
 
 pub use behavior::Record;
+pub use language::Heard;
 pub use model::{Activity, Body, Identity, Life, Settings, Stage};
 pub use perception::{Senses, Stimulus};
 pub use proto::{ClientMsg, ServerMsg, StateMsg};

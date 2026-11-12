@@ -96,3 +96,32 @@ fn buddy_is_the_same_dog_after_a_restart() {
     sandbox.run(&["quit"]);
     third.wait().unwrap();
 }
+
+#[test]
+fn what_he_was_taught_and_told_survives_a_restart() {
+    let sandbox = Sandbox::new("lessons");
+
+    let mut first = sandbox.start();
+    sandbox.run(&["say", "وقتی می‌گم بپر، یعنی بچرخ"]);
+    sandbox.run(&["teach", "bang", "roll_over"]);
+    sandbox.run(&["say", "Remember that I prefer working late."]);
+    assert!(!sandbox.buddy().args(["teach", "bang", "moonwalk"]).output().unwrap().status.success(), "a trick he does not have is refused");
+    sandbox.run(&["quit"]);
+    first.wait().unwrap();
+
+    let mut second = sandbox.start();
+    let knows = sandbox.run(&["knows"]);
+    assert!(knows.lines().any(|l| l.contains("بپر") && l.contains("spin") && l.contains("told")), "{knows}");
+    assert!(knows.lines().any(|l| l.starts_with("bang") && l.contains("roll_over")), "{knows}");
+    let memories = sandbox.run(&["memories"]);
+    assert!(memories.contains("I prefer working late."), "{memories}");
+    assert_eq!(sandbox.json(&["status", "--json"])["settings"]["night_shift_hours"], 2.0, "and it still shapes his day");
+
+    // The user can take back both a word and a memory.
+    sandbox.run(&["unlearn", "bang"]);
+    sandbox.run(&["forget", "1"]);
+    assert!(!sandbox.run(&["knows"]).contains("bang"));
+    assert!(sandbox.run(&["memories"]).contains("has not been told to remember anything"));
+    sandbox.run(&["quit"]);
+    second.wait().unwrap();
+}

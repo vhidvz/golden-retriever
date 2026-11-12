@@ -18,7 +18,13 @@ Usage:
   buddy hide [MINUTES]           hide him, for a while or until `buddy show`
   buddy show                     bring him back
   buddy sleep | wake             send him to sleep / wake him
-  buddy feed | water | praise    put food out, put water out, tell him he is good
+  buddy feed | water | praise | treat
+                                 put food out, put water out, tell him he is good, give a treat
+  buddy say 'WORDS'              say something to him, in English or Persian
+  buddy teach 'WORD' TRICK       tell him outright what a new word means
+  buddy knows                    the words he knows and how well
+  buddy unlearn 'WORD'           make him forget a word
+  buddy memories | forget N      what he was told to remember; forget one of them
   buddy quiet on|off             no sounds and no asking for attention
   buddy why                      what he is doing, why, and how he feels
   buddy privacy on|off           suspend / resume every perception source
@@ -26,7 +32,7 @@ Usage:
   buddy look [--file IMAGE]      have him look at the screen once (or at an image) and say what he makes of it
   buddy sense SOURCE on|off      system | desktop | window_titles | screen | camera | microphone
   buddy set KEY VALUE            name | size_px (adult height) | adult_days (growth timeline) |
-                                 stay_in_fullscreen (on/off) | vision_model
+                                 stay_in_fullscreen (on/off) | vision_model | language_model
   buddy journal [N]              the last N things that happened (default 20)
   buddy export                   everything he knows, as JSON
   buddy quit                     stop the daemon
@@ -53,7 +59,13 @@ fn main() -> Result<()> {
         (Some("senses"), _) => return client::senses(),
         (Some("look"), flag) => return client::look(if flag == Some("--file") { arg(2) } else { None }),
         (Some("sense"), Some(source)) if matches!(arg(2), Some("on" | "off")) => ("sense", json!({ "source": source, "on": arg(2) == Some("on") })),
-        (Some(simple @ ("feed" | "water" | "praise")), _) => (simple, Value::Null),
+        (Some(simple @ ("feed" | "water" | "praise" | "treat")), _) => (simple, Value::Null),
+        (Some("say"), Some(_)) => return client::say(&args[1..].join(" ")),
+        (Some("teach"), Some(cue)) if arg(2).is_some() => ("teach", json!({ "cue": cue, "trick": arg(2) })),
+        (Some("knows"), _) => return client::knows(),
+        (Some("unlearn"), Some(cue)) => ("unlearn", json!({ "cue": cue })),
+        (Some("memories"), _) => return client::memories(),
+        (Some("forget"), Some(id)) => ("forget", json!({ "id": id.parse::<i64>().ok() })),
         (Some("quiet"), Some(v @ ("on" | "off"))) => ("quiet", json!({ "on": v == "on" })),
         (Some("sleep"), _) => ("sleep", Value::Null),
         (Some("wake"), _) => ("wake", Value::Null),

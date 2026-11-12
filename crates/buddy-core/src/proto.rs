@@ -84,6 +84,8 @@ pub struct StateMsg {
     pub valence: f64,
     pub arousal: f64,
     pub sleepiness: f64,
+    /// 0..=1: he did not understand what was said and is trying to.
+    pub confusion: f64,
     pub being_dragged: bool,
     /// Out of the way for now (screen locked, overview open, a fullscreen application): draw nothing.
     pub ducked: bool,

@@ -18,6 +18,8 @@ const MIGRATIONS: &[&str] = &[
     // v2: what he did, when and why. Feeds his memory of recent behaviour and the "why" view.
     "CREATE TABLE behaviour (id INTEGER PRIMARY KEY, ts REAL NOT NULL, activity TEXT NOT NULL, variant INTEGER NOT NULL,
                              secs REAL NOT NULL, intensity REAL NOT NULL, cause TEXT NOT NULL, x_frac REAL NOT NULL);",
+    // v3: things the user told him to remember, in their own words.
+    "CREATE TABLE memories (id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, text TEXT NOT NULL, language TEXT NOT NULL, source TEXT NOT NULL);",
 ];
 
 /// Rows of behaviour kept; older ones are pruned.
@@ -122,6 +124,28 @@ impl Store {
         Ok(out)
     }
 
+    /// Keeps something the user said to remember. `source` says how he came by it ("told").
+    pub fn remember(&self, ts: i64, text: &str, language: &str, source: &str) -> Result<i64> {
+        self.conn.execute("INSERT INTO memories (ts, text, language, source) VALUES (?1, ?2, ?3, ?4)", params![ts, text, language, source])?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Everything he was told to remember, oldest first.
+    pub fn memories(&self) -> Result<Vec<Value>> {
+        let mut stmt = self.conn.prepare("SELECT id, ts, text, language, source FROM memories ORDER BY id")?;
+        let mut rows = stmt.query([])?;
+        let mut out = Vec::new();
+        while let Some(r) = rows.next()? {
+            out.push(json!({ "id": r.get::<_, i64>(0)?, "ts": r.get::<_, i64>(1)?, "text": r.get::<_, String>(2)?, "language": r.get::<_, String>(3)?, "source": r.get::<_, String>(4)? }));
+        }
+        Ok(out)
+    }
+
+    /// True if there was such a memory to forget.
+    pub fn forget_memory(&self, id: i64) -> Result<bool> {
+        Ok(self.conn.execute("DELETE FROM memories WHERE id = ?1", params![id])? > 0)
+    }
+
     /// Newest first.
     pub fn recent_journal(&self, limit: usize) -> Result<Vec<Value>> {
         let mut stmt = self.conn.prepare("SELECT ts, kind, data FROM journal ORDER BY id DESC LIMIT ?1")?;
@@ -144,7 +168,7 @@ impl Store {
         }
         let mut journal = self.recent_journal(usize::MAX >> 1)?;
         journal.reverse();
-        Ok(json!({ "schema_version": self.schema_version()?, "exported_at": now, "state": state, "journal": journal }))
+        Ok(json!({ "schema_version": self.schema_version()?, "exported_at": now, "state": state, "memories": self.memories()?, "journal": journal }))
     }
 
     /// Writes today's backup if there is none yet, and prunes old ones.
@@ -258,7 +282,7 @@ mod tests {
             old.execute("INSERT INTO state VALUES ('identity', '{\"name\":\"Buddy\",\"born_at\":7}', 1)", []).unwrap();
         }
         let store = Store::open(&path).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 2);
+        assert_eq!(store.schema_version().unwrap(), MIGRATIONS.len());
         assert_eq!(store.load::<Identity>("identity").unwrap().unwrap().born_at, 7, "nothing is lost in the upgrade");
         let record = Record {
             ts: 5.5,
@@ -271,6 +295,9 @@ mod tests {
         };
         store.log_behaviour(&record).unwrap();
         assert_eq!(store.recent_behaviour(10).unwrap(), vec![record]);
+        let id = store.remember(9, "من شب‌ها کار می‌کنم", "fa", "told").unwrap();
+        assert_eq!(store.memories().unwrap()[0]["text"], "من شب‌ها کار می‌کنم");
+        assert!(store.forget_memory(id).unwrap() && !store.forget_memory(id).unwrap());
     }
 
     #[test]

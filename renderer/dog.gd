@@ -43,6 +43,7 @@ var _facing := 1
 var _valence := 0.5
 var _arousal := 0.3
 var _sleepiness := 0.2
+var _confusion := 0.0
 var _viewer := Vector3(0.0, 0.45, 1.0).normalized()
 
 var _pose: Dictionary = NEUTRAL.duplicate()
@@ -120,10 +121,11 @@ func set_facing(direction: int) -> void:
 	_facing = 1 if direction >= 0 else -1
 
 
-func set_mood(valence: float, arousal: float, sleepiness: float) -> void:
+func set_mood(valence: float, arousal: float, sleepiness: float, confusion: float = 0.0) -> void:
 	_valence = valence
 	_arousal = arousal
 	_sleepiness = sleepiness
+	_confusion = confusion
 
 
 ## Where the person is, as seen from the dog: `sideways` is -0.5 (far to his
@@ -204,7 +206,11 @@ func advance(delta: float, travelled: float) -> void:
 	# --- attention: the eyes go first, the head follows
 	_eye_contact = maxf(_eye_contact - delta, 0.0)
 	_aim_left = maxf(_aim_left - delta, 0.0)
-	var at_you: bool = _eye_contact > 0.0 or motion.get("hold_gaze", 0.0) > 0.5
+	# Not understanding shows as it does in a real dog: eyes on you, head tipped to one side, then the other.
+	var puzzled := _confusion * awake
+	p["head_tilt"] += 20.0 * puzzled * (1.0 if fmod(_time, 2.6) < 1.3 else -1.0)
+	p["ears"] -= 0.6 * puzzled
+	var at_you: bool = _eye_contact > 0.0 or motion.get("hold_gaze", 0.0) > 0.5 or puzzled > 0.3
 	var gaze := _viewer if at_you or _aim_left <= 0.0 else _aim
 	var wants_viewer: bool = (at_you or _aim_left > 0.0) and awake > 0.5
 	_attention = lerpf(_attention, 1.0 if wants_viewer else 0.0, 1.0 - exp(-(7.0 if wants_viewer else 3.0) * delta))
@@ -215,7 +221,7 @@ func advance(delta: float, travelled: float) -> void:
 	var own_yaw: float = -deg_to_rad(p["head_yaw"] + _wander_yaw)
 	_neck.rotation.z = deg_to_rad(p["neck"] + 3.0 * minf(_gait, 1.0) * sin(2.0 * _phase) - 6.0 * _sleepiness * awake + (9.0 + 22.0 * gaze.y) * _attention)
 	_head.rotation = Vector3(
-		deg_to_rad(p["head_tilt"]),
+		lerp_angle(_head.rotation.x, deg_to_rad(p["head_tilt"]), 1.0 - exp(-9.0 * delta)),
 		lerpf(own_yaw, to_viewer, _attention),
 		deg_to_rad(p["head"] + _wander_pitch * (1.0 - _attention)))
 

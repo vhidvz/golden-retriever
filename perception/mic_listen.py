@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""Buddy's hearing, first stage: was there a sound, and how loud?
+"""Buddy's hearing: was there a sound, how loud, and was someone speaking?
 
-Measures loudness in tenth-of-a-second slices and reports when something
-stands out clearly above the room's own background level. Nothing is
-recorded, kept or interpreted here; understanding speech is a later stage.
+Measures loudness in tenth-of-a-second slices against the room's own
+background level. A sudden loud sound is reported as such. A stretch that
+sounds like speech (half a second to fifteen seconds, ended by a pause) is
+written to a private file for the daemon to have understood on this machine;
+the daemon deletes it straight afterwards. Nothing else is kept.
 
-Prints one JSON line per sound: {"kind": "sound", "data": {"level": 0..1}}
-or, when there is no microphone, {"kind": "unavailable", "data": {"why": ...}}.
+Prints one JSON line per observation:
+  {"kind": "sound", "data": {"level": 0..1}}
+  {"kind": "utterance", "data": {"path": ..., "secs": ...}}   (only with --utterances DIR)
+  {"kind": "unavailable", "data": {"why": ...}}               (no microphone)
 """
-import argparse, array, json, math, subprocess, time
+import argparse, array, json, math, os, subprocess, time, wave
 import gi
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst
@@ -34,7 +38,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pipeline", help="a GStreamer source to use instead of the microphone (for tests)")
     ap.add_argument("--seconds", type=float, default=0, help="stop after this long (for tests)")
+    ap.add_argument("--utterances", help="a private directory to write stretches of speech into")
     args = ap.parse_args()
+    args.pipeline = args.pipeline or os.environ.get("BUDDY_MIC_PIPELINE")   # the daemon's tests feed it a recording this way
     if not args.pipeline and not has_microphone():
         say("unavailable", why="no microphone found")
         return
@@ -44,6 +50,7 @@ def main():
     sink = pipeline.get_by_name("sink")
     pipeline.set_state(Gst.State.PLAYING)
     background, last_report, started, pending = -60.0, 0.0, time.monotonic(), array.array("h")
+    speech, quiet_slices, recent, count = None, 0, [], 0   # the utterance being collected, if any
     try:
         while not args.seconds or time.monotonic() - started < args.seconds:
             sample = sink.emit("try-pull-sample", Gst.SECOND)
@@ -62,6 +69,25 @@ def main():
                 rms = math.sqrt(sum(s * s for s in piece) / len(piece)) / 32768.0
                 level_db = 20.0 * math.log10(max(rms, 1e-6))
                 now = time.monotonic()
+                if args.utterances:
+                    voiced = level_db > background + 10.0 and level_db > AUDIBLE_DB
+                    if speech is None:
+                        recent = (recent + [piece])[-3:]          # a little lead-in, so the first syllable is not clipped
+                        if voiced:
+                            speech, quiet_slices = array.array("h", [s for p in recent for s in p]), 0
+                    else:
+                        speech.extend(piece)
+                        quiet_slices = 0 if voiced else quiet_slices + 1
+                        secs = len(speech) / 16000.0
+                        if quiet_slices >= 8 or secs >= 15.0:
+                            if 0.8 <= secs - 0.8:                 # at least half a second of it besides the trailing pause
+                                count += 1
+                                path = os.path.join(args.utterances, f"heard-{os.getpid()}-{count}.wav")
+                                with wave.open(path, "wb") as out:
+                                    out.setnchannels(1); out.setsampwidth(2); out.setframerate(16000); out.writeframes(speech.tobytes())
+                                os.chmod(path, 0o600)
+                                say("utterance", path=path, secs=round(secs, 1))
+                            speech, recent = None, []
                 if level_db > background + STANDS_OUT_DB and level_db > AUDIBLE_DB and now - last_report > MIN_GAP:
                     last_report = now
                     say("sound", level=round(min(max((level_db + 40.0) / 35.0, 0.0), 1.0), 2))

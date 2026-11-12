@@ -104,7 +104,7 @@ func _ready() -> void:
 	add_child(_dog)
 	add_child(_voice)
 
-	for entry in [["Good boy!", "praise"], ["Give food", "feed"], ["Give water", "water"], [], ["Go to sleep", "sleep"], ["Wake up", "wake"],
+	for entry in [["Good boy!", "praise"], ["Give a treat", "treat"], ["Give food", "feed"], ["Give water", "water"], [], ["Go to sleep", "sleep"], ["Wake up", "wake"],
 			["Hide for 15 minutes", "hide"], [], ["Quiet mode", "quiet"], ["Privacy mode", "privacy"], [], ["Quit Buddy", "quit"]]:
 		if entry.is_empty():
 			_menu.add_separator()
@@ -130,7 +130,7 @@ func _ready() -> void:
 			"activity": option.call("--activity", "stand"), "variant": int(option.call("--variant", "0")), "intensity": 0.7,
 			"started": Time.get_unix_time_from_system(), "planned_secs": 2.0 * _selftest_at, "seed": 7,
 			"growth": growth, "scale": lerpf(0.45, 1.0, growth), "size_px": 420.0, "x_frac": 0.7, "facing": int(option.call("--facing", "1")),
-			"hidden": false, "privacy": false, "quiet": false, "ducked": false, "user_here": true, "load": 0.0, "valence": 0.6, "arousal": float(option.call("--arousal", "0.3")), "sleepiness": 0.2,
+			"hidden": false, "privacy": false, "quiet": false, "ducked": false, "user_here": true, "load": 0.0, "valence": 0.6, "arousal": float(option.call("--arousal", "0.3")), "sleepiness": 0.2, "confusion": float(option.call("--confusion", "0.0")),
 		})
 		if option.call("--gaze", "0") == "1":
 			_dog.look_at_viewer(60.0)
@@ -232,7 +232,7 @@ func _apply_state(state: Dictionary) -> void:
 	_dog.apply_growth(state["growth"])
 	_dog.scale = Vector3.ONE * float(state["scale"])
 	_dog.set_facing(int(state["facing"]))
-	_dog.set_mood(state["valence"], state["arousal"], state["sleepiness"])
+	_dog.set_mood(state["valence"], state["arousal"], state["sleepiness"], state.get("confusion", 0.0))
 	if int(state["seed"]) != _instance:
 		_instance = int(state["seed"])
 		# Joining part-way through (after a restart, say) picks the activity up where it is.

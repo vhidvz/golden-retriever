@@ -161,3 +161,76 @@ pub fn look(file: Option<&str>) -> Result<()> {
     );
     Ok(())
 }
+
+pub fn say(words: &str) -> Result<()> {
+    let r = request_within("say", serde_json::json!({ "text": words }), Duration::from_secs(150))?;
+    let text = |v: &Value| v.as_str().unwrap_or("?").replace('_', " ");
+    let meaning = &r["understood_as"];
+    let detail = match &meaning["detail"] {
+        Value::String(s) => format!(" \u{201c}{s}\u{201d}"),
+        Value::Object(o) => format!(" \u{201c}{}\u{201d} = {}", o["cue"].as_str().unwrap_or("?"), o["trick"].as_str().unwrap_or("?")),
+        _ => String::new(),
+    };
+    println!("Understood as: {}{detail} (by {})", text(&meaning["kind"]), text(&r["by"]));
+    let kind = meaning["kind"].as_str().unwrap_or_default();
+    if r["puzzled"] == true && kind == "cue" {
+        println!("He knows that word only a little and did not do it this time. Praise him when he does, and he will learn it.");
+    } else if r["puzzled"] == true {
+        println!("He looks at you and tilts his head: he does not know what you want.");
+    } else if kind == "cue" && r["did_as_asked"] == true {
+        println!("He does it: {} — because: {}", text(&r["now"]), text(&r["because"]));
+    } else {
+        println!(
+            "He is {} ({}).",
+            match text(&r["now"]).as_str() {
+                "stand" => "standing".to_string(),
+                "sit" => "sitting".to_string(),
+                "lie" => "lying down".to_string(),
+                "sleep" => "asleep".to_string(),
+                other => format!("busy with: {other}"),
+            },
+            text(&r["because"])
+        );
+    }
+    Ok(())
+}
+
+pub fn knows() -> Result<()> {
+    let known = request("knows", Value::Null)?;
+    println!("{:<22} {:<10} {:>8}  {:<9} rewarded/corrected", "word", "means", "how well", "how");
+    for k in known.as_array().into_iter().flatten() {
+        let how = match k["source"].as_str() {
+            Some("taught") => "told",
+            Some("learned") => "learned",
+            _ => "instinct",
+        };
+        println!(
+            "{:<22} {:<10} {:>7.0}%  {:<9} {}/{}",
+            k["cue"].as_str().unwrap_or("?"),
+            k["trick"].as_str().unwrap_or("?"),
+            100.0 * k["strength"].as_f64().unwrap_or(0.0),
+            how,
+            k["rewarded"],
+            k["corrected"]
+        );
+    }
+    Ok(())
+}
+
+pub fn memories() -> Result<()> {
+    let all = request("memories", Value::Null)?;
+    let list = all.as_array().cloned().unwrap_or_default();
+    if list.is_empty() {
+        println!("He has not been told to remember anything yet. Try: buddy say \"remember that I prefer working late\"");
+    }
+    for m in list {
+        println!(
+            "{:>3}. {}   ({}, {})",
+            m["id"],
+            m["text"].as_str().unwrap_or("?"),
+            m["source"].as_str().unwrap_or("?"),
+            m["language"].as_str().unwrap_or("?")
+        );
+    }
+    Ok(())
+}

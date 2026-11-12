@@ -3,10 +3,10 @@
 A Golden Retriever who lives on a Linux desktop. He is born as a puppy, grows
 with real time, and keeps living when every AI service is unavailable.
 
-This repository is at **Phase 3 (perception)**: on top of a life of his own
-(needs, moods, a temperament, 19 activities), he now notices what goes on
-around him, through senses that each have their own switch. The dog you see is
-still a stand-in model.
+This repository is at **Phase 4 (language and training)**: on top of a life of
+his own and senses that each have their own switch, he now understands what is
+said to him in English and Persian, and learns what words mean the way a dog
+does. The dog you see is still a stand-in model.
 
 ## What is here
 
@@ -39,7 +39,12 @@ buddy status            # how he is, what is running, what is being observed
 buddy hide [MINUTES]    # stops the renderer entirely; `buddy show` brings him back
 buddy why               # what he is doing, why, how he feels, what else he considered
 buddy sleep | wake
-buddy feed | water | praise
+buddy feed | water | praise | treat
+buddy say "بادی بشین"    # say something to him, in English or Persian
+buddy teach "bang" roll_over   # tell him outright what a word means
+buddy knows             # the words he knows, how well, and how he came by them
+buddy unlearn "bang"
+buddy memories          # what he was told to remember; `buddy forget N` removes one
 buddy quiet on|off      # no sounds and no asking for attention
 buddy privacy on|off    # suspends every sense at once
 buddy senses            # what he may perceive, and what is actually reporting
@@ -104,6 +109,49 @@ it is working hard. He also keeps count of which applications follow which,
 and notes a sequence as a habit of yours once it has recurred on different
 days (`buddy why` lists them). Acting on those habits is a later phase.
 
+## Talking to him and training him
+
+He never answers in words. What you say changes what he does.
+
+**Understanding** happens in three steps, each optional beyond the first:
+
+1. His own vocabulary: `crates/buddy-core/data/lexicon.json` lists every phrase
+   he knows, per language, and what the user has taught him is checked before it.
+   Text is normalised first, so Persian letter variants, the half-space and
+   punctuation make no difference. This needs no model.
+2. A local language model through Ollama (`gemma4:e4b` unless changed with
+   `buddy set language_model …`), for what the vocabulary cannot place, such as
+   "I really don't want you to do that anymore".
+3. If neither can, he looks at you and tilts his head.
+
+**Training.** Each word has a strength for each trick. Hearing a word, he does
+the strongest trick with a probability that grows with its strength and falls
+when he is tired or over-excited, so an untrained dog obeys only sometimes.
+What follows within twenty seconds teaches him:
+
+| You | Effect |
+|---|---|
+| "Good boy" / «آفرین», a treat, petting | Strengthens the word-to-trick pairing he just acted on |
+| "That's right" / «درسته» | Strengthens it a little |
+| "No, that's wrong" / «نه، اشتباهه» | Weakens that pairing, and he stops |
+| "Stop that" / «بسه» | He stops and will not start that activity again for half an hour |
+| "When I say X, do Y" / «وقتی می‌گم X، یعنی Y» | Sets the pairing outright |
+| A new word, then praise while he happens to do something | He comes to pair the word with that |
+| "Remember that …" / «یادت باشه …» | Kept word for word in his memory |
+
+`buddy knows` shows every pairing with its strength, whether it is instinct,
+told or learned, and how often it was rewarded and corrected; `buddy unlearn`
+removes one. What he was told to remember is listed by `buddy memories`. The
+journal records what kind of thing was said to him, never the words: talk does
+not become memory unless he is told to remember it. One thing he is told
+already changes how he lives: say you work late and his night starts two hours later.
+
+**By voice.** With the microphone sense on, stretches of speech are written
+down by the local model on this machine and the recording is deleted at once.
+He acts on them only if his name is in them, or within twenty seconds of being
+spoken to by name. This path has been tested with a recording, not with a
+microphone, and not yet in Persian.
+
 ## Ground rules
 
 - **Local first.** His life never depends on a language model or a network.
@@ -134,6 +182,9 @@ by providing the same methods the renderer calls: `apply_growth`,
 - The camera and microphone senses detect presence and loudness only, and have
   been tested with synthetic input, not real devices.
 - Habits are noticed at the level of application order, not of what is done in them.
+- Speech has been tested with a recording only; there is no wake word, so with the
+  microphone on every stretch of speech goes through the local model.
+- "Fetch" is not among his tricks yet, because there is no ball.
 - Suspend is handled by time accounting only; there is no lock or sleep signal yet.
 - The renderer needs Godot installed; it is not yet exported as a standalone binary.
 
@@ -141,9 +192,8 @@ by providing the same methods the renderer calls: `apply_growth`,
 
 1. Foundation — done.
 2. Autonomous life — done.
-3. Perception — this phase.
-4. Language and training in English and Persian, with feedback he learns from
-   (correction, approval, "remember this", praise and treats).
+3. Perception — done.
+4. Language and training — this phase.
 5. Skills and learned workflows: local models through Ollama and optional
    Claude Code delegation as peer providers, a playful invitation when he
    spots something he could take over, verification and undo.

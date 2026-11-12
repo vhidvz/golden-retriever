@@ -144,6 +144,8 @@ pub struct Context<'a> {
     pub user_away: bool,
     pub at_favourite_spot: bool,
     pub current: Activity,
+    /// Something the user has just told him to stop doing.
+    pub inhibited: Option<Activity>,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -233,7 +235,7 @@ pub fn appeal(activity: Activity, c: &Context) -> (f64, &'static str) {
 pub fn decide(c: &Context, memory: &Memory, rng: &mut Rng) -> Decision {
     let mut options: Vec<Considered> = REPERTOIRE
         .iter()
-        .filter(|s| s.activity != c.current)
+        .filter(|s| s.activity != c.current && Some(s.activity) != c.inhibited)
         .filter_map(|s| {
             let (raw, reason) = appeal(s.activity, c);
             // Everyday postures wear out slowly; one-off antics wear out fast.
@@ -313,6 +315,7 @@ mod tests {
             user_away: false,
             at_favourite_spot: false,
             current: Activity::Stand,
+            inhibited: None,
         }
     }
 

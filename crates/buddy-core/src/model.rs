@@ -45,6 +45,10 @@ pub struct Settings {
     pub stay_in_fullscreen: bool,
     /// The local model used to make sense of images.
     pub vision_model: String,
+    /// The local model used to understand what is said when his own vocabulary is not enough.
+    pub language_model: String,
+    /// Hours his night is shifted later, for a user who works late.
+    pub night_shift_hours: f64,
 }
 
 impl Default for Settings {
@@ -59,6 +63,8 @@ impl Default for Settings {
             senses: Default::default(),
             stay_in_fullscreen: false,
             vision_model: "gemma4:e4b".into(),
+            language_model: "gemma4:e4b".into(),
+            night_shift_hours: 0.0,
         }
     }
 }

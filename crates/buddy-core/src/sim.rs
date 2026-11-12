@@ -2,6 +2,7 @@
 //! do (see `behavior`), carries it out, and remembers it.
 
 use crate::behavior::{self, Considered, Context, Decision, Memory, Record};
+use crate::language::{self, Heard, TRICKS};
 use crate::model::{self, Activity, Body, Identity, Life, Settings};
 use crate::mood::Mood;
 use crate::needs::Needs;
@@ -10,6 +11,7 @@ use crate::perception::Stimulus;
 use crate::personality::{Personality, drift};
 use crate::proto::StateMsg;
 use crate::rng::Rng;
+use crate::training::{Response, Training};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::VecDeque;
@@ -60,6 +62,7 @@ pub enum Command {
     },
     StayInFullscreen(bool),
     VisionModel(String),
+    LanguageModel(String),
 }
 
 /// Something worth remembering; the daemon writes these to the journal.
@@ -75,6 +78,8 @@ pub enum Output {
     Journal(JournalEntry),
     /// He finished (or was interrupted in) an activity.
     Behaved(Record),
+    /// Something he was told to keep, in the user's own words.
+    Remember(String),
     /// He makes a sound.
     Vocalize {
         kind: &'static str,
@@ -127,6 +132,25 @@ pub struct Mind {
     pub water_out: bool,
     /// Recurring sequences of applications he has noticed.
     pub patterns: Patterns,
+    /// What words mean to him.
+    pub training: Training,
+}
+
+/// The trick an activity counts as, when he does it of his own accord and is
+/// rewarded for it just after hearing a new word.
+fn trick_for(activity: Activity) -> Option<&'static str> {
+    Some(match activity {
+        Activity::Sit => "sit",
+        Activity::Lie => "down",
+        Activity::Stand => "stand",
+        Activity::Sleep => "sleep",
+        Activity::TailChase => "spin",
+        Activity::Roll => "roll_over",
+        Activity::PlayBow => "bow",
+        Activity::Shake => "shake",
+        Activity::Stretch => "stretch",
+        _ => return None,
+    })
 }
 
 /// 0 by day, 1 in the middle of the night, with a small after-lunch dip.
@@ -195,6 +219,14 @@ pub struct Sim {
     load: f64,
     last_startle: f64,
     glimpse: Option<(f64, String)>,
+
+    pub training: Training,
+    /// Doing something because he was asked, not because he felt like it.
+    performing: bool,
+    /// After "come": sit down in front of you on arriving.
+    sit_on_arrival: bool,
+    inhibited: Option<(Activity, f64)>,
+    hushed_until: f64,
     rng: Rng,
     out: Vec<Output>,
 }
@@ -250,6 +282,11 @@ impl Sim {
             load: 0.0,
             last_startle: f64::NEG_INFINITY,
             glimpse: None,
+            training: mind.training,
+            performing: false,
+            sit_on_arrival: false,
+            inhibited: None,
+            hushed_until: 0.0,
             rng,
             out: Vec::new(),
         }
@@ -264,6 +301,7 @@ impl Sim {
             food_out: self.food_out,
             water_out: self.water_out,
             patterns: self.patterns.clone(),
+            training: self.training.clone(),
         }
     }
 
@@ -372,7 +410,7 @@ impl Sim {
             match self.activity {
                 Activity::Walk | Activity::Zoomies => self.step_move(now, dt),
                 Activity::Sleep => {
-                    let night = night_pressure(hour);
+                    let night = night_pressure(hour - self.settings.night_shift_hours);
                     let slept = now - self.started;
                     let rested = self.needs.fatigue < 0.08 && night < 0.5;
                     let napped = self.needs.fatigue < 0.2 && night < 0.2 && slept > 1200.0;
@@ -453,6 +491,10 @@ impl Sim {
             self.target_px = None;
             if self.activity == Activity::Zoomies && now < self.ends {
                 self.target_px = Some(self.somewhere_else(0.25)); // and back again
+            } else if std::mem::take(&mut self.sit_on_arrival) {
+                self.finish(now);
+                self.perform_as(Activity::Sit, 0, 10.0, "he came when called", now);
+                self.look("you", 4.0, now);
             } else if self.activity == Activity::Walk && self.legs_left > 0 {
                 self.legs_left -= 1;
                 self.pause_until = now + self.rng.range(0.8, 3.5);
@@ -491,7 +533,7 @@ impl Sim {
             traits: &self.personality,
             stage: model::stage(self.maturity(now)),
             // If you are up late with him, he stays up with you.
-            night: night_pressure(self.hour) * (1.0 - self.attended),
+            night: night_pressure(self.hour - self.settings.night_shift_hours) * (1.0 - self.attended),
             now,
             quiet: self.settings.quiet,
             food_out: self.food_out,
@@ -503,6 +545,7 @@ impl Sim {
             user_away: self.user_away,
             at_favourite_spot: favourite.is_some_and(|f| (f - self.x_frac()).abs() < 0.06),
             current: self.activity,
+            inhibited: self.inhibited.filter(|(_, until)| now < *until).map(|(activity, _)| activity),
         }
     }
 
@@ -582,7 +625,8 @@ impl Sim {
                     self.voice("bark", 0.5, now);
                 }
             }
-            Activity::SeekAttention => {
+            // Offering a paw because he was asked is not a bid for attention.
+            Activity::SeekAttention if !self.performing => {
                 self.last_asked = now;
                 // Unanswered, he waits twice as long before trying again (up to six hours).
                 self.ask_patience = (self.ask_patience * 2.0).min(18.0);
@@ -599,6 +643,7 @@ impl Sim {
 
     /// Close the current activity: apply what it did for him and log it.
     fn finish(&mut self, now: f64) {
+        self.performing = false;
         let secs = now - self.started;
         if self.started == 0.0 || secs < 0.3 {
             return;
@@ -645,14 +690,14 @@ impl Sim {
 
     /// Makes a sound, unless quiet mode, the hour, or his own restraint says no.
     fn voice(&mut self, kind: &'static str, intensity: f64, now: f64) {
-        if self.settings.quiet {
+        if self.settings.quiet || now < self.hushed_until {
             return;
         }
         if matches!(kind, "bark" | "whine") {
             while self.loud_sounds.front().is_some_and(|t| now - t > SOUND_WINDOW_SECS) {
                 self.loud_sounds.pop_front();
             }
-            if night_pressure(self.hour) > 0.3 || self.loud_sounds.len() >= LOUD_SOUNDS_PER_WINDOW {
+            if night_pressure(self.hour - self.settings.night_shift_hours) > 0.3 || self.loud_sounds.len() >= LOUD_SOUNDS_PER_WINDOW {
                 return;
             }
             self.loud_sounds.push_back(now);
@@ -790,12 +835,186 @@ impl Sim {
             }
             Command::StayInFullscreen(on) => self.settings.stay_in_fullscreen = on,
             Command::VisionModel(model) => self.settings.vision_model = model,
+            Command::LanguageModel(model) => self.settings.language_model = model,
             Command::Rename(name) => {
                 self.identity.name = name;
                 self.out.push(journal("setting", json!({ "name": self.identity.name })));
             }
         }
         std::mem::take(&mut self.out)
+    }
+
+    /// Something was said to him. What he makes of it depends on what he has learned.
+    pub fn hear(&mut self, heard: Heard, now: f64) -> Vec<Output> {
+        self.attended = 1.0;
+        self.ask_patience = 1.0;
+        self.mood.confusion = 0.0;
+        let asleep = self.activity == Activity::Sleep;
+        match heard {
+            Heard::Cue(cue) => {
+                if asleep {
+                    // Only being called or told to wake gets through to a sleeping dog.
+                    if matches!(cue.as_str(), "wake" | "come") && !self.settings.asleep_by_user {
+                        self.finish(now);
+                        self.begin(Activity::Stand, "you woke him", now);
+                        self.look("you", 3.0, now);
+                    }
+                    return std::mem::take(&mut self.out);
+                }
+                // A tired or over-excited dog has less attention to give.
+                let focus = (1.0 - 0.5 * self.needs.fatigue - 1.6 * (self.mood.arousal - 0.75).max(0.0)).clamp(0.2, 1.0);
+                match self.training.hear(&cue, &TRICKS, focus, now, &mut self.rng) {
+                    Response::Does(trick) => self.perform(&trick, &cue, now),
+                    Response::Puzzled => self.puzzle(now),
+                }
+            }
+            Heard::Praise | Heard::Treat | Heard::Approval => {
+                let (amount, lift) = match heard {
+                    Heard::Treat => (0.30, 0.25),
+                    Heard::Praise => (0.18, 0.2),
+                    _ => (0.10, 0.08),
+                };
+                self.needs.social = (self.needs.social - 0.2).max(0.0);
+                self.mood.lift(lift, 0.15);
+                drift(&mut self.personality.confidence, true, 0.004);
+                // If a cue came just before, this is about that: his answer to it, or what he was doing anyway.
+                let doing = if self.performing { None } else { trick_for(self.activity) };
+                if let Some((cue, trick, strength)) = self.training.reward(amount, doing, &TRICKS, now) {
+                    self.out.push(journal("reinforced", json!({ "cue": cue, "trick": trick, "strength": (strength * 100.0).round() / 100.0 })));
+                }
+                if heard == Heard::Treat {
+                    self.needs.hunger = (self.needs.hunger - 0.05).max(0.0);
+                    self.voice("eat", 0.4, now);
+                }
+                if !asleep {
+                    let secs = self.rng.range(2.0, 4.0);
+                    self.look("you", secs, now);
+                }
+                self.out.push(journal(if heard == Heard::Treat { "treated" } else { "praised" }, Value::Null));
+            }
+            Heard::Correction => {
+                if let Some((cue, trick, strength)) = self.training.correct(&TRICKS, now) {
+                    self.out.push(journal("corrected", json!({ "cue": cue, "trick": trick, "strength": (strength * 100.0).round() / 100.0 })));
+                }
+                // He takes it in without being crushed by it.
+                self.mood.valence = (self.mood.valence - 0.05).max(-0.2);
+                if self.performing && !asleep {
+                    self.finish(now);
+                    self.perform_as(Activity::Stand, 0, 4.0, "you said no", now);
+                }
+                if !asleep {
+                    self.look("you", 3.0, now);
+                }
+            }
+            Heard::Stop => {
+                if !asleep {
+                    // Whatever it was, he will not start it again for half an hour.
+                    self.inhibited = Some((self.activity, now + 1800.0));
+                    self.out.push(journal("told_to_stop", json!({ "activity": self.activity })));
+                    self.finish(now);
+                    self.perform_as(Activity::Sit, 0, 8.0, "you told him to stop", now);
+                    self.look("you", 3.0, now);
+                }
+            }
+            Heard::Quiet => {
+                self.hushed_until = now + 1800.0;
+                self.out.push(journal("hushed", json!({ "minutes": 30 })));
+            }
+            Heard::Remember(text) => {
+                self.take_to_heart(&text);
+                self.out.push(Output::Remember(text));
+                if !asleep {
+                    self.look("you", 3.0, now);
+                }
+            }
+            Heard::Teach { cue, trick } => {
+                let cue = language::normalise(&cue);
+                if TRICKS.contains(&trick.as_str()) && !cue.is_empty() {
+                    self.training.teach(&cue, &trick);
+                    self.out.push(journal("taught", json!({ "cue": cue, "trick": trick })));
+                } else {
+                    self.puzzle(now);
+                }
+            }
+            Heard::Chat => {
+                if !asleep {
+                    let secs = self.rng.range(2.5, 4.5);
+                    self.look("you", secs, now);
+                    self.mood.lift(0.03, 0.08);
+                }
+            }
+            Heard::Unknown => {
+                if !asleep {
+                    self.puzzle(now);
+                }
+            }
+        }
+        std::mem::take(&mut self.out)
+    }
+
+    /// He did not understand: he looks at you and tilts his head.
+    fn puzzle(&mut self, now: f64) {
+        self.mood.confusion = 1.0;
+        self.look("you", 3.5, now);
+    }
+
+    /// Does a trick because he was asked.
+    fn perform(&mut self, trick: &str, cue: &str, now: f64) {
+        let because = format!("you said \u{201c}{cue}\u{201d}");
+        self.finish(now);
+        match trick {
+            "come" => {
+                // Without a camera, "here" is the middle of the screen.
+                self.perform_as(Activity::Walk, 1, 0.0, &because, now);
+                self.target_px = Some(self.walk_px * 0.5);
+                self.legs_left = 0;
+                self.sit_on_arrival = true;
+            }
+            "sit" => self.perform_as(Activity::Sit, 0, 12.0, &because, now),
+            "down" => self.perform_as(Activity::Lie, 0, 15.0, &because, now),
+            "stand" | "wake" => self.perform_as(Activity::Stand, 2, 6.0, &because, now),
+            "stay" => {
+                // Holds whatever he is doing a while longer.
+                self.performing = true;
+                self.ends = self.ends.max(now) + 15.0;
+            }
+            "sleep" => self.perform_as(Activity::Sleep, 2, 0.0, &because, now),
+            "speak" => {
+                self.perform_as(Activity::Stand, 2, 3.0, &because, now);
+                self.voice("bark", 0.7, now);
+            }
+            "paw" => self.perform_as(Activity::SeekAttention, 1, 6.0, &because, now),
+            "spin" => self.perform_as(Activity::TailChase, 0, 3.5, &because, now),
+            "roll_over" => self.perform_as(Activity::Roll, 0, 5.0, &because, now),
+            "bow" => self.perform_as(Activity::PlayBow, 0, 3.0, &because, now),
+            "shake" => self.perform_as(Activity::Shake, 0, 2.0, &because, now),
+            "stretch" => self.perform_as(Activity::Stretch, 0, 4.0, &because, now),
+            "play" => {
+                self.perform_as(Activity::PlayBow, 0, 3.0, &because, now);
+                self.needs.boredom = (self.needs.boredom + 0.4).min(1.0);
+            }
+            "look" => {
+                self.perform_as(Activity::Stand, 2, 5.0, &because, now);
+                self.look("screen", 4.0, now);
+            }
+            _ => self.puzzle(now),
+        }
+    }
+
+    fn perform_as(&mut self, activity: Activity, variant: u8, secs: f64, because: &str, now: f64) {
+        self.performing = true;
+        self.start(Decision { activity, variant, secs, intensity: 0.8, cause: because.to_string(), considered: Vec::new() }, now);
+    }
+
+    /// A few things he is told change how he lives, not just what he knows.
+    fn take_to_heart(&mut self, text: &str) {
+        let said = language::normalise(text);
+        let late = ["work late", "working late", "stay up late", "night owl", "شب ها کار", "شبها کار", "تا دیروقت", "دیر میخوابم"];
+        if late.iter().any(|phrase| said.contains(&language::normalise(phrase))) {
+            // Then his night starts two hours later too.
+            self.settings.night_shift_hours = 2.0;
+            self.out.push(journal("preference", json!({ "night_shift_hours": 2.0 })));
+        }
     }
 
     /// Takes in something perceived. Ignored unless that sense is allowed and privacy mode is off.
@@ -933,6 +1152,7 @@ impl Sim {
             ducked: self.locked || self.overview || (self.fullscreen && !self.settings.stay_in_fullscreen),
             user_here: !self.user_away,
             load: (self.load * 10.0).round() / 10.0,
+            confusion: (self.mood.confusion * 10.0).round() / 10.0,
             food_out: self.food_out,
             water_out: self.water_out,
         }
@@ -953,6 +1173,7 @@ impl Sim {
             "you": { "away": self.user_away, "busy": (self.busy * 100.0).round() / 100.0 },
             "last_look_at_the_screen": self.glimpse.as_ref().filter(|(at, _)| now - at < 600.0).map(|(_, what)| what),
             "habits_noticed": self.patterns.habits(),
+            "doing_as_asked": self.performing,
         })
     }
 }
@@ -1132,6 +1353,73 @@ mod tests {
         assert_eq!(s.activity(), Activity::Sleep);
         s.sense(Stimulus::Sound { level: 0.9 }, 3.0);
         assert_eq!(s.activity(), Activity::Stand);
+    }
+
+    #[test]
+    fn he_learns_a_cue_from_praise_and_then_does_it() {
+        let mut s = sim(0);
+        let mut now = 1.0;
+        s.tick(now, 12.0);
+        let sat = |s: &mut Sim, now: &mut f64, praise: bool| {
+            let mut times = 0;
+            for _ in 0..30 {
+                *now += 40.0;
+                s.needs.fatigue = 0.1;
+                s.mood.arousal = 0.3;
+                s.hear(Heard::Cue("sit".into()), *now);
+                if s.activity() == Activity::Sit && s.performing {
+                    times += 1;
+                    if praise {
+                        s.hear(Heard::Praise, *now + 2.0);
+                    }
+                }
+                s.tick(*now + 3.0, 12.0);
+            }
+            times
+        };
+        sat(&mut s, &mut now, true);
+        sat(&mut s, &mut now, true);
+        let trained = sat(&mut s, &mut now, false);
+        assert!(trained >= 26, "after practice he sits when told: {trained}/30");
+        assert!(s.training.strength("sit", "sit", &TRICKS) > 0.9);
+    }
+
+    #[test]
+    fn an_unknown_word_puzzles_him_and_stop_means_stop() {
+        let mut s = sim(0);
+        s.tick(1.0, 12.0);
+        let out = s.hear(Heard::Unknown, 2.0);
+        assert!(s.snapshot(2.0).confusion > 0.9 && matches!(out[..], [Output::Look { at: "you", .. }]));
+        s.begin(Activity::TailChase, "test", 3.0);
+        s.hear(Heard::Stop, 4.0);
+        assert_eq!(s.activity(), Activity::Sit);
+        let (_, after) = live(&mut s, 4.0, 1500.0, 12.0);
+        assert!(
+            !after.iter().any(|o| matches!(o, Output::Behaved(r) if r.activity == Activity::TailChase && r.ts > 4.0)),
+            "not again for half an hour"
+        );
+    }
+
+    #[test]
+    fn he_comes_when_called_and_remembers_what_he_is_told() {
+        let mut s = sim(0);
+        s.apply(Command::SetScreen { walk_px: 2000.0 }, 0.0);
+        s.tick(1.0, 12.0);
+        s.training.teach("come", "come");
+        let mut now = 1.0;
+        while !(s.activity() == Activity::Walk && s.performing) {
+            now += 30.0;
+            s.tick(now, 12.0);
+            s.hear(Heard::Cue("come".into()), now);
+        }
+        while s.activity() == Activity::Walk {
+            now += 0.25;
+            s.tick(now, 12.0);
+        }
+        assert!((s.body().x_frac - 0.5).abs() < 0.01 && s.activity() == Activity::Sit, "at {} doing {:?}", s.body().x_frac, s.activity());
+        let out = s.hear(Heard::Remember("I prefer working late".into()), now);
+        assert!(out.iter().any(|o| matches!(o, Output::Remember(text) if text == "I prefer working late")));
+        assert_eq!(s.settings.night_shift_hours, 2.0, "and it changes when his night begins");
     }
 
     #[test]

@@ -3,7 +3,8 @@
 
 use crate::renderer::Renderer;
 use anyhow::{Context, Result, anyhow, bail};
-use buddy_core::{Body, ClientMsg, Command, Identity, Life, Mind, Output, ServerMsg, Settings, Sim, StateMsg, Stimulus, Store, paths};
+use buddy_core::language::{self, TRICKS};
+use buddy_core::{Body, ClientMsg, Command, Heard, Identity, Life, Mind, Output, ServerMsg, Settings, Sim, StateMsg, Stimulus, Store, paths};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
@@ -31,6 +32,14 @@ enum Incoming {
         requester: u64,
         outcome: Result<Value, String>,
     },
+    /// The local model has written down something the microphone picked up.
+    Transcribed(Result<String, String>),
+    /// The local model has said what an utterance meant, for the client that asked.
+    Understood {
+        requester: u64,
+        said: String,
+        outcome: Result<Heard, String>,
+    },
     /// A sense helper says it cannot work (no camera, no microphone).
     Unavailable {
         source: &'static str,
@@ -51,6 +60,7 @@ struct Client {
 struct Helper {
     source: &'static str,
     script: &'static str,
+    args: Vec<String>,
     child: Option<std::process::Child>,
     retry_at: Instant,
     /// Why it is not running, when it should be.
@@ -58,8 +68,8 @@ struct Helper {
 }
 
 impl Helper {
-    fn new(source: &'static str, script: &'static str) -> Self {
-        Self { source, script, child: None, retry_at: Instant::now(), trouble: None }
+    fn new(source: &'static str, script: &'static str, args: Vec<String>) -> Self {
+        Self { source, script, args, child: None, retry_at: Instant::now(), trouble: None }
     }
 
     fn poll(&mut self, wanted: bool, tx: &Sender<Incoming>) {
@@ -90,8 +100,12 @@ impl Helper {
             self.trouble = Some(format!("perception/{} is not installed", self.script));
             return;
         };
-        let spawned =
-            std::process::Command::new("python3").arg(script).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).spawn();
+        let spawned = std::process::Command::new("python3")
+            .arg(script)
+            .args(&self.args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .spawn();
         let Ok(mut child) = spawned else {
             self.trouble = Some("python3 could not be started".into());
             return;
@@ -234,6 +248,8 @@ struct Daemon {
     tx: Sender<Incoming>,
     helpers: [Helper; 2],
     looking: bool,
+    /// When he was last spoken to by name; for a little while after, he takes what he hears as meant for him.
+    addressed_at: f64,
     quit: bool,
 }
 
@@ -248,6 +264,7 @@ impl Daemon {
                     self.broadcast(&ServerMsg::Event { name: "look".into(), args: json!({ "at": at, "secs": secs }) });
                     Ok(())
                 }
+                Output::Remember(text) => self.store.remember(at as i64, &text, language::language(&text), "told").map(|_| ()),
                 Output::Vocalize { kind, intensity } => {
                     self.broadcast(&ServerMsg::Event { name: "vocalize".into(), args: json!({ "kind": kind, "intensity": intensity }) });
                     Ok(())
@@ -285,6 +302,37 @@ impl Daemon {
         for id in renderers {
             self.send(id, msg);
         }
+    }
+
+    /// Something was said to him (typed, for now). His own vocabulary and what he has been
+    /// taught are tried first; only what they cannot place goes to the local model.
+    fn said(&mut self, requester: u64, text: &str, at: f64) {
+        let taught = self.sim.training.known_cues(&TRICKS);
+        let name = self.sim.identity.name.clone();
+        let heard = language::understand(text, &[&name, "buddy", "بادی"], &taught);
+        if heard != Heard::Unknown || text.split_whitespace().count() < 2 {
+            self.heard(requester, text, heard, "his own vocabulary", at);
+            return;
+        }
+        let (model, said, tx) = (self.sim.settings.language_model.clone(), text.to_string(), self.tx.clone());
+        thread::spawn(move || {
+            let outcome = crate::ai::interpret(&model, &said, &TRICKS, &taught).map_err(|e| format!("{e:#}"));
+            let _ = tx.send(Incoming::Understood { requester, said, outcome });
+        });
+    }
+
+    fn heard(&mut self, requester: u64, said: &str, heard: Heard, by: &str, at: f64) {
+        let meaning = serde_json::to_value(&heard).unwrap_or(Value::Null);
+        let outputs = self.sim.hear(heard, at);
+        self.absorb(outputs, at);
+        // The journal keeps what kind of thing was said, not the words: talk is not memory unless he is told to remember it.
+        let _ =
+            self.store.journal(at as i64, "spoken_to", &json!({ "language": language::language(said), "understood_as": meaning["kind"], "by": by }));
+        let _ = self.persist(at);
+        let why = self.sim.explain(at);
+        let reply = json!({ "understood_as": meaning, "by": by, "now": why["activity"], "because": why["because"],
+            "puzzled": self.sim.snapshot(at).confusion > 0.5, "did_as_asked": why["doing_as_asked"] });
+        self.send(requester, &ServerMsg::Reply { ok: true, data: reply, error: None });
     }
 
     /// Has him look once: at the screen (through the desktop portal), or at an image file the user names.
@@ -333,6 +381,23 @@ impl Daemon {
     /// if that sense is switched off or privacy mode is on.
     fn perceive(&mut self, provider: &str, kind: &str, data: &Value, at: f64) {
         let senses = &self.sim.settings.senses;
+        // A stretch of speech from the microphone: have it written down locally, then delete the recording.
+        if kind == "utterance" {
+            let Some(path) = data["path"].as_str().map(PathBuf::from) else { return };
+            if self.sim.settings.privacy_mode || !senses.microphone {
+                let _ = fs::remove_file(path);
+                return;
+            }
+            self.noted("microphone", at);
+            let (model, tx) = (self.sim.settings.language_model.clone(), self.tx.clone());
+            thread::spawn(move || {
+                let outcome =
+                    fs::read(&path).map_err(anyhow::Error::from).and_then(|wav| crate::ai::transcribe(&model, &wav)).map_err(|e| format!("{e:#}"));
+                let _ = fs::remove_file(&path);
+                let _ = tx.send(Incoming::Transcribed(outcome));
+            });
+            return;
+        }
         if self.sim.settings.privacy_mode {
             return;
         }
@@ -425,6 +490,47 @@ impl Daemon {
         let cmd = match name {
             "status" => return self.status(at),
             "why" => return Ok(self.sim.explain(at)),
+            "knows" => {
+                let known: Vec<Value> = self
+                    .sim
+                    .training
+                    .known(&TRICKS)
+                    .into_iter()
+                    .map(|(cue, trick, p)| json!({ "cue": cue, "trick": trick, "strength": p.strength, "source": p.source, "rewarded": p.rewarded, "corrected": p.corrected }))
+                    .collect();
+                return Ok(json!(known));
+            }
+            "memories" => return Ok(json!(self.store.memories()?)),
+            "forget" => {
+                let id = args["id"].as_i64().context("forget needs the number of a memory (see: buddy memories)")?;
+                if !self.store.forget_memory(id)? {
+                    bail!("there is no memory number {id}");
+                }
+                return Ok(Value::Null);
+            }
+            "unlearn" => {
+                let cue = language::normalise(args["cue"].as_str().context("unlearn needs a word")?);
+                if !self.sim.training.forget(&cue) {
+                    bail!("he has learned nothing about \u{201c}{cue}\u{201d}");
+                }
+                self.persist(at)?;
+                return Ok(Value::Null);
+            }
+            "teach" => {
+                let (cue, trick) = (args["cue"].as_str().context("teach needs a word")?, args["trick"].as_str().context("teach needs a trick")?);
+                if !TRICKS.contains(&trick) {
+                    bail!("he has no trick called '{trick}' (he has: {})", TRICKS.join(", "));
+                }
+                let outputs = self.sim.hear(Heard::Teach { cue: cue.to_string(), trick: trick.to_string() }, at);
+                self.absorb(outputs, at);
+                self.persist(at)?;
+                return Ok(Value::Null);
+            }
+            "treat" => {
+                let outputs = self.sim.hear(Heard::Treat, at);
+                self.absorb(outputs, at);
+                return Ok(Value::Null);
+            }
             "senses" => return Ok(self.senses(at)),
             "export" => return self.store.export(at as i64),
             "journal" => {
@@ -462,7 +568,8 @@ impl Daemon {
                     Some("adult_days") => Command::SetAdultDays(number()?),
                     Some("stay_in_fullscreen") => Command::StayInFullscreen(matches!(value, "on" | "true" | "yes")),
                     Some("vision_model") => Command::VisionModel(value.to_string()),
-                    other => bail!("unknown setting {other:?} (name, size_px, adult_days, stay_in_fullscreen, vision_model)"),
+                    Some("language_model") => Command::LanguageModel(value.to_string()),
+                    other => bail!("unknown setting {other:?} (name, size_px, adult_days, stay_in_fullscreen, vision_model, language_model)"),
                 }
             }
             other => bail!("unknown command '{other}'"),
@@ -488,6 +595,32 @@ impl Daemon {
             }
             Incoming::Closed(id) => {
                 self.clients.remove(&id);
+            }
+            Incoming::Transcribed(outcome) => {
+                let Ok(words) = outcome else { return };
+                if words.is_empty() {
+                    return;
+                }
+                // Talk in the room is not for him unless his name is in it, or he was spoken to moments ago.
+                let name = language::normalise(&self.sim.identity.name);
+                let heard = language::normalise(&words);
+                let named = heard.split(' ').any(|w| w == name || w == "buddy" || w == "بادی");
+                let addressed = named || at - self.addressed_at < 20.0;
+                if std::env::var_os("BUDDY_TRACE_SENSES").is_some() {
+                    eprintln!("heard speech ({} words), {}", heard.split(' ').count(), if addressed { "for him" } else { "not for him" });
+                }
+                if addressed {
+                    self.addressed_at = at;
+                    self.said(0, &words, at);
+                }
+            }
+            Incoming::Understood { requester, said, outcome } => {
+                // If the model could not help, he is left as puzzled as he would have been without it.
+                let (heard, by) = match outcome {
+                    Ok(heard) => (heard, "the local language model"),
+                    Err(_) => (Heard::Unknown, "nothing: his vocabulary did not cover it and no local model answered"),
+                };
+                self.heard(requester, &said, heard, by, at);
             }
             Incoming::Unavailable { source, why } => {
                 if let Some(helper) = self.helpers.iter_mut().find(|h| h.source == source) {
@@ -533,6 +666,7 @@ impl Daemon {
                 }
                 ClientMsg::Sense { source, kind, data } => self.perceive(&source, &kind, &data, at),
                 ClientMsg::Command { name, args } if name == "look" => self.start_look(id, &args),
+                ClientMsg::Command { name, args } if name == "say" => self.said(id, args["text"].as_str().unwrap_or_default(), at),
                 ClientMsg::Command { name, args } => {
                     let reply = match self.command(&name, &args, at) {
                         Ok(data) => ServerMsg::Reply { ok: true, data, error: None },
@@ -582,8 +716,17 @@ pub fn run(no_renderer: bool) -> Result<()> {
         renderer: (!no_renderer).then(Renderer::new),
         reporting: HashMap::new(),
         tx: tx.clone(),
-        helpers: [Helper::new("camera", "camera_watch.py"), Helper::new("microphone", "mic_listen.py")],
+        helpers: [
+            Helper::new("camera", "camera_watch.py", Vec::new()),
+            // Speech is written, briefly, next to the socket: a directory only this user can read.
+            Helper::new(
+                "microphone",
+                "mic_listen.py",
+                vec!["--utterances".into(), paths::socket_path().with_file_name("").to_string_lossy().into_owned()],
+            ),
+        ],
         looking: false,
+        addressed_at: f64::NEG_INFINITY,
         quit: false,
     };
     daemon.sim.remember(remembered.iter().map(|r| (r.ts + r.secs, r.activity, r.variant)));
