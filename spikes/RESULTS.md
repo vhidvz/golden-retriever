@@ -72,7 +72,28 @@ Intent routing with schema-constrained output, 10 utterances per language:
 
 The 2B model read "lie down" as "sleep" in both languages; the 4B model's one
 miss was an open question classed as unknown. Both load in under 2 s from the
-page cache. `gemma4:e4b` through Ollama has not been evaluated yet.
+page cache.
+
+### `gemma4:e4b` through Ollama 0.35.1
+
+Ollama lists its capabilities as completion, vision, audio, tools and thinking
+(7.5B parameters, Q4_K_M, Apache-2.0). Measured with thinking off:
+
+| What | Result |
+|---|---|
+| Where it runs | 100% CPU; no VRAM used, so it does not compete with the renderer |
+| Memory | 7.2 GB resident |
+| Load | 8.2 s cold |
+| Speed | 13.8 tok/s generation, 76 tok/s prompt |
+| Intent routing with a JSON schema | English 10/10, Persian 10/10, valid JSON 20/20, median 2.1 s |
+| Tool calling | 5/5: the right tool with sensible arguments in both languages, and no call for "Good boy" |
+| Image input | Read "4721" and "red" off a synthetic image in 2.9 s (134 prompt tokens) |
+| Audio input | Works through the OpenAI-compatible endpoint (`input_audio`, WAV): a 9 s English clip was transcribed word for word in 3.5 s, and a question about the speaker answered |
+| Persian reply | Natural, correct, friendly, 11 tok/s |
+
+Not tested: Persian speech (no sample or microphone), long sessions, and
+streaming latency for spoken commands. `spikes/local-llm/ollama_eval.py`
+reproduces everything except the audio test.
 
 ## Claude Code (`claude-code/`)
 
