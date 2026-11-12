@@ -56,3 +56,13 @@ install -m 644 "$repo/dist/buddy.service" "$units/buddy.service"
 systemctl --user daemon-reload
 systemctl --user enable --now buddy.service
 echo "Buddy is running and will start with your desktop session. Try: buddy status"
+
+# A plain interactive bash does not always have ~/.local/bin on its PATH; say so rather than
+# leave the user with "command not found".
+if ! env -i HOME="$HOME" USER="${USER:-}" TERM=dumb bash -ic 'command -v buddy' >/dev/null 2>&1; then
+    echo
+    echo "Note: in a new bash terminal the 'buddy' command will not be found, because $bin is not on bash's PATH."
+    echo "To fix that once and for all, run:"
+    echo "    echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
+    echo "Until then, use the full path: $bin/buddy"
+fi
