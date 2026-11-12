@@ -60,10 +60,19 @@ llama.cpp b12317 (CPU build), Qwen3.5-2B Q4_K_M:
 | 5 | 249 tok/s | 25.8 tok/s |
 | 6 | 299 tok/s | 26.3 tok/s |
 
+The same build with Qwen3.5-4B Q4_K_M generates 13.4 tok/s on 5 threads and 13.8 on 6
+(prompt 113 and 132 tok/s).
+
 Intent routing with schema-constrained output, 10 utterances per language:
-English 9/10, Persian 9/10, valid JSON 20/20, median 1.35 s per utterance,
-2.05 GB resident, 1.3 s to load from the page cache. Both misses were "lie down"
-read as "sleep". The 4B model was not benchmarked (download incomplete).
+
+| Model | English | Persian | Valid JSON | Median per utterance | Resident memory |
+|---|---|---|---|---|---|
+| Qwen3.5-2B | 9/10 | 9/10 | 20/20 | 1.35 s | 2.05 GB |
+| Qwen3.5-4B | 9/10 | 10/10 | 20/20 | 2.46 s | 4.54 GB |
+
+The 2B model read "lie down" as "sleep" in both languages; the 4B model's one
+miss was an open question classed as unknown. Both load in under 2 s from the
+page cache. `gemma4:e4b` through Ollama has not been evaluated yet.
 
 ## Claude Code (`claude-code/`)
 
@@ -75,3 +84,22 @@ With the installed CLI 2.1.322 and a subscription login, from a clean environmen
 - Network down: exit 1 and `is_error: true`, but `subtype` is still `success`.
 - An `ANTHROPIC_API_KEY` in the environment switches auth to the key; `claude auth status` shows it.
 - stdin must be closed or each run waits 3 s.
+
+## Long-run behaviour (`buddy simulate`)
+
+Ninety simulated days each, with a stand-in user who pets, praises, feeds and
+waters on a routine. These are the Phase 2 exit measurements.
+
+| Scenario | Activities used | Next-activity uncertainty | Longest loop | Done exactly as the time before | Sleep per day | Bids for attention per day |
+|---|---|---|---|---|---|---|
+| Adult, someone around all day | 19 of 19 | 2.93 bits | 3.0 rounds of a 3-cycle | 1.3% | 10.9 h | 2.4 |
+| Puppy from 20 days old | 19 of 19 | 2.89 bits | 3.5 rounds of a 2-cycle | 1.3% | 13.3 h | 2.7 |
+| Adult, computer off overnight | 19 of 19 | 2.92 bits | 4.3 rounds of a 3-cycle | 1.2% | 11.6 h of the time it is on | 0.9 |
+| Adult, nobody ever interacts | 15 of 19 | 2.78 bits | 3.0 rounds of a 2-cycle | 1.2% | 10.8 h | 3.0 |
+
+"Uncertainty" is how many bits it takes to guess his next activity from his
+current one: 0 would be a fixed routine. A "loop" is the same short cycle of
+activities repeated back to back. In the unattended scenario his mood never
+fell below -0.08 on a scale of -1 to 1, and he made at most one loud sound in
+his busiest hour. He looks up at the viewer about 40 times per waking hour,
+which adds up to 2.3% of his waking time.

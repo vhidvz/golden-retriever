@@ -39,6 +39,8 @@ for text, lang, intent in CASES:
     times.append(dt); lang_ok += got.get("language") == lang
     if got.get("intent") == intent: ok[lang] += 1
     else: wrong.append((text, got.get("intent")))
+if not times:
+    sys.exit(f"no answers from {URL}: is llama-server running there?")
 n = len(CASES) // 2; times.sort()
 print(f"intent correct: en {ok['en']}/{n}, fa {ok['fa']}/{n}; language detected {lang_ok}/{len(CASES)}; valid JSON {len(times)}/{len(CASES)}")
 print(f"latency per utterance: median {times[len(times)//2]:.2f}s, worst {times[-1]:.2f}s (first call includes prompt caching warm-up)")

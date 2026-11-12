@@ -23,9 +23,7 @@ fn find_godot() -> Option<PathBuf> {
         return Some(PathBuf::from(p));
     }
     let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .flat_map(|dir| ["godot", "godot4"].map(|name| dir.join(name)))
-        .find(|p| p.is_file())
+    std::env::split_paths(&path).flat_map(|dir| ["godot", "godot4"].map(|name| dir.join(name))).find(|p| p.is_file())
 }
 
 fn find_project() -> Option<PathBuf> {
@@ -35,23 +33,13 @@ fn find_project() -> Option<PathBuf> {
     }
     // Running from a checkout: target/<profile>/buddy sits two levels below the repository root.
     let exe = std::env::current_exe().ok()?;
-    exe.ancestors()
-        .map(|a| a.join("renderer"))
-        .chain([paths::data_dir().join("renderer")])
-        .find(|dir| is_project(dir))
+    exe.ancestors().map(|a| a.join("renderer")).chain([paths::data_dir().join("renderer")]).find(|dir| is_project(dir))
 }
 
 impl Renderer {
     pub fn new() -> Self {
         let now = Instant::now();
-        Self {
-            child: None,
-            started: now,
-            retry_at: now,
-            backoff: FIRST_RETRY,
-            complained: false,
-            wanted: true,
-        }
+        Self { child: None, started: now, retry_at: now, backoff: FIRST_RETRY, complained: false, wanted: true }
     }
 
     pub fn status(&mut self) -> &'static str {
@@ -84,10 +72,7 @@ impl Renderer {
                     if self.started.elapsed() > MAX_RETRY {
                         self.backoff = FIRST_RETRY;
                     }
-                    eprintln!(
-                        "buddy: renderer exited ({outcome:?}); restarting in {:?}",
-                        self.backoff
-                    );
+                    eprintln!("buddy: renderer exited ({outcome:?}); restarting in {:?}", self.backoff);
                     self.retry_at = Instant::now() + self.backoff;
                     self.backoff = (self.backoff * 2).min(MAX_RETRY);
                     self.child = None;
@@ -99,9 +84,7 @@ impl Renderer {
         }
         let (Some(godot), Some(project)) = (find_godot(), find_project()) else {
             if !self.complained {
-                eprintln!(
-                    "buddy: no renderer (set BUDDY_GODOT / BUDDY_RENDERER_DIR); Buddy keeps living without being drawn"
-                );
+                eprintln!("buddy: no renderer (set BUDDY_GODOT / BUDDY_RENDERER_DIR); Buddy keeps living without being drawn");
                 self.complained = true;
             }
             self.retry_at = Instant::now() + MAX_RETRY;

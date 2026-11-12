@@ -8,25 +8,14 @@ use std::time::Duration;
 /// Sends one command to the running daemon and returns its reply data.
 pub fn request(name: &str, args: Value) -> Result<Value> {
     let path = paths::socket_path();
-    let mut stream = UnixStream::connect(&path)
-        .with_context(|| format!("Buddy is not running (no daemon at {})", path.display()))?;
+    let mut stream = UnixStream::connect(&path).with_context(|| format!("Buddy is not running (no daemon at {})", path.display()))?;
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
-    for msg in [
-        ClientMsg::Hello { role: "cli".into() },
-        ClientMsg::Command {
-            name: name.into(),
-            args,
-        },
-    ] {
+    for msg in [ClientMsg::Hello { role: "cli".into() }, ClientMsg::Command { name: name.into(), args }] {
         writeln!(stream, "{}", serde_json::to_string(&msg)?)?;
     }
     for line in BufReader::new(stream).lines() {
         if let ServerMsg::Reply { ok, data, error } = serde_json::from_str(&line?)? {
-            return if ok {
-                Ok(data)
-            } else {
-                Err(anyhow!(error.unwrap_or_else(|| "command failed".into())))
-            };
+            return if ok { Ok(data) } else { Err(anyhow!(error.unwrap_or_else(|| "command failed".into()))) };
         }
     }
     bail!("the daemon closed the connection without answering")
@@ -37,12 +26,7 @@ pub fn run(name: &str, args: Value) -> Result<()> {
     match name {
         "journal" => {
             for e in data.as_array().into_iter().flatten().rev() {
-                println!(
-                    "{}  {:<16} {}",
-                    e["ts"],
-                    e["kind"].as_str().unwrap_or("?"),
-                    e["data"]
-                );
+                println!("{}  {:<16} {}", e["ts"], e["kind"].as_str().unwrap_or("?"), e["data"]);
             }
         }
         _ if data.is_null() => println!("ok"),
@@ -66,15 +50,7 @@ pub fn status(as_json: bool) -> Result<()> {
         st["age_days"].as_f64().unwrap_or(0.0),
         100.0 * st["growth"].as_f64().unwrap_or(0.0)
     );
-    println!(
-        "  doing:       {}{}",
-        text(&st["activity"]),
-        if st["hidden"] == true {
-            " (hidden)"
-        } else {
-            ""
-        }
-    );
+    println!("  doing:       {}{}", text(&st["activity"]), if st["hidden"] == true { " (hidden)" } else { "" });
     println!(
         "  experience:  {:.1} h awake over {} sessions, petted {} times",
         s["life"]["awake_secs"].as_f64().unwrap_or(0.0) / 3600.0,
@@ -82,19 +58,56 @@ pub fn status(as_json: bool) -> Result<()> {
         s["life"]["pets"]
     );
     println!("  renderer:    {}", text(&s["renderer"]));
-    println!(
-        "  privacy:     {}",
-        if st["privacy"] == true {
-            "ON — all observation suspended"
-        } else {
-            "off"
-        }
-    );
+    println!("  privacy:     {}", if st["privacy"] == true { "ON — all observation suspended" } else { "off" });
     println!("  observing:   {}", text(&s["observing"]));
-    println!(
-        "  memory:      {} (schema v{})",
-        text(&s["database"]),
-        s["schema_version"]
-    );
+    println!("  memory:      {} (schema v{})", text(&s["database"]), s["schema_version"]);
+    Ok(())
+}
+
+pub fn why() -> Result<()> {
+    let w = request("why", Value::Null)?;
+    let text = |v: &Value| v.as_str().unwrap_or("?").replace('_', " ");
+    println!("He is doing: {} (for {:.0} s) — because: {}", text(&w["activity"]), w["for_secs"].as_f64().unwrap_or(0.0), text(&w["because"]));
+    let others: Vec<String> = w["also_considered"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|o| format!("{} ({}, {:.2})", text(&o["activity"]), text(&o["reason"]), o["appeal"].as_f64().unwrap_or(0.0)))
+        .collect();
+    if !others.is_empty() {
+        println!("He also considered: {}", others.join("; "));
+    }
+    for (title, key) in [("Feeling", "emotions"), ("Needs (0 satisfied, 1 urgent)", "needs"), ("Temperament", "personality")] {
+        let mut items: Vec<(String, f64)> =
+            w[key].as_object().into_iter().flatten().map(|(k, v)| (k.replace('_', " "), v.as_f64().unwrap_or(0.0))).collect();
+        items.sort_by(|a, b| b.1.total_cmp(&a.1));
+        println!("{title}: {}", items.iter().map(|(k, v)| format!("{k} {v:.2}")).collect::<Vec<_>>().join(", "));
+    }
+    match w["favourite_spot"].as_f64() {
+        Some(spot) => println!("Favourite spot: {:.0}% of the way across the screen", spot * 100.0),
+        None => println!("Favourite spot: none yet"),
+    }
+    Ok(())
+}
+
+/// Runs offline; needs no daemon and touches no saved state.
+pub fn simulate(args: &[String]) -> Result<()> {
+    use buddy_core::simulate::{Scenario, User, run};
+    let option = |flag: &str| args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1));
+    let user = match option("--user").map(String::as_str) {
+        None | Some("attentive") => User::Attentive,
+        Some("absent") => User::Absent,
+        Some("office") => User::OfficeHours,
+        Some(other) => bail!("unknown user '{other}' (attentive, absent, office)"),
+    };
+    let scenario = Scenario {
+        days: args.first().and_then(|d| d.parse().ok()).unwrap_or(30.0),
+        seed: option("--seed").and_then(|s| s.parse().ok()).unwrap_or(1),
+        user,
+        start_age_days: option("--age").and_then(|s| s.parse().ok()).unwrap_or(400.0),
+        adult_days: 365.0,
+    };
+    // Written this way so that piping into `head` ends quietly.
+    let _ = write!(std::io::stdout(), "{}", run(&scenario));
     Ok(())
 }

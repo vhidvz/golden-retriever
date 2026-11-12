@@ -3,21 +3,25 @@ extends Node3D
 ## to him. All decisions are made by the daemon; this process renders the state
 ## it is sent and can be killed and restarted without Buddy noticing.
 ##
-## Self-test (no daemon needed):
-##   godot --path renderer --display-driver x11 -- --selftest out.png [--activity sit] [--growth 0.2] [--facing -1]
+## Self-test (no daemon needed): renders one pose to a PNG and reports whether it fits.
+##   godot --path renderer --display-driver x11 -- --selftest out.png [--activity sit] [--variant 1]
+##       [--growth 0.2] [--facing -1] [--at 1.5] [--gaze 1] [--arousal 0.8]
 
-const GROUND_MARGIN := 24          # pixels below the paws, room for the contact shadow
+const GROUND_MARGIN := 0.11        # of his height, kept below the paws for the shadow and for limbs that reach towards the viewer
 const CAMERA_PITCH := 0.14         # radians; a slight look down so the ground reads as a surface
 const DRAG_THRESHOLD := 8.0        # pixels the pointer must travel before a press becomes a drag
 const RECONNECT_SECONDS := 1.0
 const ORPHAN_SECONDS := 10.0       # a supervised renderer exits if its daemon stays gone this long
-const FPS := {"walk": 50, "stand": 25, "sit": 25, "lie": 20, "sleep": 10}
+const QUICK := ["walk", "zoomies", "tail_chase", "shake", "scratch", "greet", "play_bow", "roll", "eat", "drink"]
+const SLOW := {"lie": 20, "sleep": 10}
 const Dog := preload("res://dog.gd")   # swap this file to change the dog model
 
 var _dog := Dog.new()
 var _camera := Camera3D.new()
 var _shadow := MeshInstance3D.new()
+var _bowl := MeshInstance3D.new()
 var _menu := PopupMenu.new()
+var _voice := preload("res://voice.gd").new()
 
 var _peer := StreamPeerUDS.new()
 var _inbox := PackedByteArray()
@@ -26,9 +30,11 @@ var _since_attempt := RECONNECT_SECONDS
 var _offline_for := 0.0
 
 var _state := {}
+var _instance := -1                      # seed of the activity instance being shown
 var _layout_key := Vector2(-1.0, -1.0)   # (scale, size_px) the window is currently laid out for
 var _pixels_per_unit := 420.0
 var _usable := Rect2i()
+var _margin := 24                        # GROUND_MARGIN in pixels at his current size
 var _walk_px := 1000.0
 var _shown_x := -1.0                     # where the window's left edge is drawn, in walk pixels
 
@@ -38,7 +44,8 @@ var _press_at := Vector2.ZERO
 var _grab_offset := 0.0
 
 var _selftest_path := ""
-var _frames := 0
+var _selftest_at := 1.5
+var _clock := 0.0
 
 
 func _ready() -> void:
@@ -80,16 +87,33 @@ func _ready() -> void:
 	_shadow.material_override = shade
 	_shadow.position.y = 0.002
 	add_child(_shadow)
-	add_child(_dog)
 
-	_menu.add_item("Hide for 15 minutes", 0)
-	_menu.add_item("Go to sleep", 1)
-	_menu.add_item("Wake up", 2)
-	_menu.add_separator()
-	_menu.add_check_item("Privacy mode", 3)
-	_menu.add_separator()
-	_menu.add_item("Quit Buddy", 4)
-	_menu.id_pressed.connect(_on_menu)
+	var dish := CylinderMesh.new()
+	dish.top_radius = 0.15
+	dish.bottom_radius = 0.11
+	dish.height = 0.07
+	var steel := StandardMaterial3D.new()
+	steel.albedo_color = Color(0.62, 0.66, 0.72)
+	steel.metallic = 0.7
+	steel.roughness = 0.35
+	_bowl.mesh = dish
+	_bowl.material_override = steel
+	_bowl.visible = false
+	add_child(_bowl)
+	add_child(_dog)
+	add_child(_voice)
+
+	for entry in [["Good boy!", "praise"], ["Give food", "feed"], ["Give water", "water"], [], ["Go to sleep", "sleep"], ["Wake up", "wake"],
+			["Hide for 15 minutes", "hide"], [], ["Quiet mode", "quiet"], ["Privacy mode", "privacy"], [], ["Quit Buddy", "quit"]]:
+		if entry.is_empty():
+			_menu.add_separator()
+			continue
+		if entry[1] in ["quiet", "privacy"]:
+			_menu.add_check_item(entry[0])
+		else:
+			_menu.add_item(entry[0])
+		_menu.set_item_metadata(_menu.item_count - 1, entry[1])
+	_menu.index_pressed.connect(_on_menu)
 	add_child(_menu)
 
 	var args := OS.get_cmdline_user_args()
@@ -99,11 +123,16 @@ func _ready() -> void:
 	_selftest_path = option.call("--selftest", "")
 	if _selftest_path != "":
 		RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
+		_selftest_at = float(option.call("--at", "1.5"))
+		var growth := float(option.call("--growth", "1.0"))
 		_apply_state({
-			"activity": option.call("--activity", "stand"), "growth": float(option.call("--growth", "1.0")),
-			"scale": lerpf(0.45, 1.0, float(option.call("--growth", "1.0"))), "size_px": 420.0, "x_frac": 0.7,
-			"facing": int(option.call("--facing", "1")), "hidden": false, "privacy": false, "excitement": 0.0,
+			"activity": option.call("--activity", "stand"), "variant": int(option.call("--variant", "0")), "intensity": 0.7,
+			"started": Time.get_unix_time_from_system(), "planned_secs": 2.0 * _selftest_at, "seed": 7,
+			"growth": growth, "scale": lerpf(0.45, 1.0, growth), "size_px": 420.0, "x_frac": 0.7, "facing": int(option.call("--facing", "1")),
+			"hidden": false, "privacy": false, "quiet": false, "valence": 0.6, "arousal": float(option.call("--arousal", "0.3")), "sleepiness": 0.2,
 		})
+		if option.call("--gaze", "0") == "1":
+			_dog.look_at_viewer(60.0)
 
 
 func _socket_path() -> String:
@@ -149,30 +178,50 @@ func _pump_socket(delta: float) -> void:
 			break
 		var message = JSON.parse_string(_inbox.slice(0, newline).get_string_from_utf8())
 		_inbox = _inbox.slice(newline + 1)
-		if message is Dictionary and message.get("type") == "state":
+		if not message is Dictionary:
+			continue
+		if message.get("type") == "state":
 			_apply_state(message)
+		elif message.get("type") == "event" and not _state.is_empty():
+			var args: Dictionary = message.get("args", {})
+			match message.get("name"):
+				"vocalize":
+					_voice.say(args.get("kind", ""), args.get("intensity", 0.5), _state["growth"])
+				"glance":
+					_dog.look_at_viewer(args.get("secs", 2.0))
 
 
 func _apply_state(state: Dictionary) -> void:
+	if state["hidden"]:
+		# The daemon stops this process while he is hidden; leave rather than draw an unwanted dog.
+		get_tree().quit()
+		return
 	_state = state
 	_dog.apply_growth(state["growth"])
 	_dog.scale = Vector3.ONE * float(state["scale"])
-	_dog.set_activity(state["activity"])
 	_dog.set_facing(int(state["facing"]))
-	_dog.set_excitement(state["excitement"])
-	_menu.set_item_checked(_menu.get_item_index(3), state["privacy"])
+	_dog.set_mood(state["valence"], state["arousal"], state["sleepiness"])
+	if int(state["seed"]) != _instance:
+		_instance = int(state["seed"])
+		# Joining part-way through (after a restart, say) picks the activity up where it is.
+		var already := maxf(Time.get_unix_time_from_system() - float(state["started"]), 0.0)
+		_dog.begin(state["activity"], int(state["variant"]), state["intensity"], state["planned_secs"], _instance, already)
+	_voice.muted = state["quiet"]
+	for i in _menu.item_count:
+		var what = _menu.get_item_metadata(i)
+		if what in ["quiet", "privacy"]:
+			_menu.set_item_checked(i, state[what])
 
 	var key := Vector2(state["scale"], state["size_px"])
 	if not key.is_equal_approx(_layout_key):
 		_layout_key = key
 		_layout()
 
-	if state["hidden"]:
-		# The daemon stops this process while he is hidden; leave rather than draw an unwanted dog.
-		get_tree().quit()
-	Engine.max_fps = FPS.get(state["activity"], 25)
-	if state.get("being_dragged", false) or float(state["excitement"]) > 0.05:
-		Engine.max_fps = 50
+	var eating: bool = state["activity"] in ["eat", "drink"]
+	_bowl.visible = eating
+	if eating:
+		_bowl.scale = Vector3.ONE * key.x
+		_bowl.position = Vector3(float(state["facing"]) * 0.60, 0.035, 0.2) * key.x
 
 
 ## Size the window to everything the dog can reach at his current size, so no
@@ -180,14 +229,15 @@ func _apply_state(state: Dictionary) -> void:
 func _layout() -> void:
 	_pixels_per_unit = _layout_key.y
 	var reach: Vector2 = _dog.get_reach() * _layout_key.x
-	var size := Vector2i(ceili(2.0 * reach.x * _pixels_per_unit), ceili(reach.y * _pixels_per_unit) + GROUND_MARGIN)
+	_margin = maxi(ceili(GROUND_MARGIN * _pixels_per_unit * _layout_key.x), 14)
+	var size := Vector2i(ceili(2.0 * reach.x * _pixels_per_unit), ceili(reach.y * _pixels_per_unit) + _margin)
 	var window := get_window()
 	if window.size != size:
 		window.size = size
 
 	var height_units := float(size.y) / _pixels_per_unit
 	_camera.size = height_units
-	var aim_y := (height_units * 0.5 - float(GROUND_MARGIN) / _pixels_per_unit) / cos(CAMERA_PITCH)
+	var aim_y := (height_units * 0.5 - float(_margin) / _pixels_per_unit) / cos(CAMERA_PITCH)
 	var toward_viewer := Vector3(0.0, sin(CAMERA_PITCH), cos(CAMERA_PITCH))
 	_camera.position = Vector3(0.0, aim_y, 0.0) + toward_viewer * 6.0
 	_camera.rotation = Vector3(-CAMERA_PITCH, 0.0, 0.0)
@@ -198,8 +248,8 @@ func _layout() -> void:
 	_send({"type": "screen", "walk_px": _walk_px})
 
 	# Only an ellipse around his body takes clicks; the rest of the window is click-through.
-	var centre := Vector2(size.x * 0.5, size.y - GROUND_MARGIN - reach.y * _pixels_per_unit * 0.45)
-	var radii := Vector2(reach.x * 0.78, reach.y * 0.5) * _pixels_per_unit
+	var centre := Vector2(size.x * 0.5, size.y - _margin - reach.y * _pixels_per_unit * 0.42)
+	var radii := Vector2(reach.x * 0.75, reach.y * 0.46) * _pixels_per_unit
 	var outline := PackedVector2Array()
 	for i in 24:
 		outline.append(centre + Vector2(cos(i * TAU / 24.0), sin(i * TAU / 24.0)) * radii)
@@ -208,6 +258,7 @@ func _layout() -> void:
 
 
 func _process(delta: float) -> void:
+	_clock += delta
 	if _selftest_path == "":
 		_pump_socket(delta)
 	if _state.is_empty():
@@ -224,12 +275,19 @@ func _process(delta: float) -> void:
 	var position := Vector2i(_usable.position.x + roundi(_shown_x), _usable.end.y - window.size.y)
 	if window.position != position:
 		window.position = position
+
+	# Without a camera, "you" are in front of the middle of the monitor.
+	var centre_x := float(position.x) + window.size.x * 0.5
+	_dog.set_viewer_offset(clampf((_usable.get_center().x - centre_x) / maxf(_usable.size.x, 1.0), -0.5, 0.5))
 	_dog.advance(delta, (_shown_x - previous) / (_pixels_per_unit * _layout_key.x))
 
-	if _selftest_path != "":
-		_frames += 1
-		if _frames == 90:
-			_finish_selftest()
+	# Draw only as often as what he is doing needs.
+	var activity: String = _state["activity"]
+	var fps: int = 50 if activity in QUICK or _state.get("being_dragged", false) else SLOW.get(activity, 30)
+	Engine.max_fps = maxi(fps, 40) if _dog.is_lively() else fps
+
+	if _selftest_path != "" and _clock >= _selftest_at:
+		_finish_selftest()
 
 
 func _input(event: InputEvent) -> void:
@@ -261,13 +319,15 @@ func _input(event: InputEvent) -> void:
 			_command("drag", {"x_frac": x_frac})
 
 
-func _on_menu(id: int) -> void:
-	match id:
-		0: _command("hide", {"minutes": 15})
-		1: _command("sleep")
-		2: _command("wake")
-		3: _command("privacy", {"on": not _state.get("privacy", false)})
-		4: _command("quit")
+func _on_menu(index: int) -> void:
+	var what: String = _menu.get_item_metadata(index)
+	match what:
+		"hide":
+			_command("hide", {"minutes": 15})
+		"quiet", "privacy":
+			_command(what, {"on": not _state.get(what, false)})
+		_:
+			_command(what)
 
 
 ## Saves what was drawn and reports whether the dog fits inside the window.
@@ -282,8 +342,8 @@ func _finish_selftest() -> void:
 				used = used.expand(Vector2i(x, y)) if used.has_area() else Rect2i(x, y, 1, 1)
 	var clipped := used.position.x <= 0 or used.position.y <= 0 or used.end.x >= image.get_width() - 1 or used.end.y >= image.get_height() - 1
 	var rid := get_viewport().get_viewport_rid()
-	print("SELFTEST activity=%s growth=%.2f window=%dx%d drawn=%dx%d at %d,%d clipped=%s gpu_ms=%.2f cpu_ms=%.2f renderer=%s" % [
-		_state["activity"], _state["growth"], image.get_width(), image.get_height(), used.size.x, used.size.y, used.position.x, used.position.y,
+	print("SELFTEST activity=%s/%d growth=%.2f window=%dx%d drawn=%dx%d clipped=%s gpu_ms=%.2f cpu_ms=%.2f sounds=%d" % [
+		_state["activity"], _state["variant"], _state["growth"], image.get_width(), image.get_height(), used.size.x, used.size.y,
 		clipped, RenderingServer.viewport_get_measured_render_time_gpu(rid), RenderingServer.viewport_get_measured_render_time_cpu(rid),
-		RenderingServer.get_video_adapter_name()])
+		_voice.sound_count()])
 	get_tree().quit()

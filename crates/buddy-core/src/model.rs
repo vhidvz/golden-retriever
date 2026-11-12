@@ -37,17 +37,13 @@ pub struct Settings {
     pub asleep_by_user: bool,
     /// Suspends every perception source. Nothing observes anything while set.
     pub privacy_mode: bool,
+    /// No sounds and no asking for attention.
+    pub quiet: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self {
-            adult_days: 365.0,
-            size_px: 420.0,
-            hidden_until: None,
-            asleep_by_user: false,
-            privacy_mode: false,
-        }
+        Self { adult_days: 365.0, size_px: 420.0, hidden_until: None, asleep_by_user: false, privacy_mode: false, quiet: false }
     }
 }
 
@@ -62,14 +58,11 @@ pub struct Body {
 
 impl Default for Body {
     fn default() -> Self {
-        Self {
-            x_frac: 0.7,
-            facing: -1,
-        }
+        Self { x_frac: 0.7, facing: -1 }
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum Activity {
     Stand,
@@ -77,6 +70,69 @@ pub enum Activity {
     Sit,
     Lie,
     Sleep,
+    Stretch,
+    Yawn,
+    Scratch,
+    Groom,
+    Shake,
+    Sniff,
+    Zoomies,
+    TailChase,
+    PlayBow,
+    Roll,
+    Greet,
+    SeekAttention,
+    Eat,
+    Drink,
+}
+
+/// How demanding an activity is; drives how needs change while he does it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Effort {
+    Asleep,
+    Resting,
+    Standing,
+    Moving,
+    Playing,
+}
+
+impl Activity {
+    pub const ALL: [Activity; 19] = [
+        Activity::Stand,
+        Activity::Walk,
+        Activity::Sit,
+        Activity::Lie,
+        Activity::Sleep,
+        Activity::Stretch,
+        Activity::Yawn,
+        Activity::Scratch,
+        Activity::Groom,
+        Activity::Shake,
+        Activity::Sniff,
+        Activity::Zoomies,
+        Activity::TailChase,
+        Activity::PlayBow,
+        Activity::Roll,
+        Activity::Greet,
+        Activity::SeekAttention,
+        Activity::Eat,
+        Activity::Drink,
+    ];
+
+    pub fn effort(self) -> Effort {
+        match self {
+            Activity::Sleep => Effort::Asleep,
+            Activity::Sit | Activity::Lie | Activity::Yawn | Activity::Groom | Activity::Scratch | Activity::SeekAttention => Effort::Resting,
+            Activity::Stand | Activity::Stretch | Activity::Shake | Activity::Eat | Activity::Drink => Effort::Standing,
+            Activity::Walk | Activity::Sniff => Effort::Moving,
+            Activity::Zoomies | Activity::TailChase | Activity::PlayBow | Activity::Roll | Activity::Greet => Effort::Playing,
+        }
+    }
+
+    /// The name used on the wire and in the behaviour log.
+    pub fn name(self) -> String {
+        serde_json::to_value(self).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -97,7 +153,8 @@ pub fn stage(maturity: f64) -> Stage {
     match maturity {
         m if m < 0.25 => Stage::Puppy,
         m if m < 0.60 => Stage::Adolescent,
-        m if m < 1.00 => Stage::YoungAdult,
+        // Fully grown at 1.0; the slower, sleepier years start well after that.
+        m if m < 2.50 => Stage::YoungAdult,
         _ => Stage::Mature,
     }
 }
@@ -119,9 +176,10 @@ mod tests {
         assert_eq!(stage(maturity(0.0, 365.0)), Stage::Puppy);
         assert_eq!(stage(maturity(100.0 * day, 365.0)), Stage::Adolescent);
         assert_eq!(stage(maturity(300.0 * day, 365.0)), Stage::YoungAdult);
-        assert_eq!(stage(maturity(400.0 * day, 365.0)), Stage::Mature);
+        assert_eq!(stage(maturity(400.0 * day, 365.0)), Stage::YoungAdult);
+        assert_eq!(stage(maturity(1000.0 * day, 365.0)), Stage::Mature);
         // A faster timeline reaches the same stage sooner, with no reset.
-        assert_eq!(stage(maturity(40.0 * day, 30.0)), Stage::Mature);
+        assert_eq!(stage(maturity(100.0 * day, 30.0)), Stage::Mature);
     }
 
     #[test]

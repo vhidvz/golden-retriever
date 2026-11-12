@@ -3,10 +3,7 @@
 
 use crate::renderer::Renderer;
 use anyhow::{Context, Result, anyhow, bail};
-use buddy_core::{
-    Body, ClientMsg, Command, Identity, JournalEntry, Life, ServerMsg, Settings, Sim, StateMsg,
-    Store, paths,
-};
+use buddy_core::{Body, ClientMsg, Command, Identity, Life, Mind, Output, ServerMsg, Settings, Sim, StateMsg, Store, paths};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
@@ -36,9 +33,14 @@ struct Client {
 }
 
 fn now() -> f64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0.0, |d| d.as_secs_f64())
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64())
+}
+
+/// The hour of the day on the wall clock, 0.0..24.0. His sleep follows the user's day.
+fn local_hour() -> f64 {
+    use chrono::Timelike;
+    let t = chrono::Local::now();
+    f64::from(t.hour()) + f64::from(t.minute()) / 60.0
 }
 
 fn listen() -> Result<UnixListener> {
@@ -47,10 +49,7 @@ fn listen() -> Result<UnixListener> {
     fs::create_dir_all(dir)?;
     fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
     if UnixStream::connect(&path).is_ok() {
-        bail!(
-            "Buddy is already running (socket {} is live)",
-            path.display()
-        );
+        bail!("Buddy is already running (socket {} is live)", path.display());
     }
     let _ = fs::remove_file(&path); // stale socket from an unclean exit
     UnixListener::bind(&path).with_context(|| format!("binding {}", path.display()))
@@ -90,10 +89,23 @@ struct Daemon {
 }
 
 impl Daemon {
-    fn record(&self, entries: Vec<JournalEntry>, at: f64) {
-        for e in entries {
-            if let Err(err) = self.store.journal(at as i64, e.kind, &e.data) {
-                eprintln!("buddy: journal write failed: {err:#}");
+    /// Deals with what a tick or command produced: journal it, log it, or pass it to the renderers.
+    fn absorb(&mut self, outputs: Vec<Output>, at: f64) {
+        for output in outputs {
+            let stored = match output {
+                Output::Journal(entry) => self.store.journal(at as i64, entry.kind, &entry.data),
+                Output::Behaved(record) => self.store.log_behaviour(&record),
+                Output::Glance { secs } => {
+                    self.broadcast(&ServerMsg::Event { name: "glance".into(), args: json!({ "secs": secs }) });
+                    Ok(())
+                }
+                Output::Vocalize { kind, intensity } => {
+                    self.broadcast(&ServerMsg::Event { name: "vocalize".into(), args: json!({ "kind": kind, "intensity": intensity }) });
+                    Ok(())
+                }
+            };
+            if let Err(err) = stored {
+                eprintln!("buddy: could not record: {err:#}");
             }
         }
     }
@@ -104,6 +116,7 @@ impl Daemon {
         self.store.save("life", &self.sim.life, t)?;
         self.store.save("settings", &self.sim.settings, t)?;
         self.store.save("body", &self.sim.body(), t)?;
+        self.store.save("mind", &self.sim.mind(), t)?;
         self.store.backup_daily(t)?;
         Ok(())
     }
@@ -118,16 +131,10 @@ impl Daemon {
         }
     }
 
-    fn broadcast(&mut self, state: &StateMsg) {
-        let msg = ServerMsg::State(state.clone());
-        let renderers: Vec<u64> = self
-            .clients
-            .iter()
-            .filter(|(_, c)| c.is_renderer)
-            .map(|(id, _)| *id)
-            .collect();
+    fn broadcast(&mut self, msg: &ServerMsg) {
+        let renderers: Vec<u64> = self.clients.iter().filter(|(_, c)| c.is_renderer).map(|(id, _)| *id).collect();
         for id in renderers {
-            self.send(id, &msg);
+            self.send(id, msg);
         }
     }
 
@@ -144,6 +151,8 @@ impl Daemon {
         Ok(json!({
             "state": self.sim.snapshot(at),
             "life": self.sim.life,
+            "feeling": self.sim.explain(at)["emotions"],
+            "needs": self.sim.needs,
             "settings": self.sim.settings,
             "renderer": renderer,
             "renderers_connected": self.clients.values().filter(|c| c.is_renderer).count(),
@@ -156,40 +165,30 @@ impl Daemon {
     fn command(&mut self, name: &str, args: &Value, at: f64) -> Result<Value> {
         let cmd = match name {
             "status" => return self.status(at),
+            "why" => return Ok(self.sim.explain(at)),
             "export" => return self.store.export(at as i64),
             "journal" => {
-                return Ok(Value::Array(
-                    self.store
-                        .recent_journal(args["limit"].as_u64().unwrap_or(20) as usize)?,
-                ));
+                return Ok(Value::Array(self.store.recent_journal(args["limit"].as_u64().unwrap_or(20) as usize)?));
             }
             "quit" => {
                 self.quit = true;
                 return Ok(Value::Null);
             }
-            "hide" => Command::Hide {
-                minutes: args["minutes"].as_f64(),
-            },
+            "hide" => Command::Hide { minutes: args["minutes"].as_f64() },
             "show" => Command::Show,
             "sleep" => Command::Sleep,
             "wake" => Command::Wake,
-            "privacy" => Command::Privacy(
-                args["on"]
-                    .as_bool()
-                    .context("privacy needs {\"on\": true|false}")?,
-            ),
+            "privacy" => Command::Privacy(args["on"].as_bool().context("privacy needs {\"on\": true|false}")?),
             "pet" => Command::Pet,
-            "drag" => Command::DragTo {
-                x_frac: args["x_frac"].as_f64().context("drag needs x_frac")?,
-            },
+            "praise" => Command::Praise,
+            "feed" => Command::Feed,
+            "water" => Command::Water,
+            "quiet" => Command::Quiet(args["on"].as_bool().context("quiet needs {\"on\": true|false}")?),
+            "drag" => Command::DragTo { x_frac: args["x_frac"].as_f64().context("drag needs x_frac")? },
             "drag_end" => Command::DragEnd,
             "set" => {
                 let value = args["value"].as_str().context("set needs a value")?;
-                let number = || {
-                    value
-                        .parse::<f64>()
-                        .map_err(|_| anyhow!("'{value}' is not a number"))
-                };
+                let number = || value.parse::<f64>().map_err(|_| anyhow!("'{value}' is not a number"));
                 match args["key"].as_str() {
                     Some("name") => Command::Rename(value.to_string()),
                     Some("size_px") => Command::SetSize(number()?),
@@ -201,8 +200,8 @@ impl Daemon {
         };
         // Dragging arrives many times a second; everything else is worth saving at once.
         let save_now = !matches!(cmd, Command::DragTo { .. });
-        let entries = self.sim.apply(cmd, at);
-        self.record(entries, at);
+        let outputs = self.sim.apply(cmd, at);
+        self.absorb(outputs, at);
         if save_now {
             self.persist(at)?;
         }
@@ -212,25 +211,12 @@ impl Daemon {
     fn handle(&mut self, incoming: Incoming, at: f64) {
         match incoming {
             Incoming::Connected(id, stream) => {
-                self.clients.insert(
-                    id,
-                    Client {
-                        stream,
-                        is_renderer: false,
-                    },
-                );
+                self.clients.insert(id, Client { stream, is_renderer: false });
             }
             Incoming::Closed(id) => {
                 self.clients.remove(&id);
             }
-            Incoming::Malformed(id, error) => self.send(
-                id,
-                &ServerMsg::Reply {
-                    ok: false,
-                    data: Value::Null,
-                    error: Some(error),
-                },
-            ),
+            Incoming::Malformed(id, error) => self.send(id, &ServerMsg::Reply { ok: false, data: Value::Null, error: Some(error) }),
             Incoming::Message(id, msg) => match msg {
                 ClientMsg::Hello { role } => {
                     if let Some(client) = self.clients.get_mut(&id) {
@@ -246,16 +232,8 @@ impl Daemon {
                 }
                 ClientMsg::Command { name, args } => {
                     let reply = match self.command(&name, &args, at) {
-                        Ok(data) => ServerMsg::Reply {
-                            ok: true,
-                            data,
-                            error: None,
-                        },
-                        Err(e) => ServerMsg::Reply {
-                            ok: false,
-                            data: Value::Null,
-                            error: Some(format!("{e:#}")),
-                        },
+                        Ok(data) => ServerMsg::Reply { ok: true, data, error: None },
+                        Err(e) => ServerMsg::Reply { ok: false, data: Value::Null, error: Some(format!("{e:#}")) },
                     };
                     // The renderer fires commands without waiting for answers; only the CLI reads replies.
                     if self.clients.get(&id).is_some_and(|c| !c.is_renderer) {
@@ -274,17 +252,13 @@ pub fn run(no_renderer: bool) -> Result<()> {
 
     let (identity, newborn) = match store.load::<Identity>("identity")? {
         Some(identity) => (identity, false),
-        None => (
-            Identity {
-                name: "Buddy".into(),
-                born_at: start as i64,
-            },
-            true,
-        ),
+        None => (Identity { name: "Buddy".into(), born_at: start as i64 }, true),
     };
     let mut life: Life = store.load("life")?.unwrap_or_default();
     let settings: Settings = store.load("settings")?.unwrap_or_default();
     let body: Body = store.load("body")?.unwrap_or_default();
+    let mind: Mind = store.load("mind")?.unwrap_or_default();
+    let remembered = store.recent_behaviour(400)?;
     if newborn {
         store.journal(start as i64, "born", &json!({ "name": identity.name }))?;
     }
@@ -292,28 +266,20 @@ pub fn run(no_renderer: bool) -> Result<()> {
         eprintln!("buddy: {note}");
         store.journal(start as i64, "recovered", &json!({ "note": note }))?;
     }
-    let away_secs = if life.last_seen > 0 {
-        start as i64 - life.last_seen
-    } else {
-        0
-    };
+    let away_secs = if life.last_seen > 0 { start as i64 - life.last_seen } else { 0 };
     life.sessions += 1;
-    store.journal(
-        start as i64,
-        "session_start",
-        &json!({ "away_secs": away_secs, "session": life.sessions }),
-    )?;
+    store.journal(start as i64, "session_start", &json!({ "away_secs": away_secs, "session": life.sessions }))?;
 
-    let seed = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(1, |d| d.as_nanos() as u64);
+    let seed = SystemTime::now().duration_since(UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64);
     let mut daemon = Daemon {
         store,
-        sim: Sim::new(identity, life, settings, body, seed),
+        sim: Sim::new(identity, life, settings, body, mind, seed),
         clients: HashMap::new(),
         renderer: (!no_renderer).then(Renderer::new),
         quit: false,
     };
+    daemon.sim.remember(remembered.iter().map(|r| (r.ts + r.secs, r.activity, r.variant)));
+    daemon.sim.returned_after(away_secs as f64);
     daemon.persist(start)?;
 
     let terminate = Arc::new(AtomicBool::new(false));
@@ -327,11 +293,7 @@ pub fn run(no_renderer: bool) -> Result<()> {
     let mut last_push = Instant::now();
     let mut last_save = Instant::now();
     while !daemon.quit && !terminate.load(Ordering::Relaxed) {
-        let wait = if daemon.sim.is_moving() {
-            TICK_MOVING
-        } else {
-            TICK_RESTING
-        };
+        let wait = if daemon.sim.is_moving() { TICK_MOVING } else { TICK_RESTING };
         match rx.recv_timeout(wait) {
             Ok(first) => {
                 daemon.handle(first, now());
@@ -343,14 +305,12 @@ pub fn run(no_renderer: bool) -> Result<()> {
             Err(RecvTimeoutError::Disconnected) => break,
         }
         let at = now();
-        let entries = daemon.sim.tick(at);
-        daemon.record(entries, at);
+        let outputs = daemon.sim.tick(at, local_hour());
+        daemon.absorb(outputs, at);
 
         let state = daemon.sim.snapshot(at);
-        if last_state.as_ref() != Some(&state)
-            && (daemon.sim.is_moving() || last_push.elapsed() >= TICK_RESTING)
-        {
-            daemon.broadcast(&state);
+        if last_state.as_ref() != Some(&state) && (daemon.sim.is_moving() || last_push.elapsed() >= TICK_RESTING) {
+            daemon.broadcast(&ServerMsg::State(state.clone()));
             last_state = Some(state);
             last_push = Instant::now();
         }
@@ -371,9 +331,7 @@ pub fn run(no_renderer: bool) -> Result<()> {
     if let Some(renderer) = daemon.renderer.as_mut() {
         renderer.stop();
     }
-    daemon
-        .store
-        .journal(end as i64, "session_end", &json!({ "secs": end - start }))?;
+    daemon.store.journal(end as i64, "session_end", &json!({ "secs": end - start }))?;
     daemon.persist(end)?;
     let _ = fs::remove_file(paths::socket_path());
     Ok(())

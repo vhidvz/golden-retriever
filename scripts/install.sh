@@ -28,6 +28,7 @@ install -m 755 "$repo/target/release/buddy" "$bin/buddy"
 rm -rf "$share/renderer"
 mkdir "$share/renderer"
 cp "$repo"/renderer/project.godot "$repo"/renderer/*.tscn "$repo"/renderer/*.gd "$repo"/renderer/*.gdshader "$share/renderer/"
+cp -r "$repo/renderer/sounds" "$share/renderer/sounds"
 install -m 644 "$repo/dist/buddy.service" "$units/buddy.service"
 systemctl --user daemon-reload
 systemctl --user enable --now buddy.service

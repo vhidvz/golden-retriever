@@ -10,10 +10,7 @@ pub fn data_dir() -> PathBuf {
     if let Some(d) = env::var_os("BUDDY_DATA_DIR") {
         return PathBuf::from(d);
     }
-    env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home().join(".local/share"))
-        .join("buddy")
+    env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| home().join(".local/share")).join("buddy")
 }
 
 pub fn db_path() -> PathBuf {
@@ -25,9 +22,5 @@ pub fn socket_path() -> PathBuf {
     if let Some(p) = env::var_os("BUDDY_SOCKET") {
         return PathBuf::from(p);
     }
-    env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(env::temp_dir)
-        .join("buddy")
-        .join("buddy.sock")
+    env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(env::temp_dir).join("buddy").join("buddy.sock")
 }
