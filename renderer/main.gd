@@ -5,7 +5,7 @@ extends Node3D
 ##
 ## Self-test (no daemon needed): renders one pose to a PNG and reports whether it fits.
 ##   godot --path renderer --display-driver x11 -- --selftest out.png [--activity sit] [--variant 1]
-##       [--growth 0.2] [--facing -1] [--at 1.5] [--gaze 1] [--arousal 0.8] [--size 420]
+##       [--growth 0.2] [--facing -1] [--at 1.5] [--gaze 1] [--arousal 0.8] [--size 420] [--planned 6] [--seed 7]
 
 const GROUND_MARGIN := 0.11        # of his height, kept below the paws for the shadow and for limbs that reach towards the viewer
 const CAMERA_PITCH := 0.14         # radians; a slight look down so the ground reads as a surface
@@ -132,7 +132,7 @@ func _ready() -> void:
 		var growth := float(option.call("--growth", "1.0"))
 		_apply_state({
 			"activity": option.call("--activity", "stand"), "variant": int(option.call("--variant", "0")), "intensity": 0.7,
-			"started": Time.get_unix_time_from_system(), "planned_secs": 2.0 * _selftest_at, "seed": 7,
+			"started": Time.get_unix_time_from_system(), "planned_secs": float(option.call("--planned", str(2.0 * _selftest_at))), "seed": int(option.call("--seed", "7")),
 			"growth": growth, "scale": lerpf(0.45, 1.0, growth), "size_px": float(option.call("--size", "420")), "x_frac": 0.7, "facing": int(option.call("--facing", "1")),
 			"hidden": false, "privacy": false, "quiet": false, "ducked": false, "user_here": true, "load": 0.0, "valence": 0.6, "arousal": float(option.call("--arousal", "0.3")), "sleepiness": 0.2, "confusion": float(option.call("--confusion", "0.0")),
 		})
@@ -196,6 +196,8 @@ func _pump_socket(delta: float) -> void:
 					_voice.say(args.get("kind", ""), args.get("intensity", 0.5), _state["growth"])
 				"look":
 					_look(args.get("at", "you"), args.get("secs", 2.0))
+				"snapshot":
+					_snapshot(String(args.get("path", "")))
 				"pointer":
 					# He watches the pointer when it comes near, as a dog watches a hand.
 					var offset := Vector2(args.get("x", 0.0), args.get("y", 0.0)) - _head_on_screen()
@@ -257,7 +259,7 @@ func _apply_state(state: Dictionary) -> void:
 	_bowl.visible = eating
 	if eating:
 		_bowl.scale = Vector3.ONE * key.x
-		_bowl.position = Vector3(float(state["facing"]) * 0.60, 0.035, 0.2) * key.x
+		_bowl.position = Vector3(float(state["facing"]) * _dog.get_bowl_distance(), 0.035, 0.2) * key.x
 
 
 ## Size the window to everything the dog can reach at his current size, so no
@@ -376,9 +378,8 @@ func _on_menu(index: int) -> void:
 
 
 ## Saves what was drawn and reports whether the dog fits inside the window.
-func _finish_selftest() -> void:
-	var image := get_viewport().get_texture().get_image()
-	image.save_png(_selftest_path)
+## What the frame shows and whether anything of him touches the edge of the window.
+func _describe_frame(image: Image) -> String:
 	# Bounding box of everything clearly visible (the shadow's faint outer edge does not count).
 	var used := Rect2i()
 	for y in image.get_height():
@@ -387,8 +388,27 @@ func _finish_selftest() -> void:
 				used = used.expand(Vector2i(x, y)) if used.has_area() else Rect2i(x, y, 1, 1)
 	var clipped := used.position.x <= 0 or used.position.y <= 0 or used.end.x >= image.get_width() - 1 or used.end.y >= image.get_height() - 1
 	var rid := get_viewport().get_viewport_rid()
-	print("SELFTEST activity=%s/%d growth=%.2f window=%dx%d drawn=%dx%d clipped=%s gpu_ms=%.2f cpu_ms=%.2f sounds=%d" % [
+	return "activity=%s/%d growth=%.2f window=%dx%d drawn=%dx%d clipped=%s gpu_ms=%.2f cpu_ms=%.2f sounds=%d" % [
 		_state["activity"], _state["variant"], _state["growth"], image.get_width(), image.get_height(), used.size.x, used.size.y,
 		clipped, RenderingServer.viewport_get_measured_render_time_gpu(rid), RenderingServer.viewport_get_measured_render_time_cpu(rid),
-		_voice.sound_count()])
+		_voice.sound_count()]
+
+
+## Saves exactly what his window shows, and what he was doing, so that a drawing problem
+## seen on the screen can be reported (buddy snapshot). Nothing else on the screen is read.
+func _snapshot(path: String) -> void:
+	if path == "" or _state.is_empty():
+		return
+	var image := get_viewport().get_texture().get_image()
+	image.save_png(path)
+	var notes := FileAccess.open(path + ".txt", FileAccess.WRITE)
+	if notes != null:
+		notes.store_line(_describe_frame(image))
+		notes.store_line("facing=%d ducked=%s window_at=%s" % [int(_state["facing"]), str(_state.get("ducked", false)), str(get_window().position)])
+
+
+func _finish_selftest() -> void:
+	var image := get_viewport().get_texture().get_image()
+	image.save_png(_selftest_path)
+	print("SELFTEST " + _describe_frame(image))
 	get_tree().quit()

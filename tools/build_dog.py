@@ -62,9 +62,9 @@ GUMS = srgb(0.45, 0.20, 0.22)
 PAD = srgb(0.10, 0.08, 0.075)
 
 HEAD_DRAWN = (0.40, 0.85)          # the head is described level, with the top of the neck here …
-HEAD_AT = (0.385, 0.825)           # … and then carried here, with the nose a little down
+HEAD_AT = (0.355, 0.885)           # … and then carried here, high on an upright neck, with the nose a little down
 HEAD_TILT = math.radians(-7.0)
-HEAD_SIZE = 1.18                   # … and made this much bigger: a Golden's head is broad and heavy
+HEAD_SIZE = 1.12                   # … at this size: a broad, heavy head, about half his height at the withers
 STOP = 0.56                        # where, on the head as described, the forehead drops to the muzzle
 
 # The same dog at eight weeks. A puppy is not a small adult: his body is short and
@@ -74,9 +74,9 @@ STOP = 0.56                        # where, on the head as described, the forehe
 PUP_SHORT = 0.70                   # how much shorter he is from front to back
 PUP_LOW = 0.66                     # how much shorter his legs are
 PUP_SINK = 0.60 * (1.0 - PUP_LOW)  # so his back is this much nearer the ground
-PUP_HEAD_AT = (0.250, 0.592)
+PUP_HEAD_AT = (0.245, 0.620)
 PUP_HEAD_TILT = math.radians(-4.0)
-PUP_HEAD_SIZE = 1.08               # the head hardly shrinks at all
+PUP_HEAD_SIZE = 1.0                # the head hardly shrinks at all
 PUP_MUZZLE = 0.58                  # his muzzle is this fraction of the adult's length
 PUP_TAIL = 0.50
 PUP_LEG = 1.24                     # his legs are this much thicker for their length
@@ -205,11 +205,11 @@ def trunk():
     c, h = {"chest": 1.0}, {"hips": 1.0}
     return {"name": "trunk", "face": (0, 1, 0), "caps": (0.9, 0.8), "cuts": [
         cut(0.300, 0.560, 0.100, 0.105, 0.078, (0.045, 0.050, 0.065), (GOLD, GOLD, LIGHT), c),
-        cut(0.240, 0.575, 0.125, 0.165, 0.106, (0.036, 0.040, 0.066), (GOLD, GOLD, LIGHT), c),
-        cut(0.170, 0.580, 0.135, 0.212, 0.122, (0.032, 0.036, 0.058), (DEEP, GOLD, LIGHT), c, square=2.15),
-        cut(0.080, 0.580, 0.128, 0.232, 0.132, (0.030, 0.036, 0.056), (DEEP, GOLD, LIGHT), {"chest": 0.6, "hips": 0.4}, square=2.2),
-        cut(-0.020, 0.585, 0.117, 0.228, 0.134, (0.030, 0.036, 0.062), (DEEP, GOLD, LIGHT), {"chest": 0.25, "hips": 0.75}, square=2.2),
-        cut(-0.120, 0.590, 0.108, 0.210, 0.134, (0.030, 0.036, 0.068), (DEEP, GOLD, LIGHT), h, square=2.1),
+        cut(0.240, 0.575, 0.125, 0.185, 0.106, (0.036, 0.040, 0.066), (GOLD, GOLD, LIGHT), c),
+        cut(0.170, 0.580, 0.135, 0.238, 0.122, (0.032, 0.036, 0.058), (DEEP, GOLD, LIGHT), c, square=2.15),
+        cut(0.080, 0.580, 0.128, 0.256, 0.132, (0.030, 0.036, 0.056), (DEEP, GOLD, LIGHT), {"chest": 0.6, "hips": 0.4}, square=2.2),
+        cut(-0.020, 0.585, 0.117, 0.250, 0.134, (0.030, 0.036, 0.062), (DEEP, GOLD, LIGHT), {"chest": 0.25, "hips": 0.75}, square=2.2),
+        cut(-0.120, 0.590, 0.108, 0.226, 0.134, (0.030, 0.036, 0.068), (DEEP, GOLD, LIGHT), h, square=2.1),
         cut(-0.210, 0.595, 0.100, 0.188, 0.117, (0.030, 0.036, 0.066), (DEEP, GOLD, LIGHT), h),
         cut(-0.300, 0.595, 0.098, 0.165, 0.112, (0.030, 0.036, 0.050), (DEEP, GOLD, LIGHT), h),
         cut(-0.380, 0.590, 0.098, 0.130, 0.100, (0.032, 0.040, 0.060), (DEEP, GOLD, LIGHT), h),
@@ -218,13 +218,17 @@ def trunk():
 
 
 def neck():
-    top = (HEAD_AT[0] + 0.018, HEAD_AT[1] - 0.008)
-    return {"name": "neck", "face": (-0.72, 0.69, 0), "caps": (0.6, 0.6), "cuts": [
-        cut(top[0], top[1], 0.066, 0.074, 0.068, (0.026, 0.030, 0.036), (GOLD, GOLD, LIGHT), {"head": 0.75, "neck": 0.25}),
-        cut(0.355, 0.760, 0.076, 0.086, 0.078, (0.036, 0.042, 0.058), (GOLD, GOLD, LIGHT), {"neck": 1.0}),
-        cut(0.302, 0.690, 0.092, 0.104, 0.092, (0.040, 0.046, 0.068), (GOLD, GOLD, LIGHT), {"neck": 1.0}),
-        cut(0.248, 0.618, 0.108, 0.124, 0.104, (0.038, 0.044, 0.070), (DEEP, GOLD, LIGHT), {"neck": 0.5, "chest": 0.5}),
-        cut(0.190, 0.555, 0.110, 0.120, 0.105, (0.034, 0.040, 0.066), (DEEP, GOLD, LIGHT), {"chest": 1.0}),
+    """An upright, muscular neck from the shoulders to the back of the skull."""
+    bottom = np.array((0.190, 0.555))
+    top = np.array((HEAD_AT[0] + 0.018, HEAD_AT[1] - 0.008))
+    along = (top - bottom) / np.linalg.norm(top - bottom)
+    at = lambda t: tuple(bottom + (top - bottom) * t)
+    return {"name": "neck", "face": (-along[1], along[0], 0), "caps": (0.6, 0.6), "cuts": [
+        cut(*at(1.0), 0.078, 0.088, 0.080, (0.026, 0.032, 0.044), (GOLD, GOLD, LIGHT), {"head": 0.75, "neck": 0.25}),
+        cut(*at(0.72), 0.096, 0.110, 0.098, (0.036, 0.046, 0.074), (GOLD, GOLD, LIGHT), {"neck": 1.0}),
+        cut(*at(0.45), 0.108, 0.126, 0.106, (0.040, 0.050, 0.080), (GOLD, GOLD, LIGHT), {"neck": 1.0}),
+        cut(*at(0.20), 0.108, 0.124, 0.104, (0.038, 0.044, 0.070), (DEEP, GOLD, LIGHT), {"neck": 0.5, "chest": 0.5}),
+        cut(*at(0.0), 0.110, 0.120, 0.105, (0.034, 0.040, 0.066), (DEEP, GOLD, LIGHT), {"chest": 1.0}),
     ]}
 
 
@@ -232,13 +236,13 @@ def skull():
     m, h = {"muzzle": 1.0}, {"head": 1.0}
     short = (0.004, 0.004, 0.005)
     cuts = [
-        cut(0.678, 0.836, 0.034, 0.038, 0.040, short, (FACE, FACE, FACE), m, square=2.7),
-        cut(0.640, 0.838, 0.037, 0.042, 0.044, short, (FACE, FACE, FACE), m, square=2.7),
-        cut(0.600, 0.840, 0.039, 0.045, 0.047, (0.005, 0.005, 0.006), (FACE, FACE, FACE), m, square=2.6),
-        cut(0.568, 0.844, 0.044, 0.050, 0.052, (0.007, 0.008, 0.010), (GOLD, FACE, FACE), {"muzzle": 0.5, "head": 0.5}, square=2.4),
-        cut(0.542, 0.852, 0.066, 0.064, 0.066, (0.010, 0.011, 0.014), (GOLD, GOLD, GOLD), h),
-        cut(0.515, 0.858, 0.082, 0.076, 0.078, (0.012, 0.014, 0.018), (GOLD, GOLD, GOLD), h),
-        cut(0.470, 0.860, 0.088, 0.084, 0.086, (0.016, 0.019, 0.026), (GOLD, GOLD, LIGHT), h),
+        cut(0.662, 0.836, 0.038, 0.048, 0.043, short, (FACE, FACE, FACE), m, square=2.9),
+        cut(0.630, 0.838, 0.043, 0.055, 0.049, short, (FACE, FACE, FACE), m, square=2.8),
+        cut(0.596, 0.842, 0.046, 0.058, 0.053, (0.005, 0.005, 0.006), (FACE, FACE, FACE), m, square=2.6),
+        cut(0.566, 0.847, 0.052, 0.062, 0.058, (0.007, 0.008, 0.010), (GOLD, FACE, FACE), {"muzzle": 0.5, "head": 0.5}, square=2.4),
+        cut(0.542, 0.853, 0.072, 0.068, 0.068, (0.010, 0.011, 0.014), (GOLD, GOLD, GOLD), h),
+        cut(0.515, 0.858, 0.084, 0.078, 0.082, (0.012, 0.014, 0.018), (GOLD, GOLD, GOLD), h),
+        cut(0.470, 0.860, 0.090, 0.086, 0.092, (0.016, 0.019, 0.026), (GOLD, GOLD, LIGHT), h),
         cut(0.428, 0.857, 0.080, 0.080, 0.080, (0.021, 0.025, 0.032), (GOLD, GOLD, LIGHT), h),
         cut(0.398, 0.850, 0.060, 0.064, 0.062, (0.025, 0.029, 0.034), (GOLD, GOLD, LIGHT), h),
     ]
@@ -249,10 +253,10 @@ def jaw():
     j = {"jaw": 1.0}
     short = (0.004, 0.006, 0.010)
     return {"name": "jaw", "face": (0, 1, 0), "caps": (0.7, 0.6), "apart": True, "tilt": True, "cuts": [
-        cut(0.660, 0.787, 0.012, 0.018, 0.026, short, (FACE, FACE, LIGHT), j),
-        cut(0.625, 0.786, 0.014, 0.022, 0.032, short, (FACE, FACE, LIGHT), j),
-        cut(0.580, 0.786, 0.015, 0.026, 0.037, short, (FACE, FACE, LIGHT), j),
-        cut(0.530, 0.789, 0.016, 0.029, 0.043, (0.004, 0.008, 0.014), (FACE, FACE, LIGHT), j),
+        cut(0.645, 0.784, 0.012, 0.018, 0.030, short, (FACE, FACE, LIGHT), j),
+        cut(0.615, 0.783, 0.014, 0.023, 0.036, short, (FACE, FACE, LIGHT), j),
+        cut(0.575, 0.783, 0.015, 0.027, 0.040, short, (FACE, FACE, LIGHT), j),
+        cut(0.530, 0.787, 0.016, 0.030, 0.045, (0.004, 0.008, 0.014), (FACE, FACE, LIGHT), j),
         cut(0.488, 0.798, 0.016, 0.030, 0.046, (0.004, 0.010, 0.016), (FACE, GOLD, LIGHT), j),
     ]}
 
@@ -263,11 +267,11 @@ def ear(sign):
     coat = (0.030, 0.026, 0.030)
     tone = (DEEP, DEEP, DEEP)
     return {"name": f"ear_{s}", "face": (-1, 0, 0), "caps": (0.5, 0.9), "own": True, "tilt": True, "cuts": [
-        cut(0.452, 0.925, 0.020, 0.020, 0.014, (0.016, 0.016, 0.016), tone, {"head": 0.7, f"ear_{s}": 0.3}, z=0.066 * sign),
-        cut(0.455, 0.898, 0.034, 0.032, 0.0125, coat, tone, e, z=0.084 * sign),
-        cut(0.461, 0.860, 0.040, 0.036, 0.0115, coat, tone, e, z=0.092 * sign),
-        cut(0.468, 0.822, 0.033, 0.030, 0.0105, coat, tone, e, z=0.093 * sign),
-        cut(0.474, 0.797, 0.018, 0.018, 0.0095, coat, tone, e, z=0.090 * sign),
+        cut(0.450, 0.922, 0.024, 0.024, 0.014, (0.016, 0.016, 0.016), tone, {"head": 0.7, f"ear_{s}": 0.3}, z=0.070 * sign),
+        cut(0.453, 0.892, 0.040, 0.038, 0.0125, coat, tone, e, z=0.090 * sign),
+        cut(0.459, 0.850, 0.047, 0.042, 0.0115, coat, tone, e, z=0.098 * sign),
+        cut(0.466, 0.806, 0.039, 0.035, 0.0105, coat, tone, e, z=0.099 * sign),
+        cut(0.472, 0.776, 0.020, 0.020, 0.0095, coat, tone, e, z=0.096 * sign),
     ]}
 
 
@@ -279,10 +283,10 @@ def front_leg(sign):
         cut(0.216, 0.560, 0.085, 0.070, 0.046, (0.036, 0.036, 0.040), (GOLD, GOLD, GOLD), {"chest": 1.0}, z=z * 0.78),
         cut(0.205, 0.470, 0.075, 0.060, 0.046, (0.042, 0.034, 0.036), (GOLD, GOLD, LIGHT), {up: 0.7, "chest": 0.3}, z=z * 0.88),
         cut(0.178, 0.395, 0.062, 0.047, 0.045, (0.056, 0.022, 0.016), (LIGHT, GOLD, GOLD), {up: 1.0}, z=z),
-        cut(0.172, 0.330, 0.048, 0.043, 0.041, (0.062, 0.022, 0.012), (LIGHT, GOLD, GOLD), {low: 1.0}, z=z),
-        cut(0.175, 0.220, 0.039, 0.036, 0.035, (0.054, 0.020, 0.011), (CREAM, GOLD, GOLD), {low: 1.0}, z=z),
-        cut(0.179, 0.125, 0.032, 0.033, 0.032, (0.030, 0.016, 0.010), (LIGHT, GOLD, GOLD), {low: 1.0}, z=z),
-        cut(0.185, 0.058, 0.032, 0.031, 0.033, (0.014, 0.011, 0.009), (GOLD, GOLD, GOLD), {low: 1.0}, z=z),
+        cut(0.172, 0.330, 0.055, 0.049, 0.046, (0.066, 0.026, 0.016), (LIGHT, GOLD, GOLD), {low: 1.0}, z=z),
+        cut(0.175, 0.220, 0.045, 0.041, 0.040, (0.060, 0.024, 0.015), (CREAM, GOLD, GOLD), {low: 1.0}, z=z),
+        cut(0.179, 0.125, 0.037, 0.037, 0.036, (0.034, 0.019, 0.013), (LIGHT, GOLD, GOLD), {low: 1.0}, z=z),
+        cut(0.185, 0.058, 0.035, 0.034, 0.036, (0.014, 0.011, 0.009), (GOLD, GOLD, GOLD), {low: 1.0}, z=z),
     ]}
     paw = {"name": f"front_paw_{s}", "face": (0, 1, 0), "caps": (0.8, 0.7), "cuts": [
         cut(0.168, 0.033, 0.030, 0.030, 0.039, (0.010, 0.010, 0.004), (GOLD, GOLD, GOLD), {f"front_{s}_paw": 1.0}, z=z, square=2.3),
@@ -301,11 +305,11 @@ def hind_leg(sign):
         cut(-0.285, 0.500, 0.112, 0.104, 0.062, (0.070, 0.036, 0.034), (LIGHT, GOLD, GOLD), {up: 0.65, "hips": 0.35}, z=z * 0.95),
         cut(-0.256, 0.420, 0.094, 0.084, 0.055, (0.088, 0.032, 0.030), (CREAM, GOLD, GOLD), {up: 1.0}, z=z),
         cut(-0.242, 0.362, 0.066, 0.060, 0.045, (0.080, 0.028, 0.022), (CREAM, GOLD, GOLD), {up: 0.5, low: 0.5}, z=z),
-        cut(-0.300, 0.292, 0.050, 0.046, 0.040, (0.060, 0.026, 0.016), (LIGHT, GOLD, GOLD), {low: 1.0}, z=z),
-        cut(-0.385, 0.218, 0.036, 0.036, 0.033, (0.034, 0.020, 0.012), (LIGHT, GOLD, GOLD), {low: 1.0}, z=z),
-        cut(-0.426, 0.186, 0.032, 0.033, 0.031, (0.020, 0.015, 0.011), (GOLD, GOLD, GOLD), {low: 0.5, foot: 0.5}, z=z),
-        cut(-0.420, 0.120, 0.029, 0.030, 0.029, (0.016, 0.013, 0.010), (GOLD, GOLD, GOLD), {foot: 1.0}, z=z),
-        cut(-0.412, 0.056, 0.030, 0.030, 0.031, (0.013, 0.011, 0.009), (GOLD, GOLD, GOLD), {foot: 1.0}, z=z),
+        cut(-0.300, 0.292, 0.056, 0.052, 0.045, (0.060, 0.030, 0.020), (LIGHT, GOLD, GOLD), {low: 1.0}, z=z),
+        cut(-0.385, 0.218, 0.041, 0.041, 0.037, (0.040, 0.024, 0.016), (LIGHT, GOLD, GOLD), {low: 1.0}, z=z),
+        cut(-0.426, 0.186, 0.037, 0.038, 0.035, (0.026, 0.018, 0.014), (GOLD, GOLD, GOLD), {low: 0.5, foot: 0.5}, z=z),
+        cut(-0.420, 0.120, 0.033, 0.034, 0.033, (0.020, 0.016, 0.013), (GOLD, GOLD, GOLD), {foot: 1.0}, z=z),
+        cut(-0.412, 0.056, 0.034, 0.034, 0.035, (0.016, 0.013, 0.011), (GOLD, GOLD, GOLD), {foot: 1.0}, z=z),
     ]}
     paw = {"name": f"hind_paw_{s}", "face": (0, 1, 0), "caps": (0.8, 0.7), "cuts": [
         cut(-0.432, 0.032, 0.029, 0.029, 0.037, (0.010, 0.010, 0.004), (GOLD, GOLD, GOLD), {f"hind_{s}_paw": 1.0}, z=z, square=2.3),
@@ -335,16 +339,16 @@ LUMPS = [((0.305, 0.525, 0.0), (0.045, 0.055, 0.055), False)]            # the b
 for _s in (1, -1):
     LUMPS += [
         ((0.215, 0.520, 0.078 * _s), (0.060, 0.085, 0.030), False),      # shoulder
-        ((0.505, 0.818, 0.054 * _s), (0.050, 0.036, 0.025), True),       # cheek
+        ((0.505, 0.818, 0.056 * _s), (0.050, 0.038, 0.027), True),       # cheek
         ((0.545, 0.906, 0.036 * _s), (0.022, 0.012, 0.022), True),       # brow
-        ((0.605, 0.803, 0.037 * _s), (0.048, 0.018, 0.013), True),       # the upper lip hanging over the jaw
+        ((0.600, 0.792, 0.040 * _s), (0.050, 0.020, 0.012), True),       # the upper lip hanging over the jaw
     ]
     for _x, _z in ((0.248, 0.088), (-0.352, 0.092)):
         for _off in (-0.035, -0.012, 0.012, 0.035):                       # four toes on every paw
             _reach = 0.0 if abs(_off) > 0.02 else 0.010
             LUMPS.append(((_x + _reach, 0.026, (_z + _off) * _s), (0.026, 0.022, 0.0125), False))
 
-NOSE = {"at": (0.690, 0.846, 0.0), "radii": (0.019, 0.021, 0.026), "nostril": ((0.704, 0.842, 0.0125), (0.0085, 0.006, 0.0065))}
+NOSE = {"at": (0.672, 0.848, 0.0), "radii": (0.021, 0.023, 0.029), "nostril": ((0.688, 0.843, 0.0135), (0.009, 0.0065, 0.007))}
 EYES = {"from": (0.500, 0.872, 0.022), "towards": (0.95, 0.04, 0.30), "radius": 0.0150, "opening": (0.0145, 0.0092, 0.020)}
 
 
@@ -689,7 +693,10 @@ def describe(obj, lofts, body_tree=None, other_tree=None, bare=None):
     return result
 
 
-def build(preview):
+def build(preview=None, write=True):
+    """Builds the dog in the open Blender scene and, with `write`, saves the model file.
+    Returns the finished pieces (body, jaw, nose), what is known about each of their
+    points, and where the eyes are, for scripts that go on to render him."""
     started = time.time()
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
@@ -846,6 +853,8 @@ def build(preview):
         "puppy": puppy,
         **out,
     }
+    if not write:
+        return [body, jaw_object, nose], pieces, eyes
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w") as f:
         json.dump(dog, f, separators=(",", ":"))
@@ -853,6 +862,7 @@ def build(preview):
 
     if preview:
         pictures(preview, [body, jaw_object, nose], pieces, eyes)
+    return [body, jaw_object, nose], pieces, eyes
 
 
 def pictures(folder, objects, pieces, eyes):

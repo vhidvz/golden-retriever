@@ -535,6 +535,15 @@ impl Daemon {
         let cmd = match name {
             "status" => return self.status(at),
             "why" => return Ok(self.sim.explain(at)),
+            "snapshot" => {
+                // Only his own window is saved, by the renderer itself: nothing else on the screen.
+                let path = args["path"].as_str().context("snapshot needs a file name")?.to_string();
+                if !self.clients.values().any(|c| c.is_renderer) {
+                    bail!("his window is not open (he is hidden, or the renderer is not running)");
+                }
+                self.broadcast(&ServerMsg::Event { name: "snapshot".into(), args: json!({ "path": path }) });
+                return Ok(json!({ "did": format!("saved what his window shows to {path}, and what he was doing to {path}.txt") }));
+            }
             "knows" => {
                 let known: Vec<Value> = self
                     .sim

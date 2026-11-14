@@ -5,3 +5,4 @@ assets/local/
 spikes/overlay-gnome/out/
 spikes/overlay-gnome/furtest
 tests/shell-sense/out/
+__pycache__/

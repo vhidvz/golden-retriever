@@ -48,6 +48,8 @@ On the computer (try: buddy say 'find my tax report'):
   buddy sense SOURCE on|off      system | desktop | window_titles | screen | camera | microphone
   buddy set KEY VALUE            name | size_px (adult height) | adult_days (growth timeline) |
                                  stay_in_fullscreen (on/off) | vision_model | language_model
+  buddy snapshot [FILE.png]      save exactly what his window shows right now (nothing else on
+                                 the screen), with what he was doing, to report a drawing problem
   buddy journal [N]              the last N things that happened (default 20)
   buddy export                   everything he knows, as JSON
   buddy quit                     stop the daemon
@@ -105,6 +107,7 @@ fn main() -> Result<()> {
         (Some("set"), Some(key)) if arg(2).is_some() => ("set", json!({ "key": key, "value": arg(2) })),
         (Some("journal"), n) => ("journal", json!({ "limit": n.and_then(|n| n.parse::<u64>().ok()).unwrap_or(20) })),
         (Some("export"), _) => ("export", Value::Null),
+        (Some("snapshot"), file) => ("snapshot", json!({ "path": client::absolute(file.unwrap_or("buddy-snapshot.png")) })),
         (Some("quit"), _) => ("quit", Value::Null),
         _ => {
             print!("{USAGE}");

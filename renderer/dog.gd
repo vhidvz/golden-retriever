@@ -101,6 +101,11 @@ func get_reach() -> Vector2:
 	return Vector2(1.05, 1.25)
 
 
+## How far in front of him, in units at full scale, his bowl should stand so that his nose reaches it.
+func get_bowl_distance() -> float:
+	return 0.60
+
+
 ## growth: 0 (newborn proportions) to 1 (adult). Growing is not a uniform
 ## scale: a puppy has a bigger head, a shorter muzzle and legs, and fluffier, paler fur.
 func apply_growth(growth: float) -> void:

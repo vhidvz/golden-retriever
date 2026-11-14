@@ -37,6 +37,10 @@ func get_reach() -> Vector2:
 	return Vector2(1.08, 1.25)
 
 
+func get_bowl_distance() -> float:
+	return lerpf(0.54, 0.40, 1.0 - _growth)      # a puppy's nose does not reach as far
+
+
 func _build() -> void:
 	for child in get_children():
 		remove_child(child)
@@ -248,18 +252,36 @@ func _place_leg(upper: String, lower: String, pivot: Node3D, front: bool, stride
 	var foot_turn := 0.0      # how far the hind foot is turned from the way it stands
 	var toes_turn := 0.0      # the same for the toes
 	var lean := 0.0
-	var droop := 0.0          # lying on his side, how far the legs of the upper flank sink towards the floor
+	var slack := Quaternion.IDENTITY      # lying on his side: the turn that lays the upper leg down towards the floor
 	if lying_on_side:
-		# Off the ground there is nothing to stand on: the legs lie slack, each joint a little bent,
-		# and the two of the upper flank come down to rest on the floor in front of the others.
 		var on_back := absf(_body.rotation.x) > 2.1
 		var uppermost := (top.z > 0.0) == (_body.rotation.x < 0.0)
-		upper_turn = pivot.rotation.z + (0.0 if on_back else (-0.30 if front else 0.10) + (0.16 if uppermost else 0.0))
-		lower_turn = upper_turn + (0.85 if front else -0.75)
-		foot_turn = lower_turn + 0.60
-		toes_turn = (lower_turn if front else foot_turn) - (0.55 if front else 0.30)
-		if uppermost and not on_back:
-			droop = -signf(_body.rotation.x) * 0.42      # turned back towards the floor, against the roll
+		if on_back:
+			# Paws in the air, joints loosely bent.
+			upper_turn = pivot.rotation.z
+			lower_turn = upper_turn + (0.85 if front else -0.75)
+			foot_turn = lower_turn + 0.60
+			toes_turn = (lower_turn if front else foot_turn) - (0.55 if front else 0.30)
+		else:
+			# Lying on his side the legs lie slack on the floor: the forelegs reach forward and the
+			# hind legs back, out from his belly, rather than pointing straight out of it (which,
+			# seen from the side, makes them look like four parallel stumps). The legs of the upper
+			# flank lie further out than the lower ones, so the two pairs do not cover each other.
+			var belly := -signf(_body.rotation.x)
+			var along := (0.80 if front else -0.74) if not uppermost else (0.52 if front else -0.46)
+			var flat := Vector3(along, 0.0, belly * sqrt(1.0 - along * along))
+			var height := (in_dog * pivot.position).y
+			var reach := 0.85 * (thigh.length() + shin.length() + foot.length() + tread.length())
+			var below := asin(clampf((height - 0.03) / reach, 0.0, 0.94))
+			var wanted := flat * cos(below) + Vector3.DOWN * sin(below)
+			upper_turn = 0.0
+			lower_turn = (0.30 if front else -0.40) * (1.6 if uppermost else 1.0) + 0.06 * sin(pivot.rotation.z * 3.0)
+			foot_turn = lower_turn + 0.45
+			toes_turn = (lower_turn if front else foot_turn) - 0.35
+			# Aim the whole leg, hip to paw, not just its top bone: a hind leg's shin sits at
+			# nearly a right angle to the thigh, so aiming the thigh alone lifts the paw into the air.
+			var whole := thigh + shin.rotated(Vector3.BACK, lower_turn) + foot.rotated(Vector3.BACK, foot_turn) + tread.rotated(Vector3.BACK, toes_turn)
+			slack = Quaternion(whole.normalized(), (parent_turn.inverse() * wanted).normalized())
 	else:
 		var joint := in_dog * pivot.position
 		lean = atan2(parent_turn.x.y, parent_turn.x.x)
@@ -301,7 +323,7 @@ func _place_leg(upper: String, lower: String, pivot: Node3D, front: bool, stride
 		lower_turn = (target - knee).angle() - Vector2(shin.x, shin.y).angle() - lean
 		foot_turn -= lean
 		toes_turn = -lean
-	_skeleton.set_bone_pose_rotation(_bone[upper], Quaternion(Vector3.RIGHT, droop) * Quaternion(Vector3.BACK, upper_turn))
+	_skeleton.set_bone_pose_rotation(_bone[upper], slack * Quaternion(Vector3.BACK, upper_turn))
 	_skeleton.set_bone_pose_rotation(_bone[lower], Quaternion(Vector3.BACK, wrapf(lower_turn - upper_turn, -PI, PI)))
 	if front:
 		_skeleton.set_bone_pose_rotation(_bone[toes_bone], Quaternion(Vector3.BACK, wrapf(toes_turn - lower_turn, -PI, PI)))
@@ -315,12 +337,25 @@ func _place_leg(upper: String, lower: String, pivot: Node3D, front: bool, stride
 func _compose(t: float, done: float) -> Array:
 	var layers := super._compose(t, done)
 	var pose: Dictionary = layers[0]
+	var young := 1.0 - _growth
+	if pose["hip"] >= 0.9 and pose["neck"] < -30.0:
+		# Nose to the ground while standing. The poses were made for the adult's long neck;
+		# a puppy's is short, so he gets there by going down at the front instead of
+		# tucking his chin in.
+		var dip := lerpf(7.0, 17.0, young)
+		pose["pitch"] -= dip
+		for leg in ["front_l", "front_r", "hind_l", "hind_r"]:
+			pose[leg] += dip             # the paws stay where they were while the body tips
+		pose["neck"] += lerpf(4.0, 12.0, young)
+		pose["head"] = lerpf(6.0, 2.0, young)
 	if pose["hip"] < 0.9:
 		var on_side: bool = absf(pose["roll"]) > 30.0
 		var sitting: bool = pose["pitch"] > 10.0 and not on_side
-		pose["hip"] = 0.30 if on_side else (0.36 if sitting else 0.38)
+		# How high his spine is off the floor. Sitting depends on the length of his legs;
+		# lying depends on how deep or wide his body is, which is the same at any age.
+		pose["hip"] = 0.175 / _hip_height if on_side else (0.36 if sitting else 0.225 / _hip_height)
 		if absf(pose["roll"]) > 120.0:
-			pose["hip"] = 0.20   # on his back, his spine this far off the floor
+			pose["hip"] = 0.12 / _hip_height   # on his back
 		if sitting:
 			# Sitting tall enough that the forelegs are straight under the shoulders.
 			pose["pitch"] += 10.0
