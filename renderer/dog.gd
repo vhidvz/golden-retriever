@@ -17,6 +17,7 @@ const STRIDE := 0.75            # ground covered by one full walk cycle
 const WALK_SPEED := 0.55        # heights per second; matches the daemon's walk speed
 const YAW_RIGHT := -0.35        # three-quarter view towards the viewer
 const YAW_LEFT := -2.79
+const HEAD_TURN_SPEED := 3.2    # radians per second: the fastest his head turns to follow something
 
 ## Joint channels. Angles are degrees. For limbs, neck and head, positive swings
 ## forward / lifts the nose. "*_yaw" and "face_viewer" are positive towards the viewer.
@@ -59,8 +60,13 @@ var _panting := 0.0
 var _next_blink := 3.0
 var _eye_contact := 0.0           # seconds of looking at the viewer still owed
 var _attention := 0.0             # 0..1, how much of his gaze is held by the viewer or by something on screen
+var _attention_speed := 0.0
 var _aim := Vector3.RIGHT         # the direction of something on the screen he is looking at
 var _aim_left := 0.0              # seconds of looking that way still owed
+var _gaze_yaw := 0.0              # where his head has actually turned to; it follows what he looks at and never jumps there
+var _gaze_yaw_speed := 0.0
+var _gaze_lift := 0.0             # the same for how far his head is raised towards it
+var _gaze_lift_speed := 0.0
 var _wander_yaw := 0.0            # where an idle glance is pointing
 var _wander_pitch := 0.0
 var _wander_left := 0.0
@@ -213,16 +219,27 @@ func advance(delta: float, travelled: float) -> void:
 	var at_you: bool = _eye_contact > 0.0 or motion.get("hold_gaze", 0.0) > 0.5 or puzzled > 0.3
 	var gaze := _viewer if at_you or _aim_left <= 0.0 else _aim
 	var wants_viewer: bool = (at_you or _aim_left > 0.0) and awake > 0.5
-	_attention = lerpf(_attention, 1.0 if wants_viewer else 0.0, 1.0 - exp(-(7.0 if wants_viewer else 3.0) * delta))
+	var held := _follow(_attention, 1.0 if wants_viewer else 0.0, _attention_speed, 0.28 if wants_viewer else 0.5, 8.0, delta)
+	_attention = held.x
+	_attention_speed = held.y
 	_idle_glances(delta, awake, wants_viewer)
 
 	var forward_angle: float = rotation.y - deg_to_rad(p["spine_yaw"])
 	var to_viewer: float = clampf(wrapf(atan2(-gaze.z, gaze.x) - forward_angle, -PI, PI), -1.25, 1.25)
 	var own_yaw: float = -deg_to_rad(p["head_yaw"] + _wander_yaw)
-	_neck.rotation.z = deg_to_rad(p["neck"] + 3.0 * minf(_gait, 1.0) * sin(2.0 * _phase) - 6.0 * _sleepiness * awake + (9.0 + 22.0 * gaze.y) * _attention)
+	# A head has weight: it gathers speed, slows before it arrives, and cannot keep up with
+	# something that darts about. A sleepy or calm dog turns more slowly than an excited one.
+	var settle: float = lerpf(0.5, 0.3, clampf(_arousal, 0.0, 1.0)) * lerpf(1.0, 1.5, _sleepiness)
+	var turned := _follow(_gaze_yaw, to_viewer, _gaze_yaw_speed, settle, HEAD_TURN_SPEED, delta)
+	_gaze_yaw = turned.x
+	_gaze_yaw_speed = turned.y
+	var lifted := _follow(_gaze_lift, gaze.y, _gaze_lift_speed, settle, HEAD_TURN_SPEED, delta)
+	_gaze_lift = lifted.x
+	_gaze_lift_speed = lifted.y
+	_neck.rotation.z = deg_to_rad(p["neck"] + 3.0 * minf(_gait, 1.0) * sin(2.0 * _phase) - 6.0 * _sleepiness * awake + (9.0 + 22.0 * _gaze_lift) * _attention)
 	_head.rotation = Vector3(
 		lerp_angle(_head.rotation.x, deg_to_rad(p["head_tilt"]), 1.0 - exp(-9.0 * delta)),
-		lerpf(own_yaw, to_viewer, _attention),
+		lerpf(own_yaw, _gaze_yaw, _attention),
 		deg_to_rad(p["head"] + _wander_pitch * (1.0 - _attention)))
 
 	# --- mouth: yawns and licking come from the pose; panting from exertion and excitement
@@ -259,7 +276,7 @@ func advance(delta: float, travelled: float) -> void:
 	for i in 2:
 		_eyes[i].scale.y = maxf(lids, 0.08)
 		var radius: float = _eyes[i].get_meta("radius")
-		_pupils[i].position = _pupils[i].position.lerp(look * radius * 0.62, 1.0 - exp(-20.0 * delta))
+		_pupils[i].position = _pupils[i].position.lerp(look * radius * 0.62, 1.0 - exp(-14.0 * delta))
 
 	# --- dreaming: now and then a sleeping dog twitches
 	if _activity == "sleep":
@@ -273,6 +290,22 @@ func advance(delta: float, travelled: float) -> void:
 ## True while something quick is happening and a low frame rate would show.
 func is_lively() -> bool:
 	return _dream > 0.05 or _attention > 0.05 and _attention < 0.95 or _panting > 0.1 or _wander_left > 0.0
+
+
+## Moves `from` towards `to` without ever jumping: it speeds up, slows down as it
+## arrives in about `settle` seconds, and never goes faster than `top_speed`.
+## Returns the new value in x and the new speed in y.
+static func _follow(from: float, to: float, speed: float, settle: float, top_speed: float, delta: float) -> Vector2:
+	var omega := 2.0 / maxf(settle, 0.001)
+	var x := omega * delta
+	var decay := 1.0 / (1.0 + x + 0.48 * x * x + 0.235 * x * x * x)
+	var gap := clampf(from - to, -top_speed * settle, top_speed * settle)
+	var push := (speed + omega * gap) * delta
+	var value := from - gap + (gap + push) * decay
+	var new_speed := (speed - omega * push) * decay
+	if (to - from > 0.0) == (value > to):   # arrived: do not swing past it
+		return Vector2(to, 0.0)
+	return Vector2(value, new_speed)
 
 
 ## Unprompted looks around: a dog at rest does not hold his head still.
