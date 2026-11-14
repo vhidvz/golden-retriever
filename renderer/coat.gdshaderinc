@@ -21,6 +21,7 @@ varying float coat;      // how long the coat is here
 varying vec3 grain;      // where this point is along and around its part of the body
 varying vec3 lie;        // the way the coat lies, as the camera sees it
 varying vec2 bare;       // x: bare skin instead of coat, y: wet shine
+varying float pressed;   // how far this point of the coat was pushed up to stay above the floor
 varying float end_on;    // 1 where the surface faces down the length of its part, so the locks are seen from their ends
 
 float hash3(vec3 p) {
@@ -55,6 +56,7 @@ void vertex() {
 	// Nothing of him goes through the floor: a belly or a plume that reaches it rests on it.
 	vec4 placed = MODEL_MATRIX * vec4(VERTEX, 1.0);
 	float floor_at = 0.003 + 0.006 * shell;
+	pressed = max(floor_at - placed.y, 0.0);
 	if (placed.y < floor_at) {
 		placed.y = floor_at;
 		VERTEX = (inverse(MODEL_MATRIX) * placed).xyz;
@@ -111,6 +113,7 @@ void fragment() {
 #ifdef SHELLS
 	// Each lock reaches its own height; a layer shows only the locks that reach it, fading out at their tips.
 	float reach = mix(0.30, 1.05, lock) - 0.22 * fine;
-	ALPHA = smoothstep(-0.04, 0.22, reach - shell) * furred * step(0.0005, coat);
+	// Coat pressed flat against the floor is hidden under him, not spread out around him.
+	ALPHA = smoothstep(-0.04, 0.22, reach - shell) * furred * step(0.0005, coat) * (1.0 - smoothstep(0.002, 0.012, pressed));
 #endif
 }

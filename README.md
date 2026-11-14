@@ -258,10 +258,14 @@ as a dog does. The jaw is its own piece, so the mouth really opens. Growing up
 is done on the bones: a puppy has shorter legs and muzzle, a bigger head and a
 fluffier, paler coat.
 
+The eyes sit in sockets and have lids: a blink, a sleepy droop and sleep all close
+them over the eye rather than flattening it. Lying on his side, the legs go
+slack and the two of the upper flank come down to rest on the floor.
+
 It is a stylised dog, not a photograph of one. He is recognisably a Golden
-Retriever in outline, colour and coat, but there are no eyelids (a blink shows
-the dark socket), no teeth, the puppy is the adult re-proportioned rather than
-a puppy modelled as such, and lying flat on his side the legs are still stiff.
+Retriever in outline, colour and coat, but there are no teeth, the puppy is the
+adult re-proportioned rather than a puppy modelled as such, and a scratching
+hind paw comes up beside the shoulder rather than reaching the neck.
 
 To use a different model, provide the methods the renderer calls (`apply_growth`,
 `begin`, `set_facing`, `set_mood`, `set_viewer_offset`, `look_at_viewer`,

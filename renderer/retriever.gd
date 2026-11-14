@@ -24,6 +24,7 @@ var _bone := {}                    # bone name -> index
 var _joint := {}                   # bone name -> where it is at rest, in the dog's space
 var _leg_scale := 1.0
 var _muzzle_scale := Vector3.ONE
+var _lids: Array[Node3D] = []      # per eye: the upper lid, the lower lid, the glint
 var _wag_trail: Array[float] = []  # recent tail swings, so the tip follows the root late
 
 
@@ -38,6 +39,7 @@ func _build() -> void:
 	_legs.clear()
 	_ears.clear()
 	_eyes.clear()
+	_lids.clear()
 	_pupils.clear()
 	if _model.is_empty():
 		_model = JSON.parse_string(FileAccess.get_file_as_string(MODEL))
@@ -111,6 +113,13 @@ func _build() -> void:
 		_pupils.append(_smooth(eye, Vector3.RIGHT * radius * 0.6, radius * 0.46, Color(0.012, 0.01, 0.01)))
 		var glint := _smooth(eye, Vector3(0.62, 0.62, -0.3 if i == 0 else 0.5).normalized() * radius * 0.92, radius * 0.17, Color.WHITE)
 		(glint.material_override as StandardMaterial3D).shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		# Lids: two pieces of a slightly larger ball around the eye. Open, they are out of
+		# sight under the skin above and below the socket; to blink or sleep they turn
+		# over the eye and meet a little below its middle, as a dog's do.
+		var tone := Color(0.80, 0.60, 0.34).lerp(Color(0.92, 0.80, 0.58), 0.55 * (1.0 - g))
+		_lids.append(_lid(eye, radius * 1.2, 40.0, 136.0, true, tone))
+		_lids.append(_lid(eye, radius * 1.2, -132.0, -38.0, false, tone))
+		_lids.append(glint)
 		eye.set_meta("radius", radius)
 		_eyes.append(eye)
 		_ears.append(_pivot(_head, _between("head", "ear_l" if i == 0 else "ear_r")))
@@ -135,6 +144,14 @@ func advance(delta: float, travelled: float) -> void:
 	_copy("ear_l", _ears[0])
 	_copy("ear_r", _ears[1])
 
+	# The stand-in blinks by flattening its eyes. Here that amount closes the lids instead.
+	for i in 2:
+		var open := clampf((_eyes[i].scale.y - 0.08) / 0.92, 0.0, 1.0)
+		_eyes[i].scale = Vector3.ONE
+		_lids[i * 3].rotation.z = deg_to_rad(lerpf(-70.0, 0.0, open))
+		_lids[i * 3 + 1].rotation.z = deg_to_rad(lerpf(14.0, 0.0, open))
+		_lids[i * 3 + 2].visible = open > 0.35
+
 	# The tail swings as a chain: each segment follows the one before it a moment later.
 	_wag_trail.push_front(_tail.rotation.y)
 	_wag_trail.resize(mini(_wag_trail.size(), 12))
@@ -148,6 +165,50 @@ func advance(delta: float, travelled: float) -> void:
 	var upper := ["front_l_upper", "front_r_upper", "hind_l_upper", "hind_r_upper"]
 	for i in 4:
 		_place_leg(upper[i], upper[i].replace("upper", "lower"), _legs[i], i < 2, _phase + beat[i])
+
+
+## One eyelid: the part of a ball around the eye between two heights (degrees above
+## the line of sight), darker along the edge that meets the other lid.
+func _lid(eye: Node3D, radius: float, from: float, to: float, upper: bool, tone: Color) -> MeshInstance3D:
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	var triangles := PackedInt32Array()
+	var rim := Color(0.09, 0.06, 0.05)
+	var rows := 10
+	var columns := 12
+	for row in rows + 1:
+		var height := deg_to_rad(lerpf(from, to, float(row) / rows))
+		var edge := float(row) / rows if upper else 1.0 - float(row) / rows      # 0 at the edge that closes
+		for column in columns + 1:
+			var across := deg_to_rad(lerpf(-74.0, 74.0, float(column) / columns))
+			var out := Vector3(cos(across) * cos(height), cos(across) * sin(height), sin(across))
+			vertices.append(out * radius)
+			normals.append(out)
+			colors.append(rim.lerp(tone, smoothstep(0.0, 0.22, edge)))
+	for row in rows:
+		for column in columns:
+			var a := row * (columns + 1) + column
+			var b := a + columns + 1
+			triangles.append_array([a, b, a + 1, a + 1, b, b + 1])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = triangles
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var material := StandardMaterial3D.new()
+	material.vertex_color_use_as_albedo = true
+	material.vertex_color_is_srgb = true
+	material.roughness = 1.0
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var lid := MeshInstance3D.new()
+	lid.mesh = mesh
+	lid.material_override = material
+	eye.add_child(lid)
+	return lid
 
 
 func _copy(bone: String, pivot: Node3D, swell := Vector3.ONE) -> void:
@@ -184,12 +245,18 @@ func _place_leg(upper: String, lower: String, pivot: Node3D, front: bool, stride
 	var foot_turn := 0.0      # how far the hind foot is turned from the way it stands
 	var toes_turn := 0.0      # the same for the toes
 	var lean := 0.0
+	var droop := 0.0          # lying on his side, how far the legs of the upper flank sink towards the floor
 	if lying_on_side:
-		# Off the ground there is nothing to stand on: swing from the shoulder with a relaxed bend.
-		upper_turn = pivot.rotation.z
-		lower_turn = pivot.rotation.z + (0.5 if front else -0.5)
-		foot_turn = lower_turn + 0.35
-		toes_turn = (lower_turn if front else foot_turn) - 0.35
+		# Off the ground there is nothing to stand on: the legs lie slack, each joint a little bent,
+		# and the two of the upper flank come down to rest on the floor in front of the others.
+		var on_back := absf(_body.rotation.x) > 2.1
+		var uppermost := (top.z > 0.0) == (_body.rotation.x < 0.0)
+		upper_turn = pivot.rotation.z + (0.0 if on_back else (-0.30 if front else 0.10) + (0.16 if uppermost else 0.0))
+		lower_turn = upper_turn + (0.85 if front else -0.75)
+		foot_turn = lower_turn + 0.60
+		toes_turn = (lower_turn if front else foot_turn) - (0.55 if front else 0.30)
+		if uppermost and not on_back:
+			droop = -signf(_body.rotation.x) * 0.42      # turned back towards the floor, against the roll
 	else:
 		var joint := in_dog * pivot.position
 		lean = atan2(parent_turn.x.y, parent_turn.x.x)
@@ -231,7 +298,7 @@ func _place_leg(upper: String, lower: String, pivot: Node3D, front: bool, stride
 		lower_turn = (target - knee).angle() - Vector2(shin.x, shin.y).angle() - lean
 		foot_turn -= lean
 		toes_turn = -lean
-	_skeleton.set_bone_pose_rotation(_bone[upper], Quaternion(Vector3.BACK, upper_turn))
+	_skeleton.set_bone_pose_rotation(_bone[upper], Quaternion(Vector3.RIGHT, droop) * Quaternion(Vector3.BACK, upper_turn))
 	_skeleton.set_bone_pose_rotation(_bone[lower], Quaternion(Vector3.BACK, wrapf(lower_turn - upper_turn, -PI, PI)))
 	if front:
 		_skeleton.set_bone_pose_rotation(_bone[toes_bone], Quaternion(Vector3.BACK, wrapf(toes_turn - lower_turn, -PI, PI)))
@@ -250,7 +317,7 @@ func _compose(t: float, done: float) -> Array:
 		var sitting: bool = pose["pitch"] > 10.0 and not on_side
 		pose["hip"] = 0.30 if on_side else (0.36 if sitting else 0.38)
 		if absf(pose["roll"]) > 120.0:
-			pose["hip"] = 0.34   # on his back
+			pose["hip"] = 0.20   # on his back, his spine this far off the floor
 		if sitting:
 			# Sitting tall enough that the forelegs are straight under the shoulders.
 			pose["pitch"] += 10.0

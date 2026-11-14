@@ -648,7 +648,7 @@ def build(preview):
         if inside(nose_tree, point, 0.004):
             return (1.0, LEATHER, 0.6)
         if point.y < 0.012 and normal.y < -0.5:
-            return (0.8, PAD, 0.0)                                      # the pads under the paws
+            return (0.5, PAD, 0.0)                                      # the pads under the paws, with coat between them
         return None
 
     def jaw_skin(point, normal):
