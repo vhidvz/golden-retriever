@@ -12,6 +12,10 @@ and how much light reaches it. Nothing is drawn by hand or taken from anyone
 else's model: change the numbers and run it again. Proportions were measured
 from photographs of real dogs standing in profile.
 
+The file holds him twice over, as an adult and as a puppy of eight weeks: the same
+points and bones, carried from the one to the other by as_puppy(). The renderer
+moves between the two as he grows.
+
 It writes renderer/dog/retriever.json. Blender is only needed to rebuild that
 file, never to run Buddy.
 
@@ -61,6 +65,23 @@ HEAD_DRAWN = (0.40, 0.85)          # the head is described level, with the top o
 HEAD_AT = (0.385, 0.825)           # … and then carried here, with the nose a little down
 HEAD_TILT = math.radians(-7.0)
 HEAD_SIZE = 1.18                   # … and made this much bigger: a Golden's head is broad and heavy
+STOP = 0.56                        # where, on the head as described, the forehead drops to the muzzle
+
+# The same dog at eight weeks. A puppy is not a small adult: his body is short and
+# round and close to the ground, his legs short and thick, his head big for him with
+# a short muzzle, his tail a stub, and his coat an even fluff with no feathering.
+# Every part below is described once, for the adult; these say how the puppy differs.
+PUP_SHORT = 0.70                   # how much shorter he is from front to back
+PUP_LOW = 0.66                     # how much shorter his legs are
+PUP_SINK = 0.60 * (1.0 - PUP_LOW)  # so his back is this much nearer the ground
+PUP_HEAD_AT = (0.250, 0.592)
+PUP_HEAD_TILT = math.radians(-4.0)
+PUP_HEAD_SIZE = 1.08               # the head hardly shrinks at all
+PUP_MUZZLE = 0.58                  # his muzzle is this fraction of the adult's length
+PUP_TAIL = 0.50
+PUP_LEG = 1.24                     # his legs are this much thicker for their length
+PUP_FLUFF = (0.052, 0.055, 0.056)  # the coat on his back, flanks and belly
+TAIL_ROOT = (-0.425, 0.632)
 
 
 def tilt(p):
@@ -70,38 +91,101 @@ def tilt(p):
     return (HEAD_AT[0] + x * c - y * s, HEAD_AT[1] + x * s + y * c) + tuple(v * HEAD_SIZE for v in p[2:])
 
 
+def as_puppy(points):
+    """Where points of the adult's body are on the puppy. One smooth rule for the whole
+    of him, so that his surface, his bones and his eyes all move together and nothing
+    creases: the body and legs shorten, the tail shrinks along its length, the head
+    keeps nearly its size and goes to the end of a shorter neck."""
+    p = np.atleast_2d(np.asarray(points, dtype=float))
+    x, y, z = p[:, 0], p[:, 1], p[:, 2]
+    ease = lambda t: np.clip(t, 0.0, 1.0) ** 2 * (3.0 - 2.0 * np.clip(t, 0.0, 1.0))
+
+    # Thick legs: below the body, everything close to the line down the middle of a leg moves out from it.
+    front = x > -0.1
+    line_x = np.where(front, np.interp(y, FRONT_LEG_LINE[0], FRONT_LEG_LINE[1]), np.interp(y, HIND_LEG_LINE[0], HIND_LEG_LINE[1]))
+    line_z = np.where(front, 0.088, 0.092) * np.sign(z)
+    off = np.sqrt((x - line_x) ** 2 + (z - line_z) ** 2)
+    thicker = (PUP_LEG - 1.0) * ease((0.46 - y) / 0.10) * (1.0 - ease((off - 0.055) / 0.03)) * (1.0 - np.clip((0.07 - y) / 0.05, 0.0, 1.0) * 0.6)
+    x = x + (x - line_x) * thicker
+    z = z + (z - line_z) * thicker
+
+    # Body and legs. Below the body a leg simply gets shorter; the body sinks by as much as
+    # the legs lost; a paw keeps its size and goes where the leg above it went.
+    high = ease((y - 0.30) / 0.20)
+    foot = np.clip((0.09 - y) / 0.06, 0.0, 1.0)
+    sole = np.where(x > -0.1, PAWS["front"][0], PAWS["hind"][0])
+    bx = x * PUP_SHORT * (1.0 - foot) + (sole * PUP_SHORT + (x - sole)) * foot
+    by = y * (PUP_LOW + (1.0 - PUP_LOW) * foot) * (1.0 - high) + (y - PUP_SINK) * high
+
+    # The tail: shorter along its length, as thick as it was.
+    xs, ys = [c[0] for c in TAIL_LINE], [c[1] for c in TAIL_LINE]
+    line = np.interp(x, xs[::-1], ys[::-1])
+    behind = (x < TAIL_ROOT[0]) * ease((y - 0.40) / 0.06)
+    bx = bx * (1.0 - behind) + (TAIL_ROOT[0] * PUP_SHORT + (x - TAIL_ROOT[0]) * PUP_TAIL) * behind
+    by = by * (1.0 - behind) + (TAIL_ROOT[1] - PUP_SINK + (line - TAIL_ROOT[1]) * PUP_TAIL + (y - line)) * behind
+
+    # The head: back to the head as described, then out again as the puppy carries it.
+    c, s_ = math.cos(HEAD_TILT) / HEAD_SIZE, math.sin(HEAD_TILT) / HEAD_SIZE
+    hx, hy = x - HEAD_AT[0], y - HEAD_AT[1]
+    dx, dy = HEAD_DRAWN[0] + hx * c + hy * s_, HEAD_DRAWN[1] - hx * s_ + hy * c
+    dx = np.where(dx > STOP, STOP + (dx - STOP) * PUP_MUZZLE, dx) - HEAD_DRAWN[0]
+    dy = dy - HEAD_DRAWN[1]
+    c, s_ = math.cos(PUP_HEAD_TILT) * PUP_HEAD_SIZE, math.sin(PUP_HEAD_TILT) * PUP_HEAD_SIZE
+    head_x, head_y, head_z = PUP_HEAD_AT[0] + dx * c - dy * s_, PUP_HEAD_AT[1] + dx * s_ + dy * c, z * PUP_HEAD_SIZE / HEAD_SIZE
+
+    # Along the neck the one turns into the other.
+    foot_of_neck = np.array(NECK_LINE[0])
+    up_neck = np.array(NECK_LINE[1]) - foot_of_neck
+    along = ((x - foot_of_neck[0]) * up_neck[0] + (y - foot_of_neck[1]) * up_neck[1]) / up_neck.dot(up_neck)
+    w = ease((along - 0.15) / 0.80)
+    return np.stack([bx * (1.0 - w) + head_x * w, by * (1.0 - w) + head_y * w, z * (1.0 - w) + head_z * w], axis=1)
+
+
+FRONT_LEG_LINE = ([0.058, 0.125, 0.220, 0.330, 0.395, 0.470, 0.560], [0.185, 0.179, 0.175, 0.172, 0.178, 0.205, 0.216])     # heights, and how far along the body
+HIND_LEG_LINE = ([0.056, 0.120, 0.186, 0.218, 0.292, 0.362, 0.420, 0.500, 0.600], [-0.412, -0.420, -0.426, -0.385, -0.300, -0.242, -0.256, -0.285, -0.300])
+TAIL_LINE = [(-0.425, 0.632), (-0.500, 0.630), (-0.600, 0.600), (-0.665, 0.580), (-0.730, 0.555), (-0.800, 0.528), (-0.865, 0.505), (-1.2, 0.38)]
+NECK_LINE = [(0.190, 0.555), (HEAD_AT[0] + 0.018, HEAD_AT[1] - 0.008)]     # from the shoulders to the back of the skull
+PAWS = {"front": (0.198, 0.0), "hind": (-0.392, 0.0)}   # where each sole meets the ground (x, y)
+
 # ---- skeleton: name, parent, where the joint is -------------------------------------------
-BONES = [
-    ("hips", None, (-0.30, 0.60, 0.0)),
-    ("chest", "hips", (0.06, 0.60, 0.0)),
-    ("neck", "chest", (0.25, 0.64, 0.0)),
-    ("head", "neck", HEAD_AT + (0.0,)),
-    ("muzzle", "head", tilt((0.545, 0.845, 0.0))),
-    ("jaw", "head", tilt((0.475, 0.800, 0.0))),
-    ("ear_l", "head", tilt((0.452, 0.920, 0.068))),
-    ("ear_r", "head", tilt((0.452, 0.920, -0.068))),
-    ("tail1", "hips", (-0.47, 0.636, 0.0)),
-    ("tail2", "tail1", (-0.60, 0.600, 0.0)),
-    ("tail3", "tail2", (-0.73, 0.555, 0.0)),
-    ("front_l_upper", "chest", (0.230, 0.510, 0.088)),
-    ("front_l_lower", "front_l_upper", (0.172, 0.372, 0.088)),
-    ("front_r_upper", "chest", (0.230, 0.510, -0.088)),
-    ("front_r_lower", "front_r_upper", (0.172, 0.372, -0.088)),
-    ("hind_l_upper", "hips", (-0.310, 0.550, 0.092)),
-    ("hind_l_lower", "hind_l_upper", (-0.238, 0.362, 0.092)),
-    ("hind_r_upper", "hips", (-0.310, 0.550, -0.092)),
-    ("hind_r_lower", "hind_r_upper", (-0.238, 0.362, -0.092)),
+def bones(young=False):
+    def head(x, y, z=0.0):
+        return tilt((x, y, z))
+
+    found = [
+        ("hips", None, (-0.30, 0.60, 0.0)),
+        ("chest", "hips", (0.06, 0.60, 0.0)),
+        ("neck", "chest", (0.25, 0.64, 0.0)),
+        ("head", "neck", HEAD_AT + (0.0,)),
+        ("muzzle", "head", head(0.545, 0.845)),
+        ("jaw", "head", head(0.475, 0.800)),
+        ("ear_l", "head", head(0.452, 0.920, 0.068)),
+        ("ear_r", "head", head(0.452, 0.920, -0.068)),
+        ("tail1", "hips", (-0.47, 0.636, 0.0)),
+        ("tail2", "tail1", (-0.60, 0.600, 0.0)),
+        ("tail3", "tail2", (-0.73, 0.555, 0.0)),
+    ]
+    for front, name, parent, x, y, z in (
+            (True, "upper", "chest", 0.230, 0.510, 0.088), (True, "lower", "upper", 0.172, 0.372, 0.088),
+            (False, "upper", "hips", -0.310, 0.550, 0.092), (False, "lower", "upper", -0.238, 0.362, 0.092)):
+        for side, sign in (("l", 1), ("r", -1)):
+            leg = ("front_" if front else "hind_") + side
+            found.append((f"{leg}_{name}", parent if name == "upper" else f"{leg}_{parent}", (x, y, z * sign)))
     # the toes of each paw, which stay flat on the ground whatever the leg above them does,
     # and the long foot between a hind leg's hock and its toes
-    ("front_l_paw", "front_l_lower", (0.178, 0.048, 0.088)),
-    ("front_r_paw", "front_r_lower", (0.178, 0.048, -0.088)),
-    ("hind_l_foot", "hind_l_lower", (-0.426, 0.186, 0.092)),
-    ("hind_r_foot", "hind_r_lower", (-0.426, 0.186, -0.092)),
-    ("hind_l_paw", "hind_l_foot", (-0.416, 0.048, 0.092)),
-    ("hind_r_paw", "hind_r_foot", (-0.416, 0.048, -0.092)),
-]
+    for side, sign in (("l", 1), ("r", -1)):
+        found.append((f"front_{side}_paw", f"front_{side}_lower", (0.178, 0.048, 0.088 * sign)))
+    for side, sign in (("l", 1), ("r", -1)):
+        found.append((f"hind_{side}_foot", f"hind_{side}_lower", (-0.426, 0.186, 0.092 * sign)))
+    for side, sign in (("l", 1), ("r", -1)):
+        found.append((f"hind_{side}_paw", f"hind_{side}_foot", (-0.416, 0.048, 0.092 * sign)))
+    if young:
+        found = [(name, parent, tuple(as_puppy(at)[0])) for name, parent, at in found]
+    return found
+
+
+BONES = bones()
 BONE_INDEX = {name: i for i, (name, _, _) in enumerate(BONES)}
-PAWS = {"front": (0.198, 0.0), "hind": (-0.392, 0.0)}   # where each sole meets the ground (x, y)
 
 
 def longer(length):
@@ -264,15 +348,40 @@ NOSE = {"at": (0.690, 0.846, 0.0), "radii": (0.019, 0.021, 0.026), "nostril": ((
 EYES = {"from": (0.500, 0.872, 0.022), "towards": (0.95, 0.04, 0.30), "radius": 0.0150, "opening": (0.0145, 0.0092, 0.020)}
 
 
+def young(part):
+    """The same part on the puppy. Its shape comes from as_puppy(); what is said here is his
+    coat, which is an even fluff: no feathering behind the legs, no plume, no ruff."""
+    name = part["name"]
+    cuts = [dict(c) for c in part["cuts"]]
+    for c in cuts:
+        y = c["at"][1]
+        if name == "trunk":
+            c["coat"] = PUP_FLUFF
+        elif name == "neck":
+            c["coat"] = (0.034, 0.040, 0.044)
+        elif name == "tail":
+            c["coat"] = (0.034, 0.038, 0.042)
+        elif name.startswith(("front_paw", "hind_paw")):
+            pass
+        elif name.startswith(("front_", "hind_")):
+            c["coat"] = PUP_FLUFF if y > 0.45 else (0.032, 0.028, 0.024) if y > 0.10 else (0.016, 0.014, 0.012)
+        elif name.startswith("ear"):
+            c["coat"] = tuple(min(v, 0.026) for v in c["coat"])
+    return dict(part, cuts=cuts)
+
+
 # ---- turning the cross-sections into meshes ------------------------------------------------
 def catmull(p0, p1, p2, p3, t):
     return 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t)
 
 
-def loft(part, index):
-    """The mesh of one part, with what is known about each of its points."""
+def loft(part, index, steps=None):
+    """The mesh of one part, with what is known about each of its points. `steps` (how
+    finely each stretch between two cross-sections is sampled) is given when the puppy's
+    version is built, so that it has the adult's points one for one."""
     cuts = part["cuts"]
     tilted = part.get("tilt", False)
+    taken = []
     rows = []
     for c in cuts:
         at = tilt(c["at"]) if tilted else c["at"]
@@ -281,17 +390,17 @@ def loft(part, index):
     rows = np.array(rows, dtype=float)
     face = np.array(part["face"], dtype=float)
     if tilted:
-        face[:2] = np.array(tilt((HEAD_DRAWN[0] + face[0], HEAD_DRAWN[1] + face[1]))) - np.array(HEAD_AT)
-    face[2] = part["face"][2]
+        face[:2] = (face[0] * math.cos(HEAD_TILT) - face[1] * math.sin(HEAD_TILT), face[0] * math.sin(HEAD_TILT) + face[1] * math.cos(HEAD_TILT))
     face /= np.linalg.norm(face)
 
     # Sample the path finely, section values following smoothly, bone weights linearly.
     samples, weights = [], []
     for i in range(len(cuts) - 1):
         a, b = rows[max(i - 1, 0)], rows[min(i + 2, len(cuts) - 1)]
-        steps = max(2, int(math.ceil(np.linalg.norm(rows[i + 1, :3] - rows[i, :3]) / SPACING)))
-        for k in range(steps + (1 if i == len(cuts) - 2 else 0)):
-            t = k / steps
+        count = steps[i] if steps else max(2, int(math.ceil(np.linalg.norm(rows[i + 1, :3] - rows[i, :3]) / SPACING)))
+        taken.append(count)
+        for k in range(count + (1 if i == len(cuts) - 2 else 0)):
+            t = k / count
             samples.append(catmull(a, rows[i], rows[i + 1], b, t))
             w = np.zeros(len(BONES))
             for name, amount in cuts[i]["bones"].items():
@@ -360,7 +469,7 @@ def loft(part, index):
         info.append(dict(info[start]))
         for k in range(RING):
             faces.append((pole, start + (k + 1) % RING, start + k) if flip else (pole, start + k, start + (k + 1) % RING))
-    return [tuple(v) for v in verts], faces, info
+    return [tuple(v) for v in verts], faces, info, taken
 
 
 def new_object(name, verts, faces):
@@ -451,7 +560,8 @@ def describe(obj, lofts, body_tree=None, other_tree=None, bare=None):
     degree = np.maximum(degree, 1)
 
     trees = []
-    for part, verts, info in lofts:
+    for entry in lofts:
+        verts = entry[1]
         kd = KDTree(len(verts))
         for i, v in enumerate(verts):
             kd.insert(v, i)
@@ -462,6 +572,7 @@ def describe(obj, lofts, body_tree=None, other_tree=None, bare=None):
     coat, tone, flow, grain = np.zeros(count), np.zeros((count, 3)), np.zeros((count, 3)), np.zeros((count, 4))
     owners = np.zeros(count, dtype=int)
     nearest = np.zeros((count, len(lofts)), dtype=int)     # for every point, the closest point of every part
+    young_coat = np.zeros(count)
 
     def grain_from(i, part):
         """Where point i is along and around `part`, and how squarely it faces down that part's length."""
@@ -477,6 +588,7 @@ def describe(obj, lofts, body_tree=None, other_tree=None, bare=None):
             owners[i] = 0      # close to the trunk, the pattern of the coat follows the trunk
         mine = lofts[owner][2][found[owner][1]]
         coat[i], tone[i], flow[i], grain[i] = mine["coat"], mine["tone"], lofts[owners[i]][2][found[owners[i]][1]]["flow"], grain_from(i, owners[i])
+        young_coat[i] = lofts[owner][4][found[owner][1]]["coat"]
         if lofts[owner][0].get("own"):
             weights[i] = mine["weights"]
             continue
@@ -497,6 +609,14 @@ def describe(obj, lofts, body_tree=None, other_tree=None, bare=None):
                 skin[i], tone[i], shine[i] = hit[0], np.array(tone[i]) * (1 - hit[0]) + np.array(hit[1]) * hit[0], hit[2]
         skin = smoothed(skin, edges, degree, 1)
     coat *= np.clip(1.0 - skin * 1.6, 0.0, 1.0)
+    young_coat = smoothed(young_coat, edges, degree, 4) * np.clip(1.0 - skin * 1.6, 0.0, 1.0)
+    younger = as_puppy(where)
+    younger[:, 1] = np.maximum(younger[:, 1], 0.003)
+    mesh.vertices.foreach_set("co", younger.ravel())       # let Blender work out which way the puppy's surface faces
+    mesh.update()
+    young_normal = np.array([v.normal[:] for v in mesh.vertices])
+    mesh.vertices.foreach_set("co", where.ravel())
+    mesh.update()
 
     # The coat lies along the part, towards its far end, and hangs a little.
     flow = flow + np.array([0.0, -0.35, 0.0])
@@ -559,7 +679,8 @@ def describe(obj, lofts, body_tree=None, other_tree=None, bare=None):
         for k in range(1, len(corners) - 1):
             triangles += [corners[0], corners[k + 1], corners[k]]    # the renderer's front faces wind the other way
     result = {"where": where, "normal": normal, "flow": flow, "grain": grain, "coat": coat, "tone": tone, "light": light,
-              "skin": skin, "shine": shine, "bone_ids": order, "bone_weights": top}
+              "skin": skin, "shine": shine, "bone_ids": order, "bone_weights": top,
+              "young": younger, "young_normal": young_normal, "young_coat": young_coat}
     if copied:
         source = np.array([v for v, _ in copied])
         result = {key: np.concatenate([value, value[source]]) for key, value in result.items()}
@@ -574,8 +695,9 @@ def build(preview):
 
     lofts, melted, apart = [], [], []
     for index, part in enumerate(PARTS):
-        verts, faces, info = loft(part, index)
-        lofts.append((part, verts, info))
+        verts, faces, info, steps = loft(part, index)
+        younger, _, young_info, _ = loft(young(part), index, steps)
+        lofts.append((part, verts, info, younger, young_info, faces))
         (apart if part.get("apart") else melted).append(new_object(part["name"], verts, faces))
     for k, (centre, radii, on_head) in enumerate(LUMPS):
         melted.append(ellipsoid(f"lump{k}", tilt(centre) if on_head else centre, tuple(r * HEAD_SIZE for r in radii) if on_head else radii))
@@ -656,18 +778,19 @@ def build(preview):
             return (1.0, GUMS if normal.y > 0.3 else RIM, 0.4)         # the floor of the mouth and the lower lips
         return None
 
-    solid = [(p, v, i) for p, v, i in lofts if not p.get("apart")]
+    solid = [entry for entry in lofts if not entry[0].get("apart")]
     pieces = [
         describe(body, solid, body_tree, None, body_skin),
-        describe(jaw_object, [(p, v, i) for p, v, i in lofts if p.get("apart")], jaw_tree, body_tree, jaw_skin),
+        describe(jaw_object, [entry for entry in lofts if entry[0].get("apart")], jaw_tree, body_tree, jaw_skin),
         describe(nose, solid, nose_tree, body_tree, lambda point, normal: (1.0, LEATHER, 1.0)),
     ]
     pieces[2]["bone_ids"][:] = [BONE_INDEX["muzzle"], 0, 0, 0]
     pieces[2]["bone_weights"][:] = [1.0, 0.0, 0.0, 0.0]
     pieces[2]["coat"][:] = 0.0
+    pieces[2]["young_coat"][:] = 0.0
     print(f"described: {time.time() - started:.0f} s")
 
-    out = {key: [] for key in ("vertices", "normals", "flow", "grain", "coat", "colors", "skin", "bone_ids", "bone_weights", "triangles")}
+    out = {key: [] for key in ("vertices", "normals", "flow", "grain", "coat", "colors", "skin", "bone_ids", "bone_weights", "triangles", "young_vertices", "young_normals", "young_coat")}
     offset = 0
     for piece in pieces:
         n = len(piece["where"])
@@ -681,11 +804,14 @@ def build(preview):
         out["bone_ids"] += piece["bone_ids"].ravel().tolist()
         out["bone_weights"] += np.round(piece["bone_weights"], 4).ravel().tolist()
         out["triangles"] += [t + offset for t in piece["triangles"]]
+        out["young_vertices"] += np.round(piece["young"], 4).ravel().tolist()
+        out["young_normals"] += np.round(piece["young_normal"], 3).ravel().tolist()
+        out["young_coat"] += np.round(piece["young_coat"], 4).tolist()
         offset += n
     # The coat is drawn as layers lifted off the skin. Where it is short, few layers are
     # needed: put the points and triangles under the longest coat first, so that each
     # layer is simply the first so-many of both.
-    coat = np.array(out["coat"])
+    coat = np.maximum(np.array(out["coat"]), np.array(out["young_coat"]))       # enough layers for either age
     shells = np.where(coat < 0.0008, 0, np.clip(np.ceil(coat / LAYER_GAP), 2, MAX_LAYERS)).astype(int)
     triangles = np.array(out["triangles"]).reshape(-1, 3)
     deepest = shells[triangles].max(axis=1)
@@ -695,19 +821,29 @@ def build(preview):
     moved = np.empty(offset, dtype=int)
     moved[points] = np.arange(offset)
     out["triangles"] = moved[triangles[np.argsort(-deepest, kind="stable")]].ravel().tolist()
-    for key, width in (("vertices", 3), ("normals", 3), ("flow", 3), ("grain", 4), ("coat", 1), ("colors", 4), ("skin", 2), ("bone_ids", 4), ("bone_weights", 4)):
+    for key, width in (("vertices", 3), ("normals", 3), ("flow", 3), ("grain", 4), ("coat", 1), ("colors", 4), ("skin", 2), ("bone_ids", 4), ("bone_weights", 4), ("young_vertices", 3), ("young_normals", 3), ("young_coat", 1)):
         out[key] = np.array(out[key]).reshape(offset, width)[points].ravel().tolist()
     out["shells"] = shells[points].tolist()
     out["layers"] = [[int((reach >= k).sum()), int((deepest >= k).sum())] for k in range(1, MAX_LAYERS + 1)]
     print(f"coat layers: {sum(t for _, t in out['layers'])} triangles in all")
 
     head_joint = Vector(HEAD_AT + (0.0,))
+    young_bones = bones(young=True)
+    young_head, young_jaw = Vector(PUP_HEAD_AT + (0.0,)), Vector(young_bones[BONE_INDEX["jaw"]][2])
+    puppy = {
+        "bones": [[round(c, 4) for c in at] for _, _, at in young_bones],
+        "paws": {key: [round(float(as_puppy((x, y, 0.0))[0][0]), 4), y] for key, (x, y) in PAWS.items()},
+        "eyes": [{"at": [round(c, 4) for c in (Vector(as_puppy(tuple(e["at"]))[0]) - young_head)], "radius": round(EYES["radius"] * PUP_HEAD_SIZE, 4)} for e in eyes],
+        "tongue": {"at": [round(c, 4) for c in (Vector(as_puppy(tilt((0.595, 0.805, 0.0)))[0]) - young_jaw)], "half": [0.046, 0.0058, 0.020]},
+        "vertices": out.pop("young_vertices"), "normals": out.pop("young_normals"), "coat": out.pop("young_coat"),
+    }
     dog = {
-        "about": "Generated by tools/build_dog.py in Blender. Colours are as seen on screen (sRGB); the fourth colour value is how much light reaches the point.",
+        "about": "Generated by tools/build_dog.py in Blender. Colours are as seen on screen (sRGB); the fourth colour value is how much light reaches the point. 'puppy' holds the same points, bones and coat at eight weeks.",
         "bones": [{"name": name, "parent": parent, "at": [round(c, 4) for c in at]} for name, parent, at in BONES],
         "paws": PAWS,
         "eyes": [{"at": [round(c, 4) for c in (e["at"] - head_joint)], "gaze": [round(c, 3) for c in e["gaze"]], "radius": round(EYES["radius"] * HEAD_SIZE, 4)} for e in eyes],
         "tongue": {"at": [round(c, 4) for c in (Vector(tilt((0.595, 0.805, 0.0))) - Vector(BONES[BONE_INDEX["jaw"]][2]))], "half": [0.066, 0.0065, 0.023]},
+        "puppy": puppy,
         **out,
     }
     os.makedirs(os.path.dirname(OUT), exist_ok=True)

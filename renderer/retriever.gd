@@ -4,6 +4,12 @@ extends "res://dog.gd"
 ## over the body, a mouth that opens, eyes set in sockets, and legs that bend and
 ## keep their paws on the ground.
 ##
+## The model holds the body twice over: as an adult and as an eight-week-old
+## puppy, with the same points, bones and coat in both. Growing up moves every
+## one of them from the one to the other, so a puppy is a puppy (short round
+## body, short thick legs, big head, short muzzle, stub of a tail, even fluff)
+## and not a small adult.
+##
 ## It reuses everything the stand-in knows about behaviour: the poses, the
 ## motion layers, mood and gaze all still drive a small tree of invisible
 ## pivots. Each frame those pivots are copied onto the skeleton, and the legs
@@ -15,15 +21,14 @@ const SKIN := preload("res://skin.gdshader")
 const STEP_HEIGHT := 0.06          # how high a paw lifts in a stride, in units
 
 static var _model := {}            # the parsed model file, shared by every instance
-static var _mesh: ArrayMesh        # the body, then the body again once per layer of coat
 
 var _skeleton: Skeleton3D
 var _coat: ShaderMaterial
 var _skin: ShaderMaterial
 var _bone := {}                    # bone name -> index
 var _joint := {}                   # bone name -> where it is at rest, in the dog's space
-var _leg_scale := 1.0
-var _muzzle_scale := Vector3.ONE
+var _leg_scale := 1.0              # kept at 1: the puppy's short legs come from his own bones now
+var _sole := {}                    # "front"/"hind" -> how far along the body each sole meets the ground
 var _lids: Array[Node3D] = []      # per eye: the upper lid, the lower lid, the glint
 var _wag_trail: Array[float] = []  # recent tail swings, so the tip follows the root late
 
@@ -43,20 +48,18 @@ func _build() -> void:
 	_pupils.clear()
 	if _model.is_empty():
 		_model = JSON.parse_string(FileAccess.get_file_as_string(MODEL))
-		_mesh = _make_mesh()
+	# How much of the puppy is left in him: every bone and every point of the body is
+	# this far from where the adult has it towards where the eight-week-old has it.
+	var g := _growth
+	var young := 1.0 - g
+	var puppy: Dictionary = _model["puppy"]
 	for i in _model["bones"].size():
 		var bone: Dictionary = _model["bones"][i]
 		_bone[bone["name"]] = i
-		_joint[bone["name"]] = Vector3(bone["at"][0], bone["at"][1], bone["at"][2])
-
-	# How a puppy differs from the adult he will be: shorter legs and muzzle, a bigger head, a fluffier, paler coat.
-	var g := _growth
-	_leg_scale = lerpf(0.72, 1.0, g)
-	var muzzle := lerpf(0.70, 1.0, g)
-	var jaw := lerpf(0.82, 1.0, g)        # shortened less, so the chin stays under the nose
-	var head := lerpf(1.30, 1.0, g)
-	var legs_span: float = _joint["hind_l_upper"].y
-	_hip_height = _joint["hips"].y - (1.0 - _leg_scale) * legs_span
+		_joint[bone["name"]] = _point(bone["at"]).lerp(_point(puppy["bones"][i]), young)
+	for which in ["front", "hind"]:
+		_sole[which] = lerpf(_model["paws"][which][0], puppy["paws"][which][0], young)
+	_hip_height = _joint["hips"].y
 
 	_skeleton = Skeleton3D.new()
 	add_child(_skeleton)
@@ -68,9 +71,8 @@ func _build() -> void:
 			origin -= _joint[bone["parent"]]
 		_skeleton.set_bone_rest(index, Transform3D(Basis.IDENTITY, origin))
 	_skeleton.reset_bone_poses()   # every bone starts where it rests; only what is animated is set each frame
-	_skeleton.set_bone_pose_scale(_bone["tail1"], Vector3.ONE * lerpf(0.62, 1.0, g))   # a puppy's tail is short
 	var body := MeshInstance3D.new()
-	body.mesh = _mesh
+	body.mesh = _make_mesh(young)
 	_skeleton.add_child(body)
 	body.skin = _skeleton.create_skin_from_rest_transforms()
 	body.skeleton = body.get_path_to(_skeleton)
@@ -80,7 +82,7 @@ func _build() -> void:
 	_coat.shader = COAT
 	_coat.render_priority = 1      # after the shadow on the ground, so the fringe of the coat is not shaded twice
 	for material in [_skin, _coat]:
-		material.set_shader_parameter("coat_scale", lerpf(1.35, 1.0, g))
+		material.set_shader_parameter("coat_scale", 1.0)
 		material.set_shader_parameter("pale", 1.0 - g)
 	body.set_surface_override_material(0, _skin)
 	body.set_surface_override_material(1, _coat)
@@ -93,22 +95,20 @@ func _build() -> void:
 	_chest = _pivot(_body, _between("hips", "chest"))
 	_neck = _pivot(_chest, _between("chest", "neck"))
 	_head = _pivot(_neck, _between("neck", "head"))
-	_head.scale = Vector3.ONE * head
 	_jaw = _pivot(_head, _between("head", "jaw"))
-	_jaw.scale = Vector3(jaw, 1.0, 1.0)
-	_muzzle_scale = Vector3(muzzle, 1.0, 1.0)
-	var tongue: Dictionary = _model["tongue"]
-	_tongue = _smooth(_jaw, Vector3(tongue["at"][0], tongue["at"][1], 0.0), tongue["half"][2], Color(0.80, 0.36, 0.40))
-	_tongue.scale = Vector3(tongue["half"][0], tongue["half"][1], tongue["half"][2]) / float(tongue["half"][2])
-	_tongue.set_meta("rest", tongue["at"][0])
+	var tongue_at := _point(_model["tongue"]["at"]).lerp(_point(puppy["tongue"]["at"]), young)
+	var tongue_half := _point(_model["tongue"]["half"]).lerp(_point(puppy["tongue"]["half"]), young)
+	_tongue = _smooth(_jaw, Vector3(tongue_at.x, tongue_at.y, 0.0), tongue_half.z, Color(0.80, 0.36, 0.40))
+	_tongue.scale = tongue_half / tongue_half.z
+	_tongue.set_meta("rest", tongue_at.x)
 	for i in 2:
 		# Each eye sits in its socket and is turned the way the socket faces, so a
 		# pupil that looks "straight ahead" is in the middle of its own opening.
 		var seat: Dictionary = _model["eyes"][i]
-		var eye := _pivot(_head, Vector3(seat["at"][0], seat["at"][1], seat["at"][2]))
+		var eye := _pivot(_head, _point(seat["at"]).lerp(_point(puppy["eyes"][i]["at"]), young))
 		var facing := Vector3(seat["gaze"][0], seat["gaze"][1], seat["gaze"][2]).normalized()
 		eye.quaternion = Quaternion(Vector3.RIGHT, facing)
-		var radius: float = seat["radius"]
+		var radius: float = lerpf(seat["radius"], puppy["eyes"][i]["radius"], young)
 		_smooth(eye, Vector3.ZERO, radius, Color(0.27, 0.14, 0.055))
 		_pupils.append(_smooth(eye, Vector3.RIGHT * radius * 0.6, radius * 0.46, Color(0.012, 0.01, 0.01)))
 		var glint := _smooth(eye, Vector3(0.62, 0.62, -0.3 if i == 0 else 0.5).normalized() * radius * 0.92, radius * 0.17, Color.WHITE)
@@ -129,6 +129,10 @@ func _build() -> void:
 		_legs.append(_pivot(_body, _between("hips", name)))
 
 
+static func _point(numbers: Array) -> Vector3:
+	return Vector3(numbers[0], numbers[1], numbers[2])
+
+
 func _between(parent: String, child: String) -> Vector3:
 	return _joint[child] - _joint[parent]
 
@@ -140,7 +144,6 @@ func advance(delta: float, travelled: float) -> void:
 	_copy("neck", _neck)
 	_copy("head", _head)
 	_copy("jaw", _jaw)
-	_skeleton.set_bone_pose_scale(_bone["muzzle"], _muzzle_scale)
 	_copy("ear_l", _ears[0])
 	_copy("ear_r", _ears[1])
 
@@ -230,7 +233,7 @@ func _place_leg(upper: String, lower: String, pivot: Node3D, front: bool, stride
 	var middle: Vector3 = _joint[lower]
 	var toes: Vector3 = _joint[toes_bone]
 	var ankle: Vector3 = toes if front else _joint[foot_bone]
-	var sole := Vector3(_model["paws"]["front" if front else "hind"][0], 0.0, top.z)
+	var sole := Vector3(_sole["front" if front else "hind"], 0.0, top.z)
 	var thigh := (middle - top) * _leg_scale
 	var shin := (ankle - middle) * _leg_scale
 	var foot := (toes - ankle) * _leg_scale       # nothing for a foreleg: its pastern is part of the forearm
@@ -264,7 +267,7 @@ func _place_leg(upper: String, lower: String, pivot: Node3D, front: bool, stride
 		var paw := Vector2(joint.x + reach.x, maxf(joint.y + reach.y, 0.012))
 		var stepping := clampf(_gait, 0.0, 1.0)
 		if stepping > 0.02:
-			paw.y = lerpf(paw.y, STEP_HEIGHT * _leg_scale * minf(_gait, 1.6) * maxf(cos(stride), 0.0), stepping)
+			paw.y = lerpf(paw.y, STEP_HEIGHT * (_hip_height / 0.6) * minf(_gait, 1.6) * maxf(cos(stride), 0.0), stepping)
 		var target := paw - Vector2(tread.x, tread.y)      # where the toes begin
 		if not front:
 			# Standing, the foot is upright under the hock. As the hips come down there is no
@@ -346,10 +349,15 @@ func _compose(t: float, done: float) -> Array:
 ## further off the skin by the shader. The model lists its points and triangles
 ## with the longest coat first, so every layer is just the first so-many of both:
 ## a short coat gets two or three layers, the feathering up to thirty.
-static func _make_mesh() -> ArrayMesh:
+static func _make_mesh(young: float) -> ArrayMesh:
 	var count: int = _model["vertices"].size() / 3
 	var at: Array = _model["vertices"]
 	var out: Array = _model["normals"]
+	var young_at: Array = _model["puppy"]["vertices"]
+	var young_out: Array = _model["puppy"]["normals"]
+	var young_lengths: Array = _model["puppy"]["coat"]
+	var coat := PackedFloat32Array()
+	coat.resize(count)
 	var lies: Array = _model["flow"]
 	var along: Array = _model["grain"]
 	var tones: Array = _model["colors"]
@@ -374,8 +382,9 @@ static func _make_mesh() -> ArrayMesh:
 	skin.resize(count)
 	marks.resize(count)
 	for i in count:
-		vertices[i] = Vector3(at[i * 3], at[i * 3 + 1], at[i * 3 + 2])
-		normals[i] = Vector3(out[i * 3], out[i * 3 + 1], out[i * 3 + 2])
+		vertices[i] = Vector3(at[i * 3], at[i * 3 + 1], at[i * 3 + 2]).lerp(Vector3(young_at[i * 3], young_at[i * 3 + 1], young_at[i * 3 + 2]), young)
+		normals[i] = Vector3(out[i * 3], out[i * 3 + 1], out[i * 3 + 2]).lerp(Vector3(young_out[i * 3], young_out[i * 3 + 1], young_out[i * 3 + 2]), young).normalized()
+		coat[i] = lerpf(lengths[i], young_lengths[i], young)
 		tangents[i * 4] = lies[i * 3]
 		tangents[i * 4 + 1] = lies[i * 3 + 1]
 		tangents[i * 4 + 2] = lies[i * 3 + 2]
@@ -386,7 +395,7 @@ static func _make_mesh() -> ArrayMesh:
 		grain[i * 4 + 3] = along[i * 4 + 3]
 		colors[i] = Color(tones[i * 4], tones[i * 4 + 1], tones[i * 4 + 2], tones[i * 4 + 3])
 		skin[i] = Vector2(skins[i * 2], skins[i * 2 + 1])
-		marks[i] = Vector2(0.0, lengths[i])
+		marks[i] = Vector2(0.0, coat[i])
 
 	var mesh := ArrayMesh.new()
 	var format := Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT
@@ -421,7 +430,7 @@ static func _make_mesh() -> ArrayMesh:
 		mark.resize(points)
 		for i in points:
 			# A point whose coat is already complete stays at its tips.
-			mark[i] = Vector2(minf((layer + 1.0) / maxf(deep[i], 1.0), 1.0), lengths[i])
+			mark[i] = Vector2(minf((layer + 1.0) / maxf(deep[i], 1.0), 1.0), coat[i])
 		all_marks.append_array(mark)
 		var part := triangles.slice(0, corners)
 		for i in corners:
