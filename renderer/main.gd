@@ -15,7 +15,7 @@ const RECONNECT_SECONDS := 1.0
 const ORPHAN_SECONDS := 10.0       # a supervised renderer exits if its daemon stays gone this long
 const QUICK := ["walk", "zoomies", "tail_chase", "shake", "scratch", "greet", "invite", "play_bow", "roll", "eat", "drink"]
 const SLOW := {"lie": 20, "sleep": 10}
-const Dog := preload("res://dog.gd")   # swap this file to change the dog model
+const Dog := preload("res://retriever.gd")   # the skinned model; "res://dog.gd" is the older stand-in
 
 var _dog := Dog.new()
 var _camera := Camera3D.new()
@@ -46,6 +46,8 @@ var _grab_offset := 0.0
 
 var _selftest_path := ""
 var _selftest_at := 1.5
+var _drawn_at_start := 0
+var _selftest_speed := 0.0               # heights per second to pretend he is moving at
 var _clock := 0.0
 
 
@@ -125,6 +127,8 @@ func _ready() -> void:
 	if _selftest_path != "":
 		RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 		_selftest_at = float(option.call("--at", "1.5"))
+		_drawn_at_start = Engine.get_frames_drawn()
+		_selftest_speed = float(option.call("--speed", "0"))
 		var growth := float(option.call("--growth", "1.0"))
 		_apply_state({
 			"activity": option.call("--activity", "stand"), "variant": int(option.call("--variant", "0")), "intensity": 0.7,
@@ -290,7 +294,7 @@ func _layout() -> void:
 
 
 func _process(delta: float) -> void:
-	_clock += delta
+	_clock += minf(delta, 0.05)   # a slow first frame (loading the model) must not count as time passed
 	if _selftest_path == "":
 		_pump_socket(delta)
 	if _state.is_empty():
@@ -316,7 +320,8 @@ func _process(delta: float) -> void:
 	# Without a camera, "you" are in front of the middle of the monitor.
 	var centre_x := float(position.x) + window.size.x * 0.5
 	_dog.set_viewer_offset(clampf((_usable.get_center().x - centre_x) / maxf(_usable.size.x, 1.0), -0.5, 0.5))
-	_dog.advance(delta, (_shown_x - previous) / (_pixels_per_unit * _layout_key.x))
+	var travelled := (_shown_x - previous) / (_pixels_per_unit * _layout_key.x)
+	_dog.advance(delta, travelled if _selftest_speed == 0.0 else _selftest_speed * minf(delta, 0.05))
 
 	# Draw only as often as what he is doing needs.
 	var activity: String = _state["activity"]
@@ -325,7 +330,8 @@ func _process(delta: float) -> void:
 	# When the machine is working hard he takes less of it.
 	Engine.max_fps = fps if float(_state.get("load", 0.0)) < 0.8 else maxi(fps * 3 / 5, 8)
 
-	if _selftest_path != "" and _clock >= _selftest_at:
+	# Only frames that were really drawn count: a window that is slow to appear draws nothing at first.
+	if _selftest_path != "" and _clock >= _selftest_at and Engine.get_frames_drawn() >= _drawn_at_start + 20:
 		_finish_selftest()
 
 
