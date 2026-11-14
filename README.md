@@ -226,22 +226,42 @@ vocabulary can work out.
 
 ## His body
 
-`tools/make_dog.py` builds the dog from nothing but numbers: a few dozen rounded
-shapes (ribcage, thigh, muzzle, ear flap, tail plume …), each tied to a bone,
-melted into one surface and turned into a mesh. Every vertex knows which bones
-move it, how long the coat is there and how pale or deep its gold is. Run the
-script again after changing a number and the dog changes; nothing is drawn by
-hand, bought, or taken from another model.
+`tools/build_dog.py` builds the dog in Blender from nothing but numbers. Each
+part of him (trunk, neck, skull, jaw, a leg, the tail, an ear) is described the
+way a boat is drawn: a row of cross-sections along a path, measured from
+photographs of real Golden Retrievers standing in profile. Blender melts the
+parts into one surface, cuts the eye sockets and nostrils, and thins the mesh
+where it is flat. The script then works out, for every point of that surface,
+which bones move it, how long and what gold the coat is there, which way it
+lies, where there is bare skin instead (nose, lips, eye rims, pads, the inside
+of the mouth) and how much light reaches it. Nothing is drawn by hand, bought,
+or taken from another model:
 
-`renderer/retriever.gd` loads that mesh onto a 19-bone skeleton and draws it in
-16 coat layers. The behaviour code still thinks in poses and motions; each
-frame those are copied onto the bones, and each leg is solved from where its
-paw should be, so paws stay on the ground, lift through a stride, and the legs
-fold when he sits or lies down. Growing up is done on the bones: a puppy has
-shorter legs and muzzle, a bigger head and a fluffier, paler coat.
+    blender -b --factory-startup --python tools/build_dog.py
+    blender -b --factory-startup --python tools/build_dog.py -- --preview /tmp/dog   # also plain pictures of the bare body
 
-It is a game-quality dog, not a photograph of one: the coat is layered shells,
-the face is simple, and there are no toes, lips or eyelids yet.
+It takes a few seconds and writes `renderer/dog/retriever.json`. That file is in
+the repository, so Blender is only needed to change the dog, never to run him.
+
+`renderer/retriever.gd` loads the mesh onto a 25-bone skeleton. The coat is
+drawn by `renderer/coat.gdshaderinc` as up to 26 soft layers lifted off the skin
+(a short coat gets two or three, the feathering all of them). At his size on
+the screen a single hair is thinner than a pixel, so it does not draw strands:
+it draws what the eye sees of a real coat at that size, which is locks lying
+along the body, a sheen that follows them, darker depths and a soft outline.
+
+The behaviour code still thinks in poses and motions; each frame those are
+copied onto the bones, and each leg is solved from where its paw should be.
+Paws stay flat on the ground and lift through a stride; when the hips come down
+a hind leg's long foot lies along the ground, which is what lets him sit and lie
+as a dog does. The jaw is its own piece, so the mouth really opens. Growing up
+is done on the bones: a puppy has shorter legs and muzzle, a bigger head and a
+fluffier, paler coat.
+
+It is a stylised dog, not a photograph of one. He is recognisably a Golden
+Retriever in outline, colour and coat, but there are no eyelids (a blink shows
+the dark socket), no teeth, the puppy is the adult re-proportioned rather than
+a puppy modelled as such, and lying flat on his side the legs are still stiff.
 
 To use a different model, provide the methods the renderer calls (`apply_growth`,
 `begin`, `set_facing`, `set_mood`, `set_viewer_offset`, `look_at_viewer`,
@@ -251,7 +271,7 @@ simplest example.
 
 ## Known gaps
 
-- His body is generated and game-quality rather than photoreal (see "His body").
+- His body is generated and stylised rather than photoreal (see "His body").
 - When the graphics card runs out of memory (other programs had 1.8 of its 2 GB
   during testing), a frame can come out empty; this showed up as occasional blank
   renders in the self-test and has not been made robust yet.

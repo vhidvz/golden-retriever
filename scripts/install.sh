@@ -30,7 +30,7 @@ systemctl --user stop buddy.service 2>/dev/null || true
 install -m 755 "$repo/target/release/buddy" "$bin/buddy"
 rm -rf "$share/renderer"
 mkdir "$share/renderer"
-cp "$repo"/renderer/project.godot "$repo"/renderer/*.tscn "$repo"/renderer/*.gd "$repo"/renderer/*.gdshader "$share/renderer/"
+cp "$repo"/renderer/project.godot "$repo"/renderer/*.tscn "$repo"/renderer/*.gd "$repo"/renderer/*.gdshader "$repo"/renderer/*.gdshaderinc "$share/renderer/"
 cp -r "$repo/renderer/sounds" "$share/renderer/sounds"
 cp -r "$repo/renderer/dog" "$share/renderer/dog"
 rm -rf "$share/perception"

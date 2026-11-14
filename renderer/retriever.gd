@@ -1,7 +1,8 @@
 extends "res://dog.gd"
-## Buddy's real body: one continuous skinned mesh (made by tools/make_dog.py)
-## with a skeleton, a coat whose length and shade vary over the body, and legs
-## that bend and keep their paws on the ground.
+## Buddy's real body: one continuous skinned mesh (made in Blender by
+## tools/build_dog.py) with a skeleton, a coat whose length, colour and lie vary
+## over the body, a mouth that opens, eyes set in sockets, and legs that bend and
+## keep their paws on the ground.
 ##
 ## It reuses everything the stand-in knows about behaviour: the poses, the
 ## motion layers, mood and gaze all still drive a small tree of invisible
@@ -10,17 +11,19 @@ extends "res://dog.gd"
 
 const MODEL := "res://dog/retriever.json"
 const COAT := preload("res://coat.gdshader")
-const COAT_SHELLS := 16
+const SKIN := preload("res://skin.gdshader")
 const STEP_HEIGHT := 0.06          # how high a paw lifts in a stride, in units
 
 static var _model := {}            # the parsed model file, shared by every instance
-static var _layers: ArrayMesh      # the body repeated once per coat layer
+static var _mesh: ArrayMesh        # the body, then the body again once per layer of coat
 
 var _skeleton: Skeleton3D
 var _coat: ShaderMaterial
+var _skin: ShaderMaterial
 var _bone := {}                    # bone name -> index
 var _joint := {}                   # bone name -> where it is at rest, in the dog's space
 var _leg_scale := 1.0
+var _muzzle_scale := Vector3.ONE
 var _wag_trail: Array[float] = []  # recent tail swings, so the tip follows the root late
 
 
@@ -38,7 +41,7 @@ func _build() -> void:
 	_pupils.clear()
 	if _model.is_empty():
 		_model = JSON.parse_string(FileAccess.get_file_as_string(MODEL))
-		_layers = _make_layers()
+		_mesh = _make_mesh()
 	for i in _model["bones"].size():
 		var bone: Dictionary = _model["bones"][i]
 		_bone[bone["name"]] = i
@@ -48,6 +51,7 @@ func _build() -> void:
 	var g := _growth
 	_leg_scale = lerpf(0.72, 1.0, g)
 	var muzzle := lerpf(0.70, 1.0, g)
+	var jaw := lerpf(0.82, 1.0, g)        # shortened less, so the chin stays under the nose
 	var head := lerpf(1.30, 1.0, g)
 	var legs_span: float = _joint["hind_l_upper"].y
 	_hip_height = _joint["hips"].y - (1.0 - _leg_scale) * legs_span
@@ -62,17 +66,22 @@ func _build() -> void:
 			origin -= _joint[bone["parent"]]
 		_skeleton.set_bone_rest(index, Transform3D(Basis.IDENTITY, origin))
 	_skeleton.reset_bone_poses()   # every bone starts where it rests; only what is animated is set each frame
+	_skeleton.set_bone_pose_scale(_bone["tail1"], Vector3.ONE * lerpf(0.62, 1.0, g))   # a puppy's tail is short
 	var body := MeshInstance3D.new()
-	body.mesh = _layers
+	body.mesh = _mesh
 	_skeleton.add_child(body)
 	body.skin = _skeleton.create_skin_from_rest_transforms()
 	body.skeleton = body.get_path_to(_skeleton)
+	_skin = ShaderMaterial.new()
+	_skin.shader = SKIN
 	_coat = ShaderMaterial.new()
 	_coat.shader = COAT
-	_coat.set_shader_parameter("coat_scale", lerpf(1.35, 1.0, g))
-	_coat.set_shader_parameter("root_color", Color(0.74, 0.58, 0.36).lerp(Color(0.62, 0.40, 0.16), g))
-	_coat.set_shader_parameter("tip_color", Color(0.97, 0.87, 0.66).lerp(Color(0.93, 0.74, 0.42), g))
-	body.material_override = _coat
+	_coat.render_priority = 1      # after the shadow on the ground, so the fringe of the coat is not shaded twice
+	for material in [_skin, _coat]:
+		material.set_shader_parameter("coat_scale", lerpf(1.35, 1.0, g))
+		material.set_shader_parameter("pale", 1.0 - g)
+	body.set_surface_override_material(0, _skin)
+	body.set_surface_override_material(1, _coat)
 	body.extra_cull_margin = 0.3
 
 	# The pivots the behaviour code moves. They sit exactly where the bones do.
@@ -84,24 +93,27 @@ func _build() -> void:
 	_head = _pivot(_neck, _between("neck", "head"))
 	_head.scale = Vector3.ONE * head
 	_jaw = _pivot(_head, _between("head", "jaw"))
-	_jaw.scale = Vector3(muzzle, 1.0, 1.0)
-	_tongue = _smooth(_jaw, Vector3(0.075, 0.012, 0.0), 0.022, Color(0.86, 0.42, 0.46))
-	_tongue.scale = Vector3(2.4, 0.3, 1.0)
-	_tongue.set_meta("rest", 0.075)
-	var snout := _pivot(_head, _between("head", "muzzle"))
-	snout.scale = Vector3(muzzle, 1.0, 1.0)
-	var nose := _smooth(snout, Vector3(0.176, -0.002, 0.0), 0.027, Color(0.05, 0.04, 0.035))
-	nose.scale = Vector3(0.85, 0.85, 1.2)
-	for side in [1.0, -1.0]:
-		var eye := _pivot(_head, Vector3(0.108, 0.050, 0.070 * side))
-		var radius := 0.017
-		_smooth(eye, Vector3.ZERO, radius, Color(0.22, 0.12, 0.05))
-		_pupils.append(_smooth(eye, Vector3.RIGHT * radius * 0.62, radius * 0.62, Color(0.01, 0.01, 0.01)))
-		var glint := _smooth(eye, Vector3(0.3, 0.6, 0.45 * side).normalized() * radius * 0.9, radius * 0.2, Color.WHITE)
+	_jaw.scale = Vector3(jaw, 1.0, 1.0)
+	_muzzle_scale = Vector3(muzzle, 1.0, 1.0)
+	var tongue: Dictionary = _model["tongue"]
+	_tongue = _smooth(_jaw, Vector3(tongue["at"][0], tongue["at"][1], 0.0), tongue["half"][2], Color(0.80, 0.36, 0.40))
+	_tongue.scale = Vector3(tongue["half"][0], tongue["half"][1], tongue["half"][2]) / float(tongue["half"][2])
+	_tongue.set_meta("rest", tongue["at"][0])
+	for i in 2:
+		# Each eye sits in its socket and is turned the way the socket faces, so a
+		# pupil that looks "straight ahead" is in the middle of its own opening.
+		var seat: Dictionary = _model["eyes"][i]
+		var eye := _pivot(_head, Vector3(seat["at"][0], seat["at"][1], seat["at"][2]))
+		var facing := Vector3(seat["gaze"][0], seat["gaze"][1], seat["gaze"][2]).normalized()
+		eye.quaternion = Quaternion(Vector3.RIGHT, facing)
+		var radius: float = seat["radius"]
+		_smooth(eye, Vector3.ZERO, radius, Color(0.27, 0.14, 0.055))
+		_pupils.append(_smooth(eye, Vector3.RIGHT * radius * 0.6, radius * 0.46, Color(0.012, 0.01, 0.01)))
+		var glint := _smooth(eye, Vector3(0.62, 0.62, -0.3 if i == 0 else 0.5).normalized() * radius * 0.92, radius * 0.17, Color.WHITE)
 		(glint.material_override as StandardMaterial3D).shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		eye.set_meta("radius", radius)
 		_eyes.append(eye)
-		_ears.append(_pivot(_head, _between("head", "ear_l" if side > 0.0 else "ear_r")))
+		_ears.append(_pivot(_head, _between("head", "ear_l" if i == 0 else "ear_r")))
 	for name in ["front_l_upper", "front_r_upper"]:
 		_legs.append(_pivot(_chest, _between("chest", name)))
 	for name in ["hind_l_upper", "hind_r_upper"]:
@@ -119,7 +131,7 @@ func advance(delta: float, travelled: float) -> void:
 	_copy("neck", _neck)
 	_copy("head", _head)
 	_copy("jaw", _jaw)
-	_skeleton.set_bone_pose_scale(_bone["muzzle"], _jaw.scale)
+	_skeleton.set_bone_pose_scale(_bone["muzzle"], _muzzle_scale)
 	_copy("ear_l", _ears[0])
 	_copy("ear_r", _ears[1])
 
@@ -147,12 +159,21 @@ func _copy(bone: String, pivot: Node3D, swell := Vector3.ONE) -> void:
 
 ## Bends one leg so that its paw is where it should be: swung by the pivot's
 ## angle, lifted during the forward half of a stride, and never below the ground.
+## The toes stay flat on the ground whatever the leg above them does, and a hind
+## leg's long foot (hock to toes) lies down along the ground as the hips sink,
+## which is what lets him sit and lie as a dog does.
 func _place_leg(upper: String, lower: String, pivot: Node3D, front: bool, stride: float) -> void:
-	var shoulder: Vector3 = _joint[upper]
-	var elbow: Vector3 = _joint[lower]
-	var sole := Vector3(_model["paws"]["front" if front else "hind"][0], 0.0, shoulder.z)
-	var thigh := (elbow - shoulder) * _leg_scale
-	var shin := (sole - elbow) * _leg_scale
+	var toes_bone := upper.replace("upper", "paw")
+	var foot_bone := upper.replace("upper", "foot")
+	var top: Vector3 = _joint[upper]
+	var middle: Vector3 = _joint[lower]
+	var toes: Vector3 = _joint[toes_bone]
+	var ankle: Vector3 = toes if front else _joint[foot_bone]
+	var sole := Vector3(_model["paws"]["front" if front else "hind"][0], 0.0, top.z)
+	var thigh := (middle - top) * _leg_scale
+	var shin := (ankle - middle) * _leg_scale
+	var foot := (toes - ankle) * _leg_scale       # nothing for a foreleg: its pastern is part of the forearm
+	var tread := (sole - toes) * _leg_scale       # from where the toes begin to the middle of the sole
 	var parent: Node3D = pivot.get_parent()
 	var in_dog := global_transform.affine_inverse() * parent.global_transform
 	var parent_turn := in_dog.basis.orthonormalized()
@@ -160,34 +181,63 @@ func _place_leg(upper: String, lower: String, pivot: Node3D, front: bool, stride
 
 	var upper_turn: float
 	var lower_turn: float
+	var foot_turn := 0.0      # how far the hind foot is turned from the way it stands
+	var toes_turn := 0.0      # the same for the toes
+	var lean := 0.0
 	if lying_on_side:
 		# Off the ground there is nothing to stand on: swing from the shoulder with a relaxed bend.
 		upper_turn = pivot.rotation.z
 		lower_turn = pivot.rotation.z + (0.5 if front else -0.5)
+		foot_turn = lower_turn + 0.35
+		toes_turn = (lower_turn if front else foot_turn) - 0.35
 	else:
 		var joint := in_dog * pivot.position
-		var lean := atan2(parent_turn.x.y, parent_turn.x.x)
-		var reach := (thigh + shin).rotated(Vector3.BACK, pivot.rotation.z + lean)
+		lean = atan2(parent_turn.x.y, parent_turn.x.x)
+		var reach := (thigh + shin + foot + tread).rotated(Vector3.BACK, pivot.rotation.z + lean)
 		var paw := Vector2(joint.x + reach.x, maxf(joint.y + reach.y, 0.012))
 		var stepping := clampf(_gait, 0.0, 1.0)
 		if stepping > 0.02:
 			paw.y = lerpf(paw.y, STEP_HEIGHT * _leg_scale * minf(_gait, 1.6) * maxf(cos(stride), 0.0), stepping)
+		var target := paw - Vector2(tread.x, tread.y)      # where the toes begin
+		if not front:
+			# Standing, the foot is upright under the hock. As the hips come down there is no
+			# room for that, and it lies along the ground with the hock behind the toes.
+			var standing := -(thigh + shin + foot + tread).y
+			var room := clampf((joint.y - 0.30 * standing) / (0.55 * standing), 0.0, 1.0)
+			var upright := Vector2(-foot.x, -foot.y).angle()
+			room = maxf(room, smoothstep(0.03, 0.14, target.y))      # a paw held up in the air keeps its foot in line
+			var raised := lerp_angle(deg_to_rad(170.0), upright, smoothstep(0.0, 1.0, room))
+			foot_turn = raised - upright
+			target += Vector2.from_angle(raised) * foot.length()      # now the hock
 		# Two bones, one target: the law of cosines gives the bend. Elbows point back, knees forward.
 		var a := thigh.length()
 		var b := shin.length()
-		var to_paw := paw - Vector2(joint.x, joint.y)
-		var distance := clampf(to_paw.length(), absf(a - b) + 0.001, a + b - 0.001)
+		var to_target := target - Vector2(joint.x, joint.y)
+		var distance := clampf(to_target.length(), absf(a - b) + 0.001, a + b - 0.001)
 		var bend := acos(clampf((a * a + distance * distance - b * b) / (2.0 * a * distance), -1.0, 1.0))
-		var thigh_angle := to_paw.angle() + (-bend if front else bend)
+		var thigh_angle := to_target.angle() + (-bend if front else bend)
 		var knee := Vector2(joint.x, joint.y) + Vector2.from_angle(thigh_angle) * a
 		if knee.y < 0.03:
 			# Lying down, the usual bend would push the joint into the ground: fold the other way, onto it.
-			thigh_angle = to_paw.angle() + (bend if front else -bend)
+			thigh_angle = to_target.angle() + (bend if front else -bend)
 			knee = Vector2(joint.x, joint.y) + Vector2.from_angle(thigh_angle) * a
+		if not front and knee.y > joint.y + 0.07 and joint.y < 0.2 and target.y < 0.1:
+			# Lying on his front: the knee rests beside the belly instead of standing up over
+			# his back, and the shin folds back from it along the ground.
+			thigh_angle = asin(clampf(0.07 / a, -1.0, 1.0))
+			knee = Vector2(joint.x, joint.y) + Vector2.from_angle(thigh_angle) * a
+			target = knee + Vector2.from_angle(PI + asin(clampf((knee.y - 0.035) / b, 0.0, 1.0))) * b
 		upper_turn = thigh_angle - Vector2(thigh.x, thigh.y).angle() - lean
-		lower_turn = (paw - knee).angle() - Vector2(shin.x, shin.y).angle() - lean
+		lower_turn = (target - knee).angle() - Vector2(shin.x, shin.y).angle() - lean
+		foot_turn -= lean
+		toes_turn = -lean
 	_skeleton.set_bone_pose_rotation(_bone[upper], Quaternion(Vector3.BACK, upper_turn))
-	_skeleton.set_bone_pose_rotation(_bone[lower], Quaternion(Vector3.BACK, lower_turn - upper_turn))
+	_skeleton.set_bone_pose_rotation(_bone[lower], Quaternion(Vector3.BACK, wrapf(lower_turn - upper_turn, -PI, PI)))
+	if front:
+		_skeleton.set_bone_pose_rotation(_bone[toes_bone], Quaternion(Vector3.BACK, wrapf(toes_turn - lower_turn, -PI, PI)))
+	else:
+		_skeleton.set_bone_pose_rotation(_bone[foot_bone], Quaternion(Vector3.BACK, wrapf(foot_turn - lower_turn, -PI, PI)))
+		_skeleton.set_bone_pose_rotation(_bone[toes_bone], Quaternion(Vector3.BACK, wrapf(toes_turn - foot_turn, -PI, PI)))
 	_skeleton.set_bone_pose_scale(_bone[upper], Vector3.ONE * _leg_scale)
 
 
@@ -209,65 +259,123 @@ func _compose(t: float, done: float) -> Array:
 			pose["neck"] -= 4.0
 			pose["head"] -= 6.0
 			pose["tail"] = -20.0 - pose["pitch"]   # along the ground behind him, not through it
+			# Hind paws on the ground under the belly, a little ahead of the hips
+			# (unless that leg is busy, scratching for instance).
+			for leg in ["hind_l", "hind_r"]:
+				if absf(pose[leg] - SIT[leg]) < 0.5:
+					pose[leg] = 38.0 - pose["pitch"]
+				elif pose[leg] > 100.0:
+					pose[leg] = 118.0      # scratching: the paw comes up to the neck
 		elif not on_side:
 			pose["tail"] = -20.0
+			# Lying on his front, the hind legs are folded beside him.
+			for leg in ["hind_l", "hind_r"]:
+				if absf(pose[leg] - SPHINX[leg]) < 0.5:
+					pose[leg] = 46.0
 	return layers
 
 
-## The body once per coat layer, in a single mesh, so that every layer bends with the skeleton.
-static func _make_layers() -> ArrayMesh:
+## The body, and the coat as layers of that same body, each to be lifted a little
+## further off the skin by the shader. The model lists its points and triangles
+## with the longest coat first, so every layer is just the first so-many of both:
+## a short coat gets two or three layers, the feathering up to thirty.
+static func _make_mesh() -> ArrayMesh:
 	var count: int = _model["vertices"].size() / 3
+	var at: Array = _model["vertices"]
+	var out: Array = _model["normals"]
+	var lies: Array = _model["flow"]
+	var along: Array = _model["grain"]
+	var tones: Array = _model["colors"]
+	var skins: Array = _model["skin"]
+	var lengths: Array = _model["coat"]
+	var deep: Array = _model["shells"]
 	var vertices := PackedVector3Array()
 	var normals := PackedVector3Array()
-	var uvs := PackedVector2Array()
+	var tangents := PackedFloat32Array()
+	var grain := PackedFloat32Array()
 	var colors := PackedColorArray()
+	var skin := PackedVector2Array()
+	var marks := PackedVector2Array()
 	var bones := PackedInt32Array(_model["bone_ids"])
 	var weights := PackedFloat32Array(_model["bone_weights"])
 	var triangles := PackedInt32Array(_model["triangles"])
 	vertices.resize(count)
 	normals.resize(count)
-	uvs.resize(count)
+	tangents.resize(count * 4)
+	grain.resize(count * 4)
 	colors.resize(count)
+	skin.resize(count)
+	marks.resize(count)
 	for i in count:
-		vertices[i] = Vector3(_model["vertices"][i * 3], _model["vertices"][i * 3 + 1], _model["vertices"][i * 3 + 2])
-		normals[i] = Vector3(_model["normals"][i * 3], _model["normals"][i * 3 + 1], _model["normals"][i * 3 + 2])
-		uvs[i] = Vector2(_model["uvs"][i * 2], _model["uvs"][i * 2 + 1])
-		colors[i] = Color(_model["colors"][i * 4], _model["colors"][i * 4 + 1], _model["colors"][i * 4 + 2], _model["colors"][i * 4 + 3])
+		vertices[i] = Vector3(at[i * 3], at[i * 3 + 1], at[i * 3 + 2])
+		normals[i] = Vector3(out[i * 3], out[i * 3 + 1], out[i * 3 + 2])
+		tangents[i * 4] = lies[i * 3]
+		tangents[i * 4 + 1] = lies[i * 3 + 1]
+		tangents[i * 4 + 2] = lies[i * 3 + 2]
+		tangents[i * 4 + 3] = 1.0
+		grain[i * 4] = along[i * 4]
+		grain[i * 4 + 1] = along[i * 4 + 1]
+		grain[i * 4 + 2] = along[i * 4 + 2]
+		grain[i * 4 + 3] = along[i * 4 + 3]
+		colors[i] = Color(tones[i * 4], tones[i * 4 + 1], tones[i * 4 + 2], tones[i * 4 + 3])
+		skin[i] = Vector2(skins[i * 2], skins[i * 2 + 1])
+		marks[i] = Vector2(0.0, lengths[i])
+
+	var mesh := ArrayMesh.new()
+	var format := Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _arrays(vertices, normals, tangents, grain, colors, skin, marks, bones, weights, triangles), [], {}, format)
 
 	var all_vertices := PackedVector3Array()
 	var all_normals := PackedVector3Array()
-	var all_uvs := PackedVector2Array()
-	var all_layer := PackedVector2Array()
+	var all_tangents := PackedFloat32Array()
+	var all_grain := PackedFloat32Array()
 	var all_colors := PackedColorArray()
+	var all_skin := PackedVector2Array()
+	var all_marks := PackedVector2Array()
 	var all_bones := PackedInt32Array()
 	var all_weights := PackedFloat32Array()
 	var all_triangles := PackedInt32Array()
-	for layer in COAT_SHELLS + 1:
-		all_vertices.append_array(vertices)
-		all_normals.append_array(normals)
-		all_uvs.append_array(uvs)
-		all_colors.append_array(colors)
-		all_bones.append_array(bones)
-		all_weights.append_array(weights)
+	var layers: Array = _model["layers"]
+	for layer in layers.size():
+		var points: int = layers[layer][0]
+		var corners: int = int(layers[layer][1]) * 3
+		if corners == 0:
+			break
+		var first := all_vertices.size()
+		all_vertices.append_array(vertices.slice(0, points))
+		all_normals.append_array(normals.slice(0, points))
+		all_tangents.append_array(tangents.slice(0, points * 4))
+		all_grain.append_array(grain.slice(0, points * 4))
+		all_colors.append_array(colors.slice(0, points))
+		all_skin.append_array(skin.slice(0, points))
+		all_bones.append_array(bones.slice(0, points * 4))
+		all_weights.append_array(weights.slice(0, points * 4))
 		var mark := PackedVector2Array()
-		mark.resize(count)
-		mark.fill(Vector2(float(layer) / COAT_SHELLS, 0.0))
-		all_layer.append_array(mark)
-		var shifted := triangles.duplicate()
-		for i in shifted.size():
-			shifted[i] += layer * count
-		all_triangles.append_array(shifted)
+		mark.resize(points)
+		for i in points:
+			# A point whose coat is already complete stays at its tips.
+			mark[i] = Vector2(minf((layer + 1.0) / maxf(deep[i], 1.0), 1.0), lengths[i])
+		all_marks.append_array(mark)
+		var part := triangles.slice(0, corners)
+		for i in corners:
+			part[i] += first
+		all_triangles.append_array(part)
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _arrays(all_vertices, all_normals, all_tangents, all_grain, all_colors, all_skin, all_marks, all_bones, all_weights, all_triangles), [], {}, format)
+	return mesh
 
+
+static func _arrays(vertices: PackedVector3Array, normals: PackedVector3Array, tangents: PackedFloat32Array, grain: PackedFloat32Array, colors: PackedColorArray,
+		skin: PackedVector2Array, marks: PackedVector2Array, bones: PackedInt32Array, weights: PackedFloat32Array, triangles: PackedInt32Array) -> Array:
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = all_vertices
-	arrays[Mesh.ARRAY_NORMAL] = all_normals
-	arrays[Mesh.ARRAY_TEX_UV] = all_uvs
-	arrays[Mesh.ARRAY_TEX_UV2] = all_layer
-	arrays[Mesh.ARRAY_COLOR] = all_colors
-	arrays[Mesh.ARRAY_BONES] = all_bones
-	arrays[Mesh.ARRAY_WEIGHTS] = all_weights
-	arrays[Mesh.ARRAY_INDEX] = all_triangles
-	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	return mesh
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_TANGENT] = tangents     # the way the coat lies
+	arrays[Mesh.ARRAY_CUSTOM0] = grain        # where the point is along and around its part
+	arrays[Mesh.ARRAY_COLOR] = colors         # the coat's colour, and how much light reaches it
+	arrays[Mesh.ARRAY_TEX_UV] = skin          # bare skin, wet shine
+	arrays[Mesh.ARRAY_TEX_UV2] = marks        # which layer of the coat, and its length
+	arrays[Mesh.ARRAY_BONES] = bones
+	arrays[Mesh.ARRAY_WEIGHTS] = weights
+	arrays[Mesh.ARRAY_INDEX] = triangles
+	return arrays

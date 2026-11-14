@@ -5,7 +5,7 @@ extends Node3D
 ##
 ## Self-test (no daemon needed): renders one pose to a PNG and reports whether it fits.
 ##   godot --path renderer --display-driver x11 -- --selftest out.png [--activity sit] [--variant 1]
-##       [--growth 0.2] [--facing -1] [--at 1.5] [--gaze 1] [--arousal 0.8]
+##       [--growth 0.2] [--facing -1] [--at 1.5] [--gaze 1] [--arousal 0.8] [--size 420]
 
 const GROUND_MARGIN := 0.11        # of his height, kept below the paws for the shadow and for limbs that reach towards the viewer
 const CAMERA_PITCH := 0.14         # radians; a slight look down so the ground reads as a surface
@@ -133,7 +133,7 @@ func _ready() -> void:
 		_apply_state({
 			"activity": option.call("--activity", "stand"), "variant": int(option.call("--variant", "0")), "intensity": 0.7,
 			"started": Time.get_unix_time_from_system(), "planned_secs": 2.0 * _selftest_at, "seed": 7,
-			"growth": growth, "scale": lerpf(0.45, 1.0, growth), "size_px": 420.0, "x_frac": 0.7, "facing": int(option.call("--facing", "1")),
+			"growth": growth, "scale": lerpf(0.45, 1.0, growth), "size_px": float(option.call("--size", "420")), "x_frac": 0.7, "facing": int(option.call("--facing", "1")),
 			"hidden": false, "privacy": false, "quiet": false, "ducked": false, "user_here": true, "load": 0.0, "valence": 0.6, "arousal": float(option.call("--arousal", "0.3")), "sleepiness": 0.2, "confusion": float(option.call("--confusion", "0.0")),
 		})
 		if option.call("--gaze", "0") == "1":
