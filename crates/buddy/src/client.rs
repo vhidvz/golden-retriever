@@ -34,8 +34,7 @@ pub fn run(name: &str, args: Value) -> Result<()> {
                 println!("{}  {:<16} {}", e["ts"], e["kind"].as_str().unwrap_or("?"), e["data"]);
             }
         }
-        _ if data.is_null() => println!("ok"),
-        _ => println!("{}", serde_json::to_string_pretty(&data)?),
+        _ => show_outcome(&data)?,
     }
     Ok(())
 }
@@ -164,6 +163,9 @@ pub fn look(file: Option<&str>) -> Result<()> {
 
 pub fn say(words: &str) -> Result<()> {
     let r = request_within("say", serde_json::json!({ "text": words }), Duration::from_secs(150))?;
+    if r.get("understood_as").is_none() {
+        return show_outcome(&r);
+    }
     let text = |v: &Value| v.as_str().unwrap_or("?").replace('_', " ");
     let meaning = &r["understood_as"];
     let detail = match &meaning["detail"] {
@@ -232,5 +234,120 @@ pub fn memories() -> Result<()> {
             m["language"].as_str().unwrap_or("?")
         );
     }
+    Ok(())
+}
+
+/// A path as the daemon will see it, whatever directory the command was run from.
+pub fn absolute(path: &str) -> String {
+    let expanded = match path.strip_prefix("~/") {
+        Some(rest) => std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(rest),
+        None => std::path::PathBuf::from(path),
+    };
+    std::path::absolute(&expanded).unwrap_or(expanded).to_string_lossy().into_owned()
+}
+
+/// What came of something he was asked (or offered) to do.
+fn show_outcome(r: &Value) -> Result<()> {
+    if let Some(id) = r["waiting_for_yes"].as_u64() {
+        println!("He would like to {}.", r["would"].as_str().unwrap_or("?"));
+        println!("He is sitting and waiting for your answer:   buddy approve {id}   or   buddy deny {id}");
+        println!("(or just say so: buddy say yes / buddy say \"نه ممنون\")");
+    } else if let Some(did) = r["did"].as_str() {
+        println!("Done: {did}.");
+        if let Some(detail) = r["detail"].as_str().filter(|d| !d.is_empty()) {
+            println!("{detail}");
+        }
+        if r["more"] == true {
+            println!("… (the rest: buddy result)");
+        }
+        if r["can_be_undone"] == true {
+            println!("(take it back with: buddy undo)");
+        }
+    } else if let Some(declined) = r["declined"].as_str() {
+        println!("All right: he will not {declined}{}.", if r["for_good"] == true { ", and will not ask again" } else { "" });
+    } else if let Some(undid) = r["undid"].as_str() {
+        println!("Taken back: {undid} ({}).", r["how"].as_str().unwrap_or(""));
+    } else if r.get("folders").is_some() {
+        let folders: Vec<&str> = r["folders"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+        println!(
+            "Folders he may use: {}",
+            if folders.is_empty() { "none yet (buddy folders add ~/Documents)".to_string() } else { folders.join(", ") }
+        );
+        for command in r["commands"].as_array().into_iter().flatten().filter_map(Value::as_str) {
+            println!("Command approved for good: {command}");
+        }
+    } else if r.is_null() {
+        println!("ok");
+    } else {
+        println!("{}", serde_json::to_string_pretty(r)?);
+    }
+    Ok(())
+}
+
+/// Commands whose answer may take as long as the work does (a search, a command, Claude Code).
+pub fn act(name: &str, args: Value) -> Result<()> {
+    show_outcome(&request_within(name, args, Duration::from_secs(16 * 60))?)
+}
+
+pub fn result() -> Result<()> {
+    println!("{}", request("result", Value::Null)?.as_str().unwrap_or_default());
+    Ok(())
+}
+
+pub fn listing(what: &str) -> Result<()> {
+    let list = request(what, Value::Null)?;
+    let rows = list.as_array().cloned().unwrap_or_default();
+    if what == "waiting" && rows.is_empty() {
+        println!("Nothing is waiting for an answer.");
+    }
+    for row in rows {
+        if what == "waiting" {
+            println!(
+                "{:>3}. {} ({}, {:.0} s ago)",
+                row["id"],
+                row["would"].as_str().unwrap_or("?"),
+                if row["his_idea"] == true { "his idea" } else { "you asked" },
+                row["for_secs"].as_f64().unwrap_or(0.0)
+            );
+        } else {
+            println!(
+                "{:<12} {:<6} {:<26} {}",
+                row["name"].as_str().unwrap_or("?"),
+                row["policy"].as_str().unwrap_or("?"),
+                row["risk"].as_str().unwrap_or("?"),
+                row["what"].as_str().unwrap_or("")
+            );
+        }
+    }
+    Ok(())
+}
+
+pub fn providers() -> Result<()> {
+    let p = request_within("providers", Value::Null, Duration::from_secs(20))?;
+    let local = &p["local"];
+    if local["available"] == true {
+        let models: Vec<&str> = local["models"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+        println!("Local models (Ollama): available — {}", models.join(", "));
+        println!(
+            "  language: {}    images: {}",
+            local["understands_language_with"].as_str().unwrap_or("?"),
+            local["looks_at_images_with"].as_str().unwrap_or("?")
+        );
+    } else {
+        println!("Local models (Ollama): not available — {}", local["why"].as_str().unwrap_or("?"));
+    }
+    let claude = &p["claude"];
+    if claude["available"] == true {
+        println!(
+            "Claude Code: available — signed in with {} ({}), login valid until {}",
+            claude["signed_in_with"].as_str().unwrap_or("?"),
+            claude["plan"].as_str().unwrap_or("?"),
+            claude["login_expires"].as_str().unwrap_or("?")
+        );
+    } else {
+        println!("Claude Code: not available — {}", claude["why"].as_str().unwrap_or("?"));
+    }
+    println!("Order: {}.", p["order"].as_str().unwrap_or("?"));
+    println!("Without either, he still lives, obeys the words he knows, and does what his own vocabulary can work out.");
     Ok(())
 }

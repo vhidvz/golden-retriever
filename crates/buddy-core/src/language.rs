@@ -35,6 +35,21 @@ pub enum Heard {
         cue: String,
         trick: String,
     },
+    /// "Yes, go ahead": the answer to something he offered or asked leave for.
+    Yes,
+    /// "Always do that": yes, and no need to ask next time.
+    Always,
+    /// "No thanks, not now": no to what he offered, this time.
+    NotNow,
+    /// "Don't help me with this": no, and for this kind of thing do not offer again.
+    NoHelp,
+    /// Something to be done on the computer. `skill` and `argument` are filled in
+    /// when his own vocabulary could work them out ("open X", "find X", "note X").
+    Task {
+        request: String,
+        skill: Option<String>,
+        argument: Option<String>,
+    },
     /// Said to him, but nothing he is asked to do.
     Chat,
     Unknown,
@@ -136,6 +151,10 @@ pub fn understand(text: &str, names: &[&str], taught: &[String]) -> Heard {
     else {
         return Heard::Unknown;
     };
+    // One known word inside a long sentence ("put down for me that …") settles nothing: leave it to a model.
+    if len == 1 && words.len() > 4 && !matches!(meaning, "open" | "find" | "note" | "remember") {
+        return Heard::Unknown;
+    }
     match meaning {
         "praise" => Heard::Praise,
         "treat" => Heard::Treat,
@@ -143,6 +162,31 @@ pub fn understand(text: &str, names: &[&str], taught: &[String]) -> Heard {
         "correction" => Heard::Correction,
         "stop" => Heard::Stop,
         "quiet" => Heard::Quiet,
+        "yes" => Heard::Yes,
+        "always" => Heard::Always,
+        "no_help" => Heard::NoHelp,
+        "not_now" => Heard::NotNow,
+        "open" | "find" | "note" => {
+            // What is to be opened, found or noted is whatever else was said, in the original wording.
+            // English puts it after the verb ("open the calculator"); Persian usually before ("ماشین‌حساب رو باز کن").
+            let said: Vec<&str> = text.split_whitespace().filter(|w| !called.contains(&normalise(w))).collect();
+            let object = if at + len < words.len() {
+                said[said.len().saturating_sub(words.len() - at - len)..].join(" ")
+            } else {
+                said[..at.min(said.len())].join(" ")
+            };
+            let object = object.trim_matches(|c: char| !c.is_alphanumeric()).to_string();
+            let skill = match meaning {
+                "open" => "open_app",
+                "find" => "find_files",
+                _ => "make_note",
+            };
+            Heard::Task {
+                request: text.trim().to_string(),
+                skill: (!object.is_empty()).then(|| skill.to_string()),
+                argument: (!object.is_empty()).then_some(object),
+            }
+        }
         "remember" => {
             // Keep what was said as it was said, not the normalised form: the last
             // words of the original, as many as followed the phrase.
@@ -219,6 +263,37 @@ mod tests {
     fn things_to_remember_keep_their_wording() {
         assert_eq!(hear("Remember that I prefer working late."), Heard::Remember("I prefer working late.".into()));
         assert_eq!(hear("یادت باشه من شب‌ها کار می‌کنم"), Heard::Remember("من شب‌ها کار می‌کنم".into()));
+    }
+
+    #[test]
+    fn requests_for_the_computer_are_recognised_with_what_they_are_about() {
+        let task = |said: &str| match hear(said) {
+            Heard::Task { skill, argument, .. } => (skill.unwrap_or_default(), argument.unwrap_or_default()),
+            other => panic!("{said}: {other:?}"),
+        };
+        assert_eq!(task("Buddy, open the calculator"), ("open_app".into(), "calculator".into()));
+        assert_eq!(task("ماشین‌حساب رو باز کن"), ("open_app".into(), "ماشین‌حساب".into()));
+        assert_eq!(task("Find my tax report 2025"), ("find_files".into(), "tax report 2025".into()));
+        assert_eq!(task("گزارش مالیات رو پیدا کن"), ("find_files".into(), "گزارش مالیات".into()));
+        assert_eq!(task("make a note that the build is broken"), ("make_note".into(), "the build is broken".into()));
+        assert_eq!(task("یادداشت کن فردا جلسه دارم"), ("make_note".into(), "فردا جلسه دارم".into()));
+    }
+
+    #[test]
+    fn answers_to_an_offer_are_told_apart() {
+        assert_eq!(hear("yes, go ahead"), Heard::Yes);
+        assert_eq!(hear("باشه"), Heard::Yes);
+        assert_eq!(hear("Don't help me with this."), Heard::NoHelp);
+        assert_eq!(hear("نه ممنون"), Heard::NotNow);
+        assert_eq!(hear("not now, maybe later"), Heard::NotNow);
+        assert_eq!(hear("تو این کار کمکم نکن"), Heard::NoHelp);
+        assert_eq!(
+            hear("Could you put down for me that I must call the dentist tomorrow?"),
+            Heard::Unknown,
+            "one known word in a long sentence is not a cue"
+        );
+        assert_eq!(hear("always do that"), Heard::Always);
+        assert_eq!(hear("همیشه همین کارو بکن"), Heard::Always);
     }
 
     #[test]

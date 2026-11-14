@@ -85,6 +85,13 @@ pub enum Output {
         kind: &'static str,
         intensity: f64,
     },
+    /// He has seen the start of one of the user's habits and would like to do the next step:
+    /// bring `app` to the front. `standing` means the user has said to just do it.
+    Offer {
+        habit: String,
+        app: String,
+        standing: bool,
+    },
     /// He looks at the person in front of the screen for about this long.
     Look {
         /// "you", "screen", "notification" or "sound".
@@ -134,6 +141,19 @@ pub struct Mind {
     pub patterns: Patterns,
     /// What words mean to him.
     pub training: Training,
+}
+
+/// How the user answered an offer of help.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Answer {
+    Yes,
+    /// Yes, and no need to ask next time.
+    Always,
+    No,
+    /// No, and do not offer this again.
+    Never,
+    /// The offer lapsed unanswered.
+    Ignored,
 }
 
 /// The trick an activity counts as, when he does it of his own accord and is
@@ -227,6 +247,8 @@ pub struct Sim {
     sit_on_arrival: bool,
     inhibited: Option<(Activity, f64)>,
     hushed_until: f64,
+    /// When he last offered to help with anything, so that he does not pester.
+    offered_at: f64,
     rng: Rng,
     out: Vec<Output>,
 }
@@ -287,6 +309,7 @@ impl Sim {
             sit_on_arrival: false,
             inhibited: None,
             hushed_until: 0.0,
+            offered_at: f64::NEG_INFINITY,
             rng,
             out: Vec::new(),
         }
@@ -395,6 +418,7 @@ impl Sim {
         }
 
         self.maybe_check_on_you(now, dt);
+        self.maybe_offer_help(now);
 
         if self.dragging {
             self.v = 0.0;
@@ -403,7 +427,7 @@ impl Sim {
                 self.finish(now);
                 self.begin(Activity::Sleep, "you sent him to sleep", now);
             }
-        } else if self.greet_urge > 0.5 && self.activity != Activity::Greet {
+        } else if self.greet_urge > 0.5 && !matches!(self.activity, Activity::Greet | Activity::Invite) {
             self.finish(now);
             self.begin(Activity::Greet, "happy to see you", now);
         } else {
@@ -620,6 +644,8 @@ impl Sim {
                 }
             }
             Activity::Greet => self.voice("bark", 0.6 + 0.4 * self.mood.arousal, now),
+            // A short, soft woof: an invitation, not an alarm.
+            Activity::Invite => self.voice("bark", 0.4, now),
             Activity::PlayBow => {
                 if self.rng.chance(0.4) {
                     self.voice("bark", 0.5, now);
@@ -936,6 +962,22 @@ impl Sim {
                     self.puzzle(now);
                 }
             }
+            // With nothing on offer, "yes" is plain approval and "not now" needs no answer;
+            // when there is an offer, the daemon takes these before they reach here.
+            Heard::Yes | Heard::Always => {
+                if let Some((cue, trick, strength)) = self.training.reward(0.10, None, &TRICKS, now) {
+                    self.out.push(journal("reinforced", json!({ "cue": cue, "trick": trick, "strength": (strength * 100.0).round() / 100.0 })));
+                }
+                if !asleep {
+                    self.look("you", 2.5, now);
+                }
+            }
+            Heard::NotNow | Heard::NoHelp | Heard::Task { .. } => {
+                // A request for the computer is carried out elsewhere; here he just gives you his attention.
+                if !asleep {
+                    self.look("you", 3.0, now);
+                }
+            }
             Heard::Chat => {
                 if !asleep {
                     let secs = self.rng.range(2.5, 4.5);
@@ -948,6 +990,94 @@ impl Sim {
                     self.puzzle(now);
                 }
             }
+        }
+        std::mem::take(&mut self.out)
+    }
+
+    /// The start of a habit he knows: offer to do the next step. At most one offer
+    /// every ten minutes, and no more than hourly about the same habit; never to an
+    /// empty room, while asleep, or in quiet mode.
+    fn maybe_offer_help(&mut self, now: f64) {
+        if let Some(habit) = self.patterns.settle(now) {
+            self.out.push(journal("habit_noticed", json!({ "apps": habit.apps, "times": habit.times, "days": habit.days })));
+        }
+        if self.user_away || self.activity == Activity::Sleep || self.settings.quiet || now - self.offered_at < 600.0 {
+            return;
+        }
+        let Some((habit, app)) = self.patterns.anticipate() else { return };
+        let Some(record) = self.patterns.habit_mut(&habit) else { return };
+        if now - record.last_offer < 3600.0 {
+            return;
+        }
+        record.last_offer = now;
+        self.offered_at = now;
+        let standing = record.standing_yes;
+        if !standing {
+            self.finish(now);
+            self.begin(Activity::Invite, "he has seen what you are doing and wants to help", now);
+        }
+        self.look("you", 4.0, now);
+        self.out.push(Output::Offer { habit, app, standing });
+    }
+
+    /// How the user answered an offer about a habit. Yes is remembered, no is respected:
+    /// three refusals, or one "don't help me with this", and he never offers it again.
+    pub fn offer_answered(&mut self, habit: Option<&str>, answer: Answer, now: f64) -> Vec<Output> {
+        if let Some(record) = habit.and_then(|key| self.patterns.habit_mut(key)) {
+            match answer {
+                Answer::Yes => record.accepted += 1,
+                Answer::Always => {
+                    record.accepted += 1;
+                    record.standing_yes = true;
+                }
+                Answer::No => {
+                    record.declined += 1;
+                    record.never = record.declined >= 3;
+                    record.standing_yes = false;
+                }
+                Answer::Never => {
+                    record.declined += 1;
+                    record.never = true;
+                    record.standing_yes = false;
+                }
+                Answer::Ignored => {}
+            }
+        }
+        match answer {
+            Answer::Yes | Answer::Always => {
+                self.mood.lift(0.15, 0.15);
+                self.look("you", 2.5, now);
+            }
+            Answer::No | Answer::Never => {
+                // He takes no for an answer and settles, without sulking.
+                if self.activity == Activity::Invite {
+                    self.finish(now);
+                    self.begin(Activity::Sit, "you said no thanks", now);
+                }
+            }
+            Answer::Ignored => {}
+        }
+        self.out.push(journal("offer_answered", json!({ "habit": habit, "answer": format!("{answer:?}").to_lowercase() })));
+        std::mem::take(&mut self.out)
+    }
+
+    /// He is waiting for you to say yes or no to something: sitting, eyes on you.
+    pub fn await_answer(&mut self, now: f64) -> Vec<Output> {
+        if self.activity != Activity::Sleep && self.activity != Activity::Invite {
+            self.finish(now);
+            self.perform_as(Activity::Sit, 0, 20.0, "he is waiting for your answer", now);
+        }
+        self.look("you", 4.0, now);
+        std::mem::take(&mut self.out)
+    }
+
+    /// Something he did for you on the computer finished.
+    pub fn task_done(&mut self, worked: bool, now: f64) -> Vec<Output> {
+        if worked {
+            self.mood.lift(0.12, 0.2);
+            self.look("you", 3.0, now);
+        } else if self.activity != Activity::Sleep {
+            self.puzzle(now);
         }
         std::mem::take(&mut self.out)
     }
@@ -1420,6 +1550,46 @@ mod tests {
         let out = s.hear(Heard::Remember("I prefer working late".into()), now);
         assert!(out.iter().any(|o| matches!(o, Output::Remember(text) if text == "I prefer working late")));
         assert_eq!(s.settings.night_shift_hours, 2.0, "and it changes when his night begins");
+    }
+
+    #[test]
+    fn he_offers_to_finish_a_habit_and_takes_no_for_an_answer() {
+        let mut s = sim(0);
+        s.tick(1.0, 12.0);
+        // Three days of the same routine make it a habit.
+        for day in 0..3 {
+            let start = 100.0 + 86_400.0 * f64::from(day);
+            for (i, app) in ["terminal", "editor", "browser", "terminal", "editor", "browser", "files"].iter().enumerate() {
+                s.sense(Stimulus::Focus { app: app.to_string() }, start + 30.0 * i as f64);
+            }
+        }
+        // Day four: terminal, then the editor.
+        let mut now = 100.0 + 86_400.0 * 4.0;
+        s.tick(now - 1.0, 12.0);
+        s.sense(Stimulus::Focus { app: "terminal".into() }, now);
+        s.sense(Stimulus::Focus { app: "editor".into() }, now + 30.0);
+        now += 31.0;
+        let mut offers = Vec::new();
+        for _ in 0..40 {
+            now += 0.25;
+            offers.extend(s.tick(now, 12.0).into_iter().filter(|o| matches!(o, Output::Offer { .. })));
+            if !offers.is_empty() {
+                break;
+            }
+        }
+        assert_eq!(offers, vec![Output::Offer { habit: "terminal > editor > browser".into(), app: "browser".into(), standing: false }]);
+        assert_eq!(s.activity(), Activity::Invite);
+
+        // "Don't help me with this": he settles, and never offers that again.
+        s.offer_answered(Some("terminal > editor > browser"), Answer::Never, now);
+        assert_eq!(s.activity(), Activity::Sit);
+        assert!(s.mood.valence > 0.0, "and he is not crushed by it");
+        let later = now + 7200.0;
+        s.tick(later - 1.0, 12.0);
+        s.sense(Stimulus::Focus { app: "terminal".into() }, later);
+        s.sense(Stimulus::Focus { app: "editor".into() }, later + 30.0);
+        let (_, after) = live(&mut s, later + 31.0, 20.0, 12.0);
+        assert!(!after.iter().any(|o| matches!(o, Output::Offer { .. })));
     }
 
     #[test]

@@ -13,7 +13,7 @@ const POINTER_REACH := 650.0        # pixels: how near the pointer must come bef
 const DRAG_THRESHOLD := 8.0        # pixels the pointer must travel before a press becomes a drag
 const RECONNECT_SECONDS := 1.0
 const ORPHAN_SECONDS := 10.0       # a supervised renderer exits if its daemon stays gone this long
-const QUICK := ["walk", "zoomies", "tail_chase", "shake", "scratch", "greet", "play_bow", "roll", "eat", "drink"]
+const QUICK := ["walk", "zoomies", "tail_chase", "shake", "scratch", "greet", "invite", "play_bow", "roll", "eat", "drink"]
 const SLOW := {"lie": 20, "sleep": 10}
 const Dog := preload("res://dog.gd")   # swap this file to change the dog model
 

@@ -1,7 +1,10 @@
 //! The long-running process: owns Buddy's state, advances it, persists it, and
 //! serves the renderer and the CLI over one Unix socket.
 
+mod assist;
+
 use crate::renderer::Renderer;
+use crate::skills::{Permissions, Undo};
 use anyhow::{Context, Result, anyhow, bail};
 use buddy_core::language::{self, TRICKS};
 use buddy_core::{Body, ClientMsg, Command, Heard, Identity, Life, Mind, Output, ServerMsg, Settings, Sim, StateMsg, Stimulus, Store, paths};
@@ -39,6 +42,19 @@ enum Incoming {
         requester: u64,
         said: String,
         outcome: Result<Heard, String>,
+    },
+    /// The local model has chosen a skill for a request (or found none that fits).
+    Planned {
+        requester: u64,
+        outcome: Result<Option<(String, Value)>, String>,
+    },
+    /// A skill has finished.
+    Did {
+        requester: u64,
+        skill: String,
+        args: Value,
+        habit: Option<String>,
+        outcome: Result<(String, String, Option<Undo>), String>,
     },
     /// A sense helper says it cannot work (no camera, no microphone).
     Unavailable {
@@ -250,6 +266,12 @@ struct Daemon {
     looking: bool,
     /// When he was last spoken to by name; for a little while after, he takes what he hears as meant for him.
     addressed_at: f64,
+    /// What he may do on the computer, what is waiting for a yes, and the way back from the last change.
+    permissions: Permissions,
+    waiting: Vec<assist::Waiting>,
+    next_id: u64,
+    last_undo: Option<(String, Undo)>,
+    last_result: Option<String>,
     quit: bool,
 }
 
@@ -262,6 +284,10 @@ impl Daemon {
                 Output::Behaved(record) => self.store.log_behaviour(&record),
                 Output::Look { at, secs } => {
                     self.broadcast(&ServerMsg::Event { name: "look".into(), args: json!({ "at": at, "secs": secs }) });
+                    Ok(())
+                }
+                Output::Offer { habit, app, standing } => {
+                    self.offer(habit, app, standing, at);
                     Ok(())
                 }
                 Output::Remember(text) => self.store.remember(at as i64, &text, language::language(&text), "told").map(|_| ()),
@@ -283,6 +309,7 @@ impl Daemon {
         self.store.save("settings", &self.sim.settings, t)?;
         self.store.save("body", &self.sim.body(), t)?;
         self.store.save("mind", &self.sim.mind(), t)?;
+        self.store.save("permissions", &self.permissions, t)?;
         self.store.backup_daily(t)?;
         Ok(())
     }
@@ -310,6 +337,10 @@ impl Daemon {
         let taught = self.sim.training.known_cues(&TRICKS);
         let name = self.sim.identity.name.clone();
         let heard = language::understand(text, &[&name, "buddy", "بادی"], &taught);
+        // When he is waiting for a yes or a no, that is what a yes or a no means.
+        if self.heard_as_answer(requester, &heard, at) {
+            return;
+        }
         if heard != Heard::Unknown || text.split_whitespace().count() < 2 {
             self.heard(requester, text, heard, "his own vocabulary", at);
             return;
@@ -322,6 +353,17 @@ impl Daemon {
     }
 
     fn heard(&mut self, requester: u64, said: &str, heard: Heard, by: &str, at: f64) {
+        if self.heard_as_answer(requester, &heard, at) {
+            return;
+        }
+        if let Heard::Task { request, skill, argument } = &heard {
+            // He gives you his attention, and the request goes to be worked out and, if allowed, done.
+            let outputs = self.sim.hear(heard.clone(), at);
+            self.absorb(outputs, at);
+            let _ = self.store.journal(at as i64, "spoken_to", &json!({ "language": language::language(said), "understood_as": "task", "by": by }));
+            self.task(requester, request, skill.clone(), argument.clone(), at);
+            return;
+        }
         let meaning = serde_json::to_value(&heard).unwrap_or(Value::Null);
         let outputs = self.sim.hear(heard, at);
         self.absorb(outputs, at);
@@ -487,6 +529,9 @@ impl Daemon {
     }
 
     fn command(&mut self, name: &str, args: &Value, at: f64) -> Result<Value> {
+        if let Some(answered) = self.assist_command(name, args, at) {
+            return answered;
+        }
         let cmd = match name {
             "status" => return self.status(at),
             "why" => return Ok(self.sim.explain(at)),
@@ -622,6 +667,19 @@ impl Daemon {
                 };
                 self.heard(requester, &said, heard, by, at);
             }
+            Incoming::Planned { requester, outcome } => match outcome {
+                Ok(Some((skill, args))) => self.propose(requester, &skill, args, None, "the local language model", at),
+                other => {
+                    let outputs = self.sim.task_done(false, at);
+                    self.absorb(outputs, at);
+                    let why = match other {
+                        Err(why) => format!("he could not work out what to do: {why}"),
+                        _ => "none of the things he can do fits that".to_string(),
+                    };
+                    self.send(requester, &ServerMsg::Reply { ok: false, data: Value::Null, error: Some(why) });
+                }
+            },
+            Incoming::Did { requester, skill, args, habit, outcome } => self.did(requester, &skill, &args, habit, outcome, at),
             Incoming::Unavailable { source, why } => {
                 if let Some(helper) = self.helpers.iter_mut().find(|h| h.source == source) {
                     helper.trouble = Some(why);
@@ -666,6 +724,13 @@ impl Daemon {
                 }
                 ClientMsg::Sense { source, kind, data } => self.perceive(&source, &kind, &data, at),
                 ClientMsg::Command { name, args } if name == "look" => self.start_look(id, &args),
+                ClientMsg::Command { name, args } if name == "approve" || name == "deny" => {
+                    self.answer(id, args["id"].as_u64(), name == "approve", args["lasting"] == true, at)
+                }
+                ClientMsg::Command { name, args } if name == "ask_claude" => {
+                    let mode = if args["edit"] == true { "edit" } else { "advise" };
+                    self.propose(id, "ask_claude", json!({ "task": args["task"], "folder": args["folder"], "mode": mode }), None, "you", at)
+                }
                 ClientMsg::Command { name, args } if name == "say" => self.said(id, args["text"].as_str().unwrap_or_default(), at),
                 ClientMsg::Command { name, args } => {
                     let reply = match self.command(&name, &args, at) {
@@ -695,6 +760,7 @@ pub fn run(no_renderer: bool) -> Result<()> {
     let settings: Settings = store.load("settings")?.unwrap_or_default();
     let body: Body = store.load("body")?.unwrap_or_default();
     let mind: Mind = store.load("mind")?.unwrap_or_default();
+    let permissions: Permissions = store.load("permissions")?.unwrap_or_default();
     let remembered = store.recent_behaviour(400)?;
     if newborn {
         store.journal(start as i64, "born", &json!({ "name": identity.name }))?;
@@ -727,6 +793,11 @@ pub fn run(no_renderer: bool) -> Result<()> {
         ],
         looking: false,
         addressed_at: f64::NEG_INFINITY,
+        permissions,
+        waiting: Vec::new(),
+        next_id: 0,
+        last_undo: None,
+        last_result: None,
         quit: false,
     };
     daemon.sim.remember(remembered.iter().map(|r| (r.ts + r.secs, r.activity, r.variant)));
@@ -777,6 +848,7 @@ pub fn run(no_renderer: bool) -> Result<()> {
             }
             last_save = Instant::now();
         }
+        daemon.let_lapse(at);
         // The camera and microphone are open only while their sense is allowed and privacy mode is off.
         let open = !daemon.sim.settings.privacy_mode;
         let wanted = [open && daemon.sim.settings.senses.camera, open && daemon.sim.settings.senses.microphone];

@@ -67,7 +67,7 @@ impl fmt::Display for Report {
         writeln!(f, "{:.0} days simulated, {} activities logged", self.days, self.activities_logged)?;
         writeln!(
             f,
-            "  variety:  {} of 19 activities, {} of {} variants used",
+            "  variety:  {} of 19 everyday activities, {} of {} variants used",
             self.distinct_activities, self.variants_used, self.variants_available
         )?;
         writeln!(f, "  unpredictability of the next activity: {:.2} bits (0 = fixed routine)", self.next_activity_entropy_bits)?;

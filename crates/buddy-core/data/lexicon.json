@@ -21,5 +21,12 @@
   "correction": {"en": ["that's wrong", "that is wrong", "that's not what i wanted", "not like that", "wrong", "no"], "fa": ["اشتباهه", "این اشتباهه", "اینو نمی‌خواستم", "اینطوری نه", "غلطه", "نه"]},
   "stop":       {"en": ["stop doing that", "stop that", "stop it", "stop", "enough", "leave it"], "fa": ["این کارو نکن", "نکن", "بسه", "ولش کن", "تمومش کن"]},
   "quiet":      {"en": ["be quiet", "quiet", "hush", "shush"], "fa": ["ساکت باش", "ساکت", "هیس"]},
+  "yes":        {"en": ["yes please", "go ahead", "do it", "okay", "ok", "sure", "yes"], "fa": ["آره", "باشه", "انجام بده", "بکن", "حتما", "بله", "اوکی"]},
+  "always":     {"en": ["always do that", "always do it", "keep doing that", "do that every time", "remember this method"], "fa": ["همیشه همین کارو بکن", "همیشه انجامش بده", "هر دفعه همین کارو بکن", "این روش یادت بمونه"]},
+  "no_help":    {"en": ["don't help me with this", "do not help me with this", "don't help with this", "leave me to it"], "fa": ["تو این کار کمکم نکن", "کمک نمی‌خوام", "خودم انجام می‌دم"]},
+  "not_now":    {"en": ["no thanks", "no thank you", "not now", "maybe later"], "fa": ["نه ممنون", "الان نه", "بعدا"]},
+  "open":       {"en": ["open up", "open the", "open", "launch", "start up"], "fa": ["رو باز کن", "را باز کن", "باز کن"]},
+  "find":       {"en": ["search for", "look for", "find me", "find my", "find the", "find"], "fa": ["رو پیدا کن", "را پیدا کن", "پیدا کن", "دنبال", "بگرد دنبال"]},
+  "note":       {"en": ["make a note that", "make a note", "take a note", "note that", "write down that", "write down", "jot down"], "fa": ["یادداشت کن که", "یادداشت کن", "یادداشت بردار", "بنویس که", "یه یادداشت بذار"]},
   "remember":   {"en": ["remember that", "remember this", "remember"], "fa": ["یادت باشه که", "یادت باشه", "یادت بمونه که", "یادت بمونه", "به خاطر بسپار"]}
 }

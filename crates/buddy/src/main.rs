@@ -1,9 +1,11 @@
 //! `buddy` — the daemon that keeps Buddy alive, and the command-line remote for it.
 
 mod ai;
+mod claude;
 mod client;
 mod daemon;
 mod renderer;
+mod skills;
 mod system;
 
 use anyhow::Result;
@@ -25,6 +27,19 @@ Usage:
   buddy knows                    the words he knows and how well
   buddy unlearn 'WORD'           make him forget a word
   buddy memories | forget N      what he was told to remember; forget one of them
+
+On the computer (try: buddy say 'find my tax report'):
+  buddy waiting                  what he would like to do and is waiting for a yes to
+  buddy approve [N] [--always]   yes (the latest, or number N); --always: no need to ask again
+  buddy deny [N] [--never]       no; --never: and do not offer or ask that again
+  buddy skills                   what he can do and whether he asks first
+  buddy skill NAME ask|allow|deny
+  buddy folders [add|remove DIR] the folders he may search, read and move files in
+  buddy undo                     take back the last change he made
+  buddy result                   the full output of the last thing he did
+  buddy providers                which helpers (local model, Claude Code) are available
+  buddy ask-claude 'TASK' [--in DIR] [--edit]
+                                 hand a task to Claude Code (asks first; sends it to Anthropic)
   buddy quiet on|off             no sounds and no asking for attention
   buddy why                      what he is doing, why, and how he feels
   buddy privacy on|off           suspend / resume every perception source
@@ -63,6 +78,23 @@ fn main() -> Result<()> {
         (Some("say"), Some(_)) => return client::say(&args[1..].join(" ")),
         (Some("teach"), Some(cue)) if arg(2).is_some() => ("teach", json!({ "cue": cue, "trick": arg(2) })),
         (Some("knows"), _) => return client::knows(),
+        (Some("waiting"), _) => return client::listing("waiting"),
+        (Some("skills"), _) => return client::listing("skills"),
+        (Some("providers"), _) => return client::providers(),
+        (Some(which @ ("approve" | "deny")), _) => {
+            let id = args[1..].iter().find_map(|a| a.parse::<u64>().ok());
+            let lasting = args[1..].iter().any(|a| a == "--always" || a == "--never");
+            return client::act(which, json!({ "id": id, "lasting": lasting }));
+        }
+        (Some("skill"), Some(skill)) if arg(2).is_some() => ("skill", json!({ "name": skill, "policy": arg(2) })),
+        (Some("folders"), Some(how @ ("add" | "remove"))) if arg(2).is_some() => ("folders", json!({ how: arg(2).map(client::absolute) })),
+        (Some("folders"), None) => ("folders", Value::Null),
+        (Some("undo"), _) => ("undo", Value::Null),
+        (Some("result"), _) => return client::result(),
+        (Some("ask-claude"), Some(task)) => {
+            let folder = args.iter().position(|a| a == "--in").and_then(|i| args.get(i + 1)).map(|f| client::absolute(f));
+            return client::act("ask_claude", json!({ "task": task, "folder": folder, "edit": args.iter().any(|a| a == "--edit") }));
+        }
         (Some("unlearn"), Some(cue)) => ("unlearn", json!({ "cue": cue })),
         (Some("memories"), _) => return client::memories(),
         (Some("forget"), Some(id)) => ("forget", json!({ "id": id.parse::<i64>().ok() })),

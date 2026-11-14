@@ -25,5 +25,5 @@ pub use language::Heard;
 pub use model::{Activity, Body, Identity, Life, Settings, Stage};
 pub use perception::{Senses, Stimulus};
 pub use proto::{ClientMsg, ServerMsg, StateMsg};
-pub use sim::{Command, JournalEntry, Mind, Output, Sim};
+pub use sim::{Answer, Command, JournalEntry, Mind, Output, Sim};
 pub use store::Store;

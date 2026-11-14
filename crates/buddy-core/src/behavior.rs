@@ -25,7 +25,7 @@ pub struct Spec {
 }
 
 #[rustfmt::skip]
-pub const REPERTOIRE: [Spec; 19] = [
+pub const REPERTOIRE: [Spec; 20] = [
     Spec { activity: Activity::Stand,         variants: 3, secs: (4.0, 20.0),   recovery: 60.0 },
     Spec { activity: Activity::Walk,          variants: 4, secs: (0.0, 0.0),    recovery: 90.0 },
     Spec { activity: Activity::Sit,           variants: 2, secs: (15.0, 150.0), recovery: 240.0 },
@@ -45,6 +45,7 @@ pub const REPERTOIRE: [Spec; 19] = [
     Spec { activity: Activity::SeekAttention, variants: 2, secs: (6.0, 12.0),   recovery: 3600.0 },
     Spec { activity: Activity::Eat,           variants: 1, secs: (12.0, 25.0),  recovery: 60.0 },
     Spec { activity: Activity::Drink,         variants: 1, secs: (6.0, 12.0),   recovery: 60.0 },
+    Spec { activity: Activity::Invite,        variants: 3, secs: (5.0, 8.0),    recovery: 60.0 },
 ];
 
 pub fn spec(activity: Activity) -> &'static Spec {

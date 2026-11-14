@@ -22,6 +22,19 @@ pub struct Seen {
     pub days: u32,
     pub last_day: i64,
     pub last_seen: f64,
+    /// How the user has answered when he offered to help with this.
+    #[serde(default)]
+    pub accepted: u32,
+    #[serde(default)]
+    pub declined: u32,
+    /// "Always do that": he may go ahead without asking.
+    #[serde(default)]
+    pub standing_yes: bool,
+    /// "Don't help me with this", or declined three times: he never offers again.
+    #[serde(default)]
+    pub never: bool,
+    #[serde(default)]
+    pub last_offer: f64,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -118,6 +131,38 @@ impl Patterns {
         found
     }
 
+    /// If the last two applications are how one of his noticed habits begins, the
+    /// habit and the application that usually comes third.
+    pub fn anticipate(&self) -> Option<(String, String)> {
+        if self.recent.len() < 2 {
+            return None;
+        }
+        let begun = format!("{} > {} > ", self.recent[self.recent.len() - 2], self.recent[self.recent.len() - 1]);
+        self.sequences
+            .iter()
+            .filter(|(key, seen)| key.starts_with(&begun) && seen.is_habit() && !seen.never)
+            .max_by_key(|(_, seen)| seen.times)
+            .map(|(key, _)| (key.clone(), key[begun.len()..].to_string()))
+    }
+
+    /// The record for one habit, by its key ("app > app > app").
+    pub fn habit_mut(&mut self, key: &str) -> Option<&mut Seen> {
+        self.sequences.get_mut(key)
+    }
+
+    pub fn habit(&self, key: &str) -> Option<&Seen> {
+        self.sequences.get(key)
+    }
+
+    /// The application currently in front, once it has been there long enough to count.
+    pub fn settle(&mut self, now: f64) -> Option<Recurring> {
+        let (app, since) = self.pending.clone()?;
+        if now - since < MIN_DWELL_SECS || self.recent.back() == Some(&app) {
+            return None;
+        }
+        self.step(app, since)
+    }
+
     pub fn tracked(&self) -> usize {
         self.sequences.len()
     }
@@ -178,6 +223,24 @@ mod tests {
         p.focus("editor", 120.0 + 3600.0);
         p.focus("browser", 150.0 + 3600.0);
         assert_eq!(p.tracked(), before + 1, "only the sequence ending before the break was completed");
+    }
+
+    #[test]
+    fn the_start_of_a_habit_lets_him_anticipate_the_rest() {
+        let mut p = Patterns::default();
+        for d in 0..3 {
+            work(&mut p, 86_400.0 * f64::from(d), &["terminal", "editor", "browser", "terminal", "editor", "browser", "files"]);
+        }
+        // A new day: terminal, then editor. The browser has always come next.
+        let day = 86_400.0 * 5.0;
+        p.focus("terminal", day);
+        p.focus("editor", day + 30.0);
+        assert_eq!(p.anticipate(), None, "the editor has only just come to the front");
+        p.settle(day + 40.0);
+        let (habit, next) = p.anticipate().expect("he sees it coming");
+        assert_eq!((habit.as_str(), next.as_str()), ("terminal > editor > browser", "browser"));
+        p.habit_mut(&habit).unwrap().never = true;
+        assert_eq!(p.anticipate(), None, "told not to help with this, he does not offer");
     }
 
     #[test]

@@ -106,6 +106,8 @@ pub enum Activity {
     SeekAttention,
     Eat,
     Drink,
+    /// "I noticed what you're doing — let me help!" Only ever started by an offer.
+    Invite,
 }
 
 /// How demanding an activity is; drives how needs change while he does it.
@@ -119,7 +121,7 @@ pub enum Effort {
 }
 
 impl Activity {
-    pub const ALL: [Activity; 19] = [
+    pub const ALL: [Activity; 20] = [
         Activity::Stand,
         Activity::Walk,
         Activity::Sit,
@@ -139,6 +141,7 @@ impl Activity {
         Activity::SeekAttention,
         Activity::Eat,
         Activity::Drink,
+        Activity::Invite,
     ];
 
     pub fn effort(self) -> Effort {
@@ -147,7 +150,7 @@ impl Activity {
             Activity::Sit | Activity::Lie | Activity::Yawn | Activity::Groom | Activity::Scratch | Activity::SeekAttention => Effort::Resting,
             Activity::Stand | Activity::Stretch | Activity::Shake | Activity::Eat | Activity::Drink => Effort::Standing,
             Activity::Walk | Activity::Sniff => Effort::Moving,
-            Activity::Zoomies | Activity::TailChase | Activity::PlayBow | Activity::Roll | Activity::Greet => Effort::Playing,
+            Activity::Zoomies | Activity::TailChase | Activity::PlayBow | Activity::Roll | Activity::Greet | Activity::Invite => Effort::Playing,
         }
     }
 

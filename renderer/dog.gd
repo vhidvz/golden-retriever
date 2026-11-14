@@ -417,6 +417,18 @@ func _compose(t: float, done: float) -> Array:
 					motion["stepping"] = 14.0
 				elif done > 0.6:
 					pose.merge({"pitch": -20.0, "front_l": 96.0, "front_r": 96.0, "hind_l": 20.0, "hind_r": 20.0}, true)
+		"invite":
+			# "I noticed what you're doing — let me help!": on his feet, facing you, bouncing, head tipping.
+			_posture = "stand"
+			pose.merge({"face_viewer": 0.9, "ears": -0.6, "jaw": 0.25, "neck": 8.0}, true)
+			var bounce := absf(sin(t * lerpf(5.0, 7.0, vigour)))
+			motion.merge({"lift": 0.05 * bounce, "front_l": 12.0 * bounce, "front_r": 12.0 * bounce, "wag": 1.0, "hold_gaze": 1.0, "head_tilt": 14.0 * sin(t * 2.1)}, true)
+			if _variant == 1:        # dipping into a play bow between bounces
+				var dip := maxf(sin(t * 2.4), 0.0)
+				pose.merge({"pitch": -18.0 * dip, "front_l": 70.0 * dip, "front_r": 70.0 * dip, "hind_l": 18.0 * dip, "hind_r": 18.0 * dip}, true)
+			elif _variant == 2 and done < 0.3:   # one quick turn on the spot first
+				motion["spin"] = side * TAU / maxf(0.3 * _planned, 0.5)
+				motion["stepping"] = 14.0
 		"seek_attention":
 			_posture = "sit"
 			pose.merge(SIT, true)

@@ -3,10 +3,11 @@
 A Golden Retriever who lives on a Linux desktop. He is born as a puppy, grows
 with real time, and keeps living when every AI service is unavailable.
 
-This repository is at **Phase 4 (language and training)**: on top of a life of
-his own and senses that each have their own switch, he now understands what is
-said to him in English and Persian, and learns what words mean the way a dog
-does. The dog you see is still a stand-in model.
+This repository is at **Phase 5 (skills and helpers)**: on top of a life of his
+own, senses that each have their own switch, and an understanding of English
+and Persian that he can be trained in, he can now do things on the computer
+when asked, offer to help when he sees a habit of yours begin, and call on a
+local model or Claude Code. The dog you see is still a stand-in model.
 
 ## What is here
 
@@ -15,6 +16,7 @@ does. The dog you see is still a stand-in model.
 | Brain | `crates/buddy-core` | Identity, age, needs, mood, temperament, behaviour selection, memory (SQLite), and a long-run simulator. No graphics, no models. |
 | Daemon and CLI | `crates/buddy` | Runs the brain, serves a Unix socket, supervises the renderer. |
 | Renderer | `renderer/` | Godot 4 project: a transparent, click-through overlay window, a fur-covered placeholder dog animated procedurally, and his recorded sounds. |
+| Skills | `crates/buddy/src/skills.rs`, `daemon/assist.rs`, `claude.rs`, `ai.rs` | What he can do on the computer, the permissions around it, and the optional helpers (Ollama, Claude Code). |
 | Senses | `shell-extension/`, `perception/`, `crates/buddy/src/system.rs` | What he perceives: a GNOME Shell extension for the desktop, small helpers for screen, camera and microphone, and a poller for idle time, lock and load. |
 | Service | `dist/buddy.service`, `scripts/install.sh` | Starts him with the graphical session, as the user, without root. |
 | Evidence | `spikes/` | The measurements the design rests on, with the harnesses that produced them. |
@@ -45,6 +47,14 @@ buddy teach "bang" roll_over   # tell him outright what a word means
 buddy knows             # the words he knows, how well, and how he came by them
 buddy unlearn "bang"
 buddy memories          # what he was told to remember; `buddy forget N` removes one
+
+buddy say "find my tax report"      # ask for something on the computer
+buddy waiting | approve | deny      # what he wants a yes for, and your answer
+buddy skills                        # what he can do, and whether he asks first
+buddy folders add ~/Documents       # where he may search, read and move files
+buddy undo | result                 # take back his last change; see his last output
+buddy providers                     # is the local model there? is Claude Code?
+buddy ask-claude "find the bug" --in ~/project
 buddy quiet on|off      # no sounds and no asking for attention
 buddy privacy on|off    # suspends every sense at once
 buddy senses            # what he may perceive, and what is actually reporting
@@ -152,6 +162,55 @@ He acts on them only if his name is in them, or within twenty seconds of being
 spoken to by name. This path has been tested with a recording, not with a
 microphone, and not yet in Persian.
 
+## Doing things on the computer
+
+He never acts on the computer except through eight skills, each a small piece
+of local code with its own limits:
+
+| Skill | What it does | By default |
+|---|---|---|
+| `find_files`, `read_file` | Look in the folders he was given | Allowed |
+| `open_app`, `open_file`, `make_note`, `move_file` | Small or reversible changes | Asks first |
+| `run_command` | Runs a shell command | Always asks, unless that exact command was approved for good |
+| `ask_claude` | Hands a task to Claude Code | Always asks, and says that the task and files go to Anthropic |
+
+**How a request is worked out.** "Open X", "find X", "note X" and their Persian
+forms are placed by his own vocabulary, with no model. Anything else goes to
+the local model, which picks one skill and its arguments. Claude Code is used
+only when asked for by name. The model only ever *chooses*; `skills.rs` is the
+only code that touches the system.
+
+**Permission.** Where a skill asks first, he sits and waits. Answer with
+`buddy approve` / `buddy deny`, or just say yes or no to him. `--always` makes
+a yes standing for that skill (never for the two sensitive ones); `--never`
+makes a no final. He has no folders until given some (`buddy folders add`), and
+a path that leads out of them is refused. A note and a move can be taken back
+with `buddy undo`. The journal records what he did and whether it worked, not
+its output.
+
+**His own offers.** When the first two applications of a habit he has noticed
+come to the front, he gets up, faces you, bounces and gives a soft woof: he
+would like to bring up the third. `buddy waiting` says what he has in mind.
+Yes, and he does it; "always do that", and next time he does not ask; "not
+now", and he lets it go; "don't help me with this", or three refusals, and he
+never offers that again. An offer nobody answers lapses after ninety seconds.
+He offers at most once in ten minutes, never to an empty room, and never in
+quiet mode.
+
+**Helpers.** `buddy providers` shows what is available. Each is optional and
+each can fail on its own:
+
+- *Ollama*, on this machine: understanding what vocabulary cannot place,
+  choosing a skill, describing a look at the screen, writing down speech.
+- *Claude Code*, through the user's own installed and logged-in `claude`: he
+  runs it in a clean environment with any API key removed, read-only unless
+  `--edit` is given, never able to run commands, and only in a folder he was
+  given. Not logged in, over the usage limit and offline are told apart and
+  reported in plain words.
+
+With neither, he still lives, obeys the words he knows, and does what his own
+vocabulary can work out.
+
 ## Ground rules
 
 - **Local first.** His life never depends on a language model or a network.
@@ -185,6 +244,11 @@ by providing the same methods the renderer calls: `apply_growth`,
 - Speech has been tested with a recording only; there is no wake word, so with the
   microphone on every stretch of speech goes through the local model.
 - "Fetch" is not among his tricks yet, because there is no ball.
+- His offers cover one thing so far: bringing up the application that usually comes
+  next. He does not yet record or replay what you do inside applications, and has
+  no way to press keys or click for you.
+- Claude Code can read (and with `--edit`, change) files in a folder you name; its
+  individual steps are not yet shown to you for approval one by one.
 - Suspend is handled by time accounting only; there is no lock or sleep signal yet.
 - The renderer needs Godot installed; it is not yet exported as a standalone binary.
 
@@ -193,8 +257,7 @@ by providing the same methods the renderer calls: `apply_growth`,
 1. Foundation — done.
 2. Autonomous life — done.
 3. Perception — done.
-4. Language and training — this phase.
-5. Skills and learned workflows: local models through Ollama and optional
-   Claude Code delegation as peer providers, a playful invitation when he
-   spots something he could take over, verification and undo.
+4. Language and training — done.
+5. Skills and helpers — this phase. Still to come within it: recording and
+   replaying workflows inside applications, with checks that each step worked.
 6. Refinement: fur and model quality, the puppy shape, KDE.

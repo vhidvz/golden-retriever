@@ -38,6 +38,8 @@ pub fn interpret(model: &str, said: &str, tricks: &[&str], taught: &[String]) ->
          - praise, treat, approval (\"that's right\"), correction (\"that's wrong\"), stop (\"stop doing that\"), quiet.\n\
          - remember: they want him to keep a fact or preference. Put it in `text`, in their own words and language.\n\
          - teach: they are saying a new word should mean a trick (\"when I say X, do Y\"). Put the new word in `cue` and the trick in `trick`.\n\
+         - task: they want something done on the computer: finding or opening a file or an application, taking a note, running something, a programming job.\n\
+         - yes / no_help: an answer to something he offered (\"go ahead\" / \"not now, don't help me with this\").\n\
          - chat: said to him, but nothing to do. unknown: none of these.",
         tricks.join(", "),
         if taught.is_empty() {
@@ -46,7 +48,23 @@ pub fn interpret(model: &str, said: &str, tricks: &[&str], taught: &[String]) ->
             format!(" Words they have taught him, which also count as cues (put the word in `cue`): {}.", taught.join(", "))
         }
     );
-    let kinds = ["cue", "praise", "treat", "approval", "correction", "stop", "quiet", "remember", "teach", "chat", "unknown"];
+    let kinds = [
+        "cue",
+        "praise",
+        "treat",
+        "approval",
+        "correction",
+        "stop",
+        "quiet",
+        "remember",
+        "teach",
+        "task",
+        "yes",
+        "not_now",
+        "no_help",
+        "chat",
+        "unknown",
+    ];
     let schema = json!({ "type": "object", "required": ["kind", "trick", "cue", "text"], "properties": {
         "kind": { "type": "string", "enum": kinds }, "trick": { "type": "string" }, "cue": { "type": "string" }, "text": { "type": "string" } } });
     let body = json!({
@@ -69,9 +87,34 @@ pub fn interpret(model: &str, said: &str, tricks: &[&str], taught: &[String]) ->
         "quiet" => Heard::Quiet,
         "remember" if !field("text").is_empty() => Heard::Remember(field("text")),
         "teach" if tricks.contains(&trick.as_str()) && !cue.is_empty() => Heard::Teach { cue, trick },
+        "task" => Heard::Task { request: said.to_string(), skill: None, argument: None },
+        "yes" => Heard::Yes,
+        "no_help" => Heard::NoHelp,
+        "not_now" => Heard::NotNow,
         "chat" => Heard::Chat,
         _ => Heard::Unknown,
     })
+}
+
+/// Asks a local model which one skill, if any, fulfils a request, and with what arguments.
+pub fn plan(model: &str, request: &str) -> Result<Option<(String, Value)>> {
+    let installed = models()?;
+    if !installed.iter().any(|m| m == model) {
+        bail!("the model '{model}' is not installed in Ollama");
+    }
+    let body = json!({
+        "model": model, "stream": false, "think": false, "options": { "temperature": 0, "num_predict": 200 },
+        "tools": crate::skills::as_tools(),
+        "messages": [
+            { "role": "system", "content": "A person asked their assistant, a dog living on their Linux desktop, to do something on the computer, in English or Persian. \
+               Choose the one tool that does it and fill in its arguments from their words. Use ask_claude only for programming or analysis work they clearly want handed to Claude. \
+               If no tool fits, call none and reply with the single word: none." },
+            { "role": "user", "content": request }],
+    });
+    let mut response = agent(Duration::from_secs(120)).post(&format!("{URL}/api/chat")).send_json(&body).context("the local model did not answer")?;
+    let reply: Value = response.body_mut().read_json()?;
+    let call = &reply["message"]["tool_calls"][0]["function"];
+    Ok(call["name"].as_str().filter(|name| crate::skills::skill(name).is_some()).map(|name| (name.to_string(), call["arguments"].clone())))
 }
 
 /// Has a local model write down what was said in a short recording (16 kHz WAV).

@@ -125,3 +125,52 @@ fn what_he_was_taught_and_told_survives_a_restart() {
     sandbox.run(&["quit"]);
     second.wait().unwrap();
 }
+
+#[test]
+fn he_does_computer_tasks_with_no_model_at_all_and_only_with_a_yes() {
+    let sandbox = Sandbox::new("skills");
+    let docs = sandbox.dir.join("docs");
+    std::fs::create_dir_all(&docs).unwrap();
+    std::fs::write(docs.join("tax report 2025.txt"), "numbers").unwrap();
+
+    let mut daemon = sandbox.start();
+    // No local model: only his own vocabulary is left to work things out.
+    sandbox.run(&["set", "language_model", "no-such-model"]);
+
+    // Looking is allowed, but only where he has been let in.
+    let refused = sandbox.buddy().args(["say", "find my tax report"]).output().unwrap();
+    assert!(!refused.status.success() && String::from_utf8_lossy(&refused.stderr).contains("any folders"));
+    sandbox.run(&["folders", "add", docs.to_str().unwrap()]);
+    assert!(sandbox.run(&["say", "find my tax report"]).contains("tax report 2025.txt"));
+    assert!(sandbox.run(&["say", "tax report رو پیدا کن"]).contains("tax report 2025.txt"));
+
+    // Changing something waits for a yes, and can be taken back.
+    let asked = sandbox.run(&["say", "make a note that the build is broken"]);
+    assert!(asked.contains("waiting for your answer"), "{asked}");
+    let notes = sandbox.dir.join("data/notes.md");
+    assert!(!notes.exists(), "nothing is written before the yes");
+    assert!(sandbox.run(&["say", "yes"]).contains("Done"));
+    assert!(std::fs::read_to_string(&notes).unwrap().contains("the build is broken"));
+    sandbox.run(&["undo"]);
+    assert!(!std::fs::read_to_string(&notes).unwrap().contains("the build is broken"));
+
+    // A no is a no, and "always" for a sensitive skill is refused.
+    sandbox.run(&["say", "یادداشت کن فردا جلسه دارم"]);
+    assert!(sandbox.run(&["say", "نه ممنون"]).contains("will not"));
+    assert!(!sandbox.run(&["waiting"]).contains("جلسه"));
+    assert!(!sandbox.buddy().args(["skill", "run_command", "allow"]).output().unwrap().status.success());
+
+    // What his vocabulary cannot place, with no model to ask, leaves him honestly puzzled.
+    let lost = sandbox.run(&["say", "would you kindly reorganise my holiday photographs by year"]);
+    assert!(lost.contains("does not know what you want"), "{lost}");
+
+    // Permissions survive a restart.
+    sandbox.run(&["skill", "make_note", "allow"]);
+    sandbox.run(&["quit"]);
+    daemon.wait().unwrap();
+    let mut again = sandbox.start();
+    assert!(sandbox.run(&["skills"]).lines().any(|l| l.starts_with("make_note") && l.contains("allow")));
+    assert!(sandbox.run(&["folders"]).contains("docs"));
+    sandbox.run(&["quit"]);
+    again.wait().unwrap();
+}

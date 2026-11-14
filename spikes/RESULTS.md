@@ -124,3 +124,18 @@ activities repeated back to back. In the unattended scenario his mood never
 fell below -0.08 on a scale of -1 to 1, and he made at most one loud sound in
 his busiest hour. He looks up at the viewer about 40 times per waking hour,
 which adds up to 2.3% of his waking time.
+
+## Skills and helpers (Phase 5, measured 2026-11-14)
+
+- A request placed by vocabulary alone ("find my tax report", «گزارش مالیات رو پیدا کن»)
+  is answered at once, with no model running.
+- A request only the local model could place ("Could you put down for me that I
+  must call the dentist tomorrow?", and its Persian equivalent) became a
+  `make_note` proposal with a sensible argument; two model calls, a few seconds.
+- A read-only hand-off to Claude Code ("Is there a bug in geometry.py?") came back
+  in 10 s with the right answer, left the file untouched, and reported 21% of the
+  five-hour allowance used. The same request for a folder he had not been given
+  was refused before Claude Code was started.
+- With a habit seeded (Terminal, then code, then Calculator), bringing Terminal and
+  then code to the front made him invite within seconds; "تو این کار کمکم نکن"
+  ended it and marked the habit never to be offered again.
