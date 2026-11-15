@@ -57,8 +57,12 @@ func _load_folder(folder: String) -> void:
 
 
 ## Make a sound. `intensity` is 0..1; `growth` is 0 (puppy) to 1 (adult) and
-## raises the pitch for a young dog.
+## raises the pitch for a young dog. Recordings of a real puppy (`<kind>_pup_…`)
+## are used instead while he is young, as they are, without raising their pitch.
 func say(kind: String, intensity: float, growth: float) -> void:
+	var puppy := growth < 0.4 and _recordings.has(kind + "_pup")
+	if puppy:
+		kind += "_pup"
 	if muted or not _recordings.has(kind):
 		return
 	var takes: Array = _recordings[kind]
@@ -69,7 +73,7 @@ func say(kind: String, intensity: float, growth: float) -> void:
 	for player in _players:
 		if not player.playing:
 			player.stream = takes[pick]
-			player.pitch_scale = _chance.randf_range(0.93, 1.08) * lerpf(1.35, 1.0, growth)
+			player.pitch_scale = _chance.randf_range(0.93, 1.08) * (1.0 if puppy else lerpf(1.35, 1.0, growth))
 			player.volume_db = lerpf(SOFTEST_DB, LOUDEST_DB, clampf(intensity, 0.0, 1.0)) + _chance.randf_range(-1.5, 1.5)
 			player.play()
 			return

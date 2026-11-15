@@ -318,8 +318,9 @@ simplest example.
 - When the graphics card runs out of memory (other programs had 1.8 of its 2 GB
   during testing), a frame can come out empty; this showed up as occasional blank
   renders in the self-test and has not been made robust yet.
-- Only barks and a grunt have recordings; whines, yawns, sniffs and the rest are
-  silent until freely licensed recordings are added (see `renderer/sounds/SOURCES.md`).
+- Barks, a grunt and whines (a grown dog's, and a real puppy's while he is young)
+  have recordings; yawns, sniffs, shaking off, eating and drinking are silent until
+  freely licensed recordings of real dogs are found (see `renderer/sounds/SOURCES.md`).
 - No toys yet, so no fetch.
 - The desktop sense needs GNOME; on other desktops he still has the system sense.
 - Looking at the screen is on request only (`buddy look`), sees the whole monitor
