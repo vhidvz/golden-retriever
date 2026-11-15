@@ -243,6 +243,11 @@ or taken from another model:
 It takes a few seconds and writes `renderer/dog/retriever.json`. That file is in
 the repository, so Blender is only needed to change the dog, never to run him.
 
+His proportions are measured against breed standards, judges' material and limb
+studies, and against photographs of real Goldens, in `docs/proportions.md`; the
+measuring is reproducible with `python3 tools/measure_dog.py` (add `--age puppy`, or
+`--picture out.png` to see where each landmark was found).
+
 `renderer/retriever.gd` loads the mesh onto a 25-bone skeleton. The coat is
 drawn by `renderer/coat.gdshaderinc` as up to 26 soft layers lifted off the skin
 (a short coat gets two or three, the feathering all of them). At his size on
@@ -329,9 +334,9 @@ is still the live 3D body.
 - When the graphics card runs out of memory (other programs had 1.8 of its 2 GB
   during testing), a frame can come out empty; this showed up as occasional blank
   renders in the self-test and has not been made robust yet.
-- Barks, a grunt and whines (a grown dog's, and a real puppy's while he is young)
-  have recordings; yawns, sniffs, shaking off, eating and drinking are silent until
-  freely licensed recordings of real dogs are found (see `renderer/sounds/SOURCES.md`).
+- His sounds are recordings of real dogs (barks, a grunt, whines, yawns, sniffs,
+  shaking off, eating and drinking; see `renderer/sounds/SOURCES.md`); panting,
+  growling and a puppy's yawn have none yet.
 - No toys yet, so no fetch.
 - The desktop sense needs GNOME; on other desktops he still has the system sense.
 - Looking at the screen is on request only (`buddy look`), sees the whole monitor
