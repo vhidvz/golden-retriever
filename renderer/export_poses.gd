@@ -154,8 +154,13 @@ func _snap() -> Dictionary:
 		eyes.append({
 			"transform": _numbers(_dog._eyes[i].global_transform), "radius": _dog._eyes[i].get_meta("radius"),
 			"upper": _dog._lids[i * 3].rotation.z, "lower": _dog._lids[i * 3 + 1].rotation.z,
+			"look": _vector(_dog._pupils[i].position.normalized()),     # where the pupil points, in the eye's own space
 		})
 	return {"bones": bones, "eyes": eyes, "tongue": {"shown": _dog._tongue.visible, "transform": _numbers(_dog._tongue.global_transform)}}
+
+
+static func _vector(v: Vector3) -> Array:
+	return [v.x, v.y, v.z]
 
 
 static func _numbers(t: Transform3D) -> Array:

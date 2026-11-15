@@ -39,6 +39,8 @@ LOOK = E("LOOK", "None")
 PALING = float(E("PALING", "0.25"))   # how far a puppy's coat is mixed towards cream
 SUPER = float(E("SUPER", "1.6"))      # drawn this much larger, then scaled down: hair stays crisp, not smeared
 KEY = E("KEY", "left")                # "left": light from the upper left (mirrored when he faces left); "front"
+FOCUS = float(E("FOCUS", "0"))        # tests only: render just this far (in units) around his eyes
+LID_TUCK = tuple(float(v) for v in E("LID_TUCK", "12,10").split(","))   # degrees the open lids are turned back into the head
 
 
 def linear(colour):
@@ -99,7 +101,8 @@ def grow(body, count, rng):
     tri, where = body.triangles, body.rest
     a, b, c = where[tri[:, 0]], where[tri[:, 1]], where[tri[:, 2]]
     area = 0.5 * np.linalg.norm(np.cross(b - a, c - a), axis=1)
-    furred = (body.coat[tri].min(axis=1) > 0.0015) & (body.skin[tri].max(axis=1) < 0.5)
+    # (no stubble where the coat runs out at the nose and the eyes: it shows as a pale ring)
+    furred = (body.coat[tri].min(axis=1) > 0.004) & (body.skin[tri].max(axis=1) < 0.35)
     weight = area * furred
     pick = rng.choice(len(tri), size=count, p=weight / weight.sum())
     u, v = rng.random(count), rng.random(count)
@@ -223,6 +226,71 @@ def material_plain(name, colour, roughness, coat=0.0):
     return m
 
 
+def material_eye():
+    """A dog's eye: a large dark-brown iris with a black pupil (the lids hide almost all
+    of the white), under a clear, wet cornea that catches the light. The pattern is laid
+    round the ball's own +X axis, which is turned each frame to where the pupil points."""
+    m = bpy.data.materials.new("eye")
+    m.use_nodes = True
+    nt = m.node_tree
+    bsdf = nt.nodes["Principled BSDF"]
+    coords = nt.nodes.new("ShaderNodeTexCoord")
+    unit = nt.nodes.new("ShaderNodeVectorMath")
+    unit.operation = "NORMALIZE"
+    nt.links.new(coords.outputs["Object"], unit.inputs[0])
+    axis = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(unit.outputs[0], axis.inputs[0])
+    # How far from the middle of the pupil, as the cosine of the angle (1 = the middle).
+    ramp = nt.nodes.new("ShaderNodeValToRGB")
+    nt.links.new(axis.outputs["X"], ramp.inputs["Fac"])
+    stops = [(0.22, (0.50, 0.44, 0.38)), (0.30, (0.020, 0.010, 0.005)), (0.40, (0.055, 0.024, 0.009)),
+             (0.88, (0.12, 0.055, 0.02)), (0.935, (0.008, 0.006, 0.005)), (1.0, (0.005, 0.004, 0.004))]
+    ramp.color_ramp.elements[0].position, ramp.color_ramp.elements[0].color = stops[0][0], stops[0][1] + (1,)
+    ramp.color_ramp.elements[1].position, ramp.color_ramp.elements[1].color = stops[1][0], stops[1][1] + (1,)
+    for position, colour in stops[2:]:
+        e = ramp.color_ramp.elements.new(position)
+        e.color = colour + (1,)
+    # Fine radial streaks in the iris.
+    streaks = nt.nodes.new("ShaderNodeTexNoise")
+    streaks.inputs["Scale"].default_value = 9.0
+    nt.links.new(unit.outputs[0], streaks.inputs["Vector"])
+    vary = nt.nodes.new("ShaderNodeMix")
+    vary.data_type = "RGBA"
+    vary.blend_type = "MULTIPLY"
+    vary.inputs["Factor"].default_value = 0.5
+    nt.links.new(ramp.outputs["Color"], vary.inputs[6])
+    nt.links.new(streaks.outputs["Color"], vary.inputs[7])
+    nt.links.new(vary.outputs[2], bsdf.inputs["Base Color"])
+    bsdf.inputs["Roughness"].default_value = 0.5
+    bsdf.inputs["Coat Weight"].default_value = 1.0
+    bsdf.inputs["Coat Roughness"].default_value = 0.02
+    bsdf.inputs["Coat IOR"].default_value = 1.376
+    return m
+
+
+def material_nose():
+    """Leather: a fine pebbled texture, dark, a little damp."""
+    m = bpy.data.materials.new("nose")
+    m.use_nodes = True
+    nt = m.node_tree
+    bsdf = nt.nodes["Principled BSDF"]
+    bsdf.inputs["Base Color"].default_value = (0.022, 0.018, 0.017, 1)
+    bsdf.inputs["Roughness"].default_value = 0.42
+    bsdf.inputs["Coat Weight"].default_value = 0.2
+    bsdf.inputs["Coat Roughness"].default_value = 0.3
+    cells = nt.nodes.new("ShaderNodeTexVoronoi")
+    cells.inputs["Scale"].default_value = 900.0
+    cells.feature = "DISTANCE_TO_EDGE"
+    coords = nt.nodes.new("ShaderNodeTexCoord")
+    nt.links.new(coords.outputs["Object"], cells.inputs["Vector"])
+    bump = nt.nodes.new("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = 0.6
+    bump.inputs["Distance"].default_value = 0.0004
+    nt.links.new(cells.outputs["Distance"], bump.inputs["Height"])
+    nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+    return m
+
+
 def mesh_object(name, verts, faces, smooth=True):
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata([tuple(p) for p in verts], [], [tuple(f) for f in faces])
@@ -262,7 +330,7 @@ def lid(name, upper, tone):
     for i in range(len(verts)):
         row = i // 13
         edge = row / 10 if upper else 1.0 - row / 10
-        mixed = rim + (linear(tone) - rim) * min(1.0, edge / 0.22)
+        mixed = rim + (linear(tone) - rim) * min(1.0, max(edge - 0.25, 0.0) / 0.35)    # a wide, black lid margin
         colours += list(mixed) + [1.0]
     paint.data.foreach_set("color", colours)
     return obj
@@ -303,6 +371,9 @@ def main():
     # Matte under the coat (a shine there shows through the hair as bright patches); wet on the nose.
     rough.data.foreach_set("value", np.where(body.skin > 0.5, 0.75 - 0.6 * body.shine, 1.0).astype(np.float32))
     flesh.data.materials.append(material_painted("skin"))
+    flesh.data.materials.append(material_nose())
+    nose_faces = (body.skin[body.triangles].min(axis=1) > 0.5) & (body.shine[body.triangles].min(axis=1) > 0.9)
+    flesh.data.polygons.foreach_set("material_index", nose_faces.astype(np.int32))
 
     # The coat.
     hair_rest, hair_ids, hair_weights, melanin = coat(body, strands, rng)
@@ -322,16 +393,18 @@ def main():
     hair = bpy.data.objects.new("coat", curves)
     scene.collection.objects.link(hair)
     curves.materials.append(material_hair())
+    hair.hide_render = bool(E("NOHAIR", ""))      # tests only
     print(f"BAKE body and {len(hair_rest)} hairs ready, {time.time() - started:.0f} s", flush=True)
 
     # Eyes, eyelids, tongue.
-    eye_tone = PALE * (0.55 * body.young) + np.array([0.80, 0.60, 0.34]) * (1 - 0.55 * body.young)
+    eye_tone = (PALE * (0.55 * body.young) + np.array([0.80, 0.60, 0.34]) * (1 - 0.55 * body.young)) * 0.75
     painted_lid = material_painted("lid", roughness_attribute=False)
+    the_eye = material_eye()
     eyes = []
     for i in range(2):
         verts, faces = sphere(f"eye{i}", 24, 12)
         ball = mesh_object(f"eye{i}", verts, faces)
-        ball.data.materials.append(material_plain("eye", (0.035, 0.016, 0.006), 0.04, coat=1.0))
+        ball.data.materials.append(the_eye)
         lids = [lid(f"upper{i}", True, eye_tone), lid(f"lower{i}", False, eye_tone)]
         for one in lids:
             one.data.materials.append(painted_lid)
@@ -346,6 +419,18 @@ def main():
     world.use_nodes = True
     world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.85, 0.84, 0.82, 1)
     world.node_tree.nodes["Background"].inputs["Strength"].default_value = 1.1
+    # Seen in a reflection the sky is dimmer: an evenly bright sky mirrored in a wet eye or nose
+    # greys the whole of it, where a real one shows mostly dark with a small bright catchlight.
+    wt = world.node_tree
+    dim = wt.nodes.new("ShaderNodeBackground")
+    dim.inputs["Color"].default_value = (0.85, 0.84, 0.82, 1)
+    dim.inputs["Strength"].default_value = 1.1 * float(E("GLOSSY_SKY", "0.12"))
+    path = wt.nodes.new("ShaderNodeLightPath")
+    choose = wt.nodes.new("ShaderNodeMixShader")
+    wt.links.new(path.outputs["Is Glossy Ray"], choose.inputs["Fac"])
+    wt.links.new(wt.nodes["Background"].outputs[0], choose.inputs[1])
+    wt.links.new(dim.outputs[0], choose.inputs[2])
+    wt.links.new(choose.outputs[0], wt.nodes["World Output"].inputs["Surface"])
     scene.world = world
     sun = bpy.data.objects.new("sun", bpy.data.lights.new("sun", "SUN"))
     sun.data.energy = 4.5
@@ -409,14 +494,27 @@ def main():
             for (ball, lids), eye in zip(eyes, frame["eyes"]):
                 place = to_blender(matrices(eye["transform"])[0])
                 size = Matrix.Scale(eye["radius"], 4)
-                ball.matrix_world = place @ size
-                lids[0].matrix_world = place @ Matrix.Rotation(eye["upper"], 4, "Z") @ size
-                lids[1].matrix_world = place @ Matrix.Rotation(eye["lower"], 4, "Z") @ size
+                look = Vector(eye.get("look", (1.0, 0.0, 0.0)))
+                ball.matrix_world = place @ Vector((1.0, 0.0, 0.0)).rotation_difference(look).to_matrix().to_4x4() @ size
+                # Open, the lids are tucked away inside the head; closing, they come over the eye.
+                shut_upper = min(max(eye["upper"] / math.radians(-70.0), 0.0), 1.0)
+                shut_lower = min(max(eye["lower"] / math.radians(14.0), 0.0), 1.0)
+                upper = eye["upper"] + math.radians(LID_TUCK[0]) * (1.0 - shut_upper)
+                lower = eye["lower"] - math.radians(LID_TUCK[1]) * (1.0 - shut_lower)
+                lids[0].matrix_world = place @ Matrix.Rotation(upper, 4, "Z") @ size
+                lids[1].matrix_world = place @ Matrix.Rotation(lower, 4, "Z") @ size
             tongue.hide_render = not frame["tongue"]["shown"]
             tongue.matrix_world = to_blender(matrices(frame["tongue"]["transform"])[0])
             scene.render.filepath = path
+            if FOCUS:
+                from bpy_extras.object_utils import world_to_camera_view
+                middle = (eyes[0][0].matrix_world.translation + eyes[1][0].matrix_world.translation) / 2
+                spots = [world_to_camera_view(scene, cam, middle + Vector(d) * FOCUS * poses["scale"]) for d in ((1, 1, 0), (-1, -1, 0))]
+                scene.render.use_border, scene.render.use_crop_to_border = True, True
+                scene.render.border_min_x, scene.render.border_max_x = sorted((min(max(s.x, 0), 1) for s in spots))
+                scene.render.border_min_y, scene.render.border_max_y = sorted((min(max(s.y, 0), 1) for s in spots))
             bpy.ops.render.render(write_still=True)
-            if SUPER != 1.0:
+            if SUPER != 1.0 and not FOCUS:
                 picture = bpy.data.images.load(path)
                 picture.scale(*poses["window"])
                 picture.filepath_raw = path
@@ -428,4 +526,5 @@ def main():
     print(f"BAKE done: {drawn} pictures drawn, {time.time() - started:.0f} s", flush=True)
 
 
-main()
+if __name__ == "__main__":
+    main()
