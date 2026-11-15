@@ -31,6 +31,7 @@ LIFT, CLUMP, DRAPE, HANG = 0.08, 0.10, 0.8, 2.0
 MELANIN, REDNESS, TINT = 0.74, 0.95, (1.0, 0.88, 0.65)
 HAIR_PX = 0.18                # the radius of a hair, in pixels of the picture
 HAIR_REAL = 0.0003            # the radius of a real hair, in units of his (adult) body
+YOUNG = 0.0                   # set from his growth: a puppy's fluff stands out from the body more
 # Settled by test renders (each can be overridden from the environment for further tests):
 E = lambda name, default: os.environ.get(name, default)
 VIEW = E("VIEW", "Standard")          # colour transform: "Standard" keeps the coat's colours as they are
@@ -90,7 +91,7 @@ class Body:
         tri = np.array(model["triangles"]).reshape(-1, 3)
         self.triangles = tri[:, [0, 2, 1]]          # the renderer winds front faces the other way round
         self.young = young
-        self.full = 1.9 - 0.6 * young               # a puppy's fluff is shorter than the adult's coat
+        self.full = 1.9 - 0.4 * young               # a puppy's fluff is a little shorter than the adult's coat
 
 
 def grow(body, count, rng):
@@ -125,7 +126,7 @@ def shape(root, n, f, length, phase):
     long = np.clip((length - 0.012) / 0.06, 0.0, 1.0)[:, None, None]
     behind_leg = (np.clip(-n[:, 0], 0.0, 1.0) * (root[:, 1] < 0.42) * (root[:, 1] > 0.06))[:, None, None]
     under = np.clip(-n[:, 1], 0.0, 1.0)[:, None, None]          # facing the ground
-    lift = LIFT + 0.14 * long + 0.45 * behind_leg * long
+    lift = LIFT + 0.14 * long + 0.45 * behind_leg * long + 0.20 * YOUNG
     gravity = (0.10 + DRAPE * long + HANG * under * long) * k ** 1.6
     d = n[:, None, :] * lift * (1.0 - 0.7 * k) + f[:, None, :] * (1.0 - lift) + np.array([0.0, -1.0, 0.0]) * gravity
     d /= np.linalg.norm(d, axis=2)[:, :, None]
@@ -285,6 +286,8 @@ def main():
 
     growth = poses["growth"]
     body = Body(model, growth)
+    global YOUNG
+    YOUNG = body.young
     px_per_unit = poses["window"][1] / poses["camera"]["size"]
     # As many hairs as it takes to cover him at the size he is drawn (about 250,000 for the adult).
     strands = int(option("--strands", str(int(float(E("DENSITY", "1200")) * px_per_unit * poses["scale"]))))

@@ -71,16 +71,17 @@ STOP = 0.56                        # where, on the head as described, the forehe
 # round and close to the ground, his legs short and thick, his head big for him with
 # a short muzzle, his tail a stub, and his coat an even fluff with no feathering.
 # Every part below is described once, for the adult; these say how the puppy differs.
-PUP_SHORT = 0.70                   # how much shorter he is from front to back
+PUP_SHORT = 0.63                   # how much shorter he is from front to back
 PUP_LOW = 0.66                     # how much shorter his legs are
 PUP_SINK = 0.60 * (1.0 - PUP_LOW)  # so his back is this much nearer the ground
-PUP_HEAD_AT = (0.245, 0.620)
+PUP_HEAD_AT = (0.248, 0.605)             # on a short neck
 PUP_HEAD_TILT = math.radians(-4.0)
-PUP_HEAD_SIZE = 1.0                # the head hardly shrinks at all
-PUP_MUZZLE = 0.58                  # his muzzle is this fraction of the adult's length
-PUP_TAIL = 0.50
-PUP_LEG = 1.24                     # his legs are this much thicker for their length
-PUP_FLUFF = (0.052, 0.055, 0.056)  # the coat on his back, flanks and belly
+PUP_HEAD_SIZE = 1.3                # bigger than the adult's in proportion: big and round on a small body
+PUP_DOME = 0.20                    # and domed: the skull this much higher, above a steep stop
+PUP_MUZZLE = 0.42                  # his muzzle is this fraction of the adult's length
+PUP_TAIL = 0.55
+PUP_LEG = 1.5                      # his legs are this much thicker for their length
+PUP_FLUFF = (0.060, 0.064, 0.066)  # the coat on his back, flanks and belly
 TAIL_ROOT = (-0.425, 0.632)
 
 
@@ -103,9 +104,11 @@ def as_puppy(points):
     # Thick legs: below the body, everything close to the line down the middle of a leg moves out from it.
     front = x > -0.1
     line_x = np.where(front, np.interp(y, FRONT_LEG_LINE[0], FRONT_LEG_LINE[1]), np.interp(y, HIND_LEG_LINE[0], HIND_LEG_LINE[1]))
-    line_z = np.where(front, 0.088, 0.092) * np.sign(z)
+    line_z = np.where(front, 0.088, 0.092) * np.where(z >= 0.0, 1.0, -1.0)
     off = np.sqrt((x - line_x) ** 2 + (z - line_z) ** 2)
-    thicker = (PUP_LEG - 1.0) * ease((0.46 - y) / 0.10) * (1.0 - ease((off - 0.055) / 0.03)) * (1.0 - np.clip((0.07 - y) / 0.05, 0.0, 1.0) * 0.6)
+    # (fading out slowly with the distance from the leg: a quick fade would fold the surface over)
+    thicker = (PUP_LEG - 1.0) * ease((0.46 - y) / 0.10) * (1.0 - ease((off - 0.035) / 0.07)) * (1.0 - np.clip((0.07 - y) / 0.05, 0.0, 1.0) * 0.6)
+    thicker *= ease(np.abs(z) / 0.05)        # and not at all on his middle, between a pair of legs, or the two would cross
     x = x + (x - line_x) * thicker
     z = z + (z - line_z) * thicker
 
@@ -128,10 +131,13 @@ def as_puppy(points):
     c, s_ = math.cos(HEAD_TILT) / HEAD_SIZE, math.sin(HEAD_TILT) / HEAD_SIZE
     hx, hy = x - HEAD_AT[0], y - HEAD_AT[1]
     dx, dy = HEAD_DRAWN[0] + hx * c + hy * s_, HEAD_DRAWN[1] - hx * s_ + hy * c
+    skull = np.clip((STOP + 0.02 - dx) / 0.05, 0.0, 1.0)       # 1 on the skull, 0 on the muzzle
     dx = np.where(dx > STOP, STOP + (dx - STOP) * PUP_MUZZLE, dx) - HEAD_DRAWN[0]
     dy = dy - HEAD_DRAWN[1]
+    dy = np.where(dy > 0.0, dy * (1.0 + PUP_DOME * skull), dy)
     c, s_ = math.cos(PUP_HEAD_TILT) * PUP_HEAD_SIZE, math.sin(PUP_HEAD_TILT) * PUP_HEAD_SIZE
-    head_x, head_y, head_z = PUP_HEAD_AT[0] + dx * c - dy * s_, PUP_HEAD_AT[1] + dx * s_ + dy * c, z * PUP_HEAD_SIZE / HEAD_SIZE
+    head_x, head_y = PUP_HEAD_AT[0] + dx * c - dy * s_, PUP_HEAD_AT[1] + dx * s_ + dy * c
+    head_z = z * PUP_HEAD_SIZE / HEAD_SIZE * (1.0 + 0.08 * skull)
 
     # Along the neck the one turns into the other.
     foot_of_neck = np.array(NECK_LINE[0])
@@ -362,15 +368,15 @@ def young(part):
         if name == "trunk":
             c["coat"] = PUP_FLUFF
         elif name == "neck":
-            c["coat"] = (0.034, 0.040, 0.044)
+            c["coat"] = (0.046, 0.052, 0.058)         # a soft ruff
         elif name == "tail":
-            c["coat"] = (0.034, 0.038, 0.042)
+            c["coat"] = (0.050, 0.056, 0.062)         # a fluffy little plume
         elif name.startswith(("front_paw", "hind_paw")):
-            pass
+            c["coat"] = (0.028, 0.024, 0.006)         # fluffy feet, bare pads
         elif name.startswith(("front_", "hind_")):
-            c["coat"] = PUP_FLUFF if y > 0.45 else (0.032, 0.028, 0.024) if y > 0.10 else (0.016, 0.014, 0.012)
+            c["coat"] = PUP_FLUFF if y > 0.45 else (0.050, 0.046, 0.040) if y > 0.10 else (0.034, 0.030, 0.024)
         elif name.startswith("ear"):
-            c["coat"] = tuple(min(v, 0.026) for v in c["coat"])
+            c["coat"] = tuple(min(v, 0.030) for v in c["coat"])
     return dict(part, cuts=cuts)
 
 
