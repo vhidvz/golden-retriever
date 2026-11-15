@@ -268,9 +268,40 @@ The eyes sit in sockets and have lids: a blink, a sleepy droop and sleep all clo
 them over the eye rather than flattening it. Lying on his side, the legs go
 slack and the two of the upper flank come down to rest on the floor.
 
-It is a stylised dog, not a photograph of one. He is recognisably a Golden
-Retriever in outline, colour and coat, but there are no teeth, and a scratching
-hind paw comes up beside the shoulder rather than reaching the neck.
+Drawn live like this he is a stylised dog, not a photograph of one: the coat is
+painted layers, there are no teeth, and a scratching hind paw comes up beside the
+shoulder rather than reaching the neck.
+
+### Pictures with a real coat
+
+A real coat is far beyond what his graphics card can draw live, so the realistic
+look is drawn beforehand, the way games such as Factorio make theirs. Godot runs
+the very same dog code headless and records how every bone moves, frame by frame
+(`renderer/export_poses.gd`); Blender rebuilds his body at the same age from the
+model file, grows about 230,000 individual hairs on it (length, direction, colour
+and the hang of the long coat all come from the model), moves body and hair with
+the bones and renders each frame in Cycles through exactly the camera his window
+has (`tools/bake_sprites.py`).
+
+    scripts/bake-pictures.sh          # for his age now: a few hours, in the background, at the lowest priority
+
+Pictures go to `~/.local/share/buddy/sprites/growth-NNN/`. The renderer
+(`renderer/sprites.gd`) shows them in place of the 3D body whenever there are
+pictures of what he is doing; the 3D dog keeps moving unseen underneath and still
+decides his posture, stride and where he looks, and the matching pictures are
+picked and crossfaded. A movement is used as soon as all its pictures exist, so a
+bake can be stopped and resumed, and its work appears while it runs.
+
+Drawing a frame this way costs about 0.12 ms of the graphics card, against 2.5 to
+3.5 ms for the live body. Drawing the pictures costs about 10 seconds each on the
+processor, roughly 860 for one stage of his growth.
+
+What is drawn so far: standing, sitting, lying, three ways of sleeping, the walk,
+looking in five directions while standing, sitting or lying, and the changes
+between standing, sitting, lying and sleeping on his side. Everything else (a
+stretch, a roll, a trot, eating, playing) is still the live 3D body. A set is
+drawn for one stage of growth and is used while he is within 0.08 of it; facing
+left is the mirror image of facing right, light included.
 
 To use a different model, provide the methods the renderer calls (`apply_growth`,
 `begin`, `set_facing`, `set_mood`, `set_viewer_offset`, `look_at_viewer`,
@@ -280,7 +311,10 @@ simplest example.
 
 ## Known gaps
 
-- His body is generated and stylised rather than photoreal (see "His body").
+- Only part of what he does has pictures with a real coat; the rest is the stylised
+  live body, so the two can be seen to alternate (see "Pictures with a real coat").
+  Each stage of his growth needs its own few hours of drawing; nothing does that
+  automatically yet.
 - When the graphics card runs out of memory (other programs had 1.8 of its 2 GB
   during testing), a frame can come out empty; this showed up as occasional blank
   renders in the self-test and has not been made robust yet.

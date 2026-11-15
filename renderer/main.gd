@@ -6,6 +6,8 @@ extends Node3D
 ## Self-test (no daemon needed): renders one pose to a PNG and reports whether it fits.
 ##   godot --path renderer --display-driver x11 -- --selftest out.png [--activity sit] [--variant 1]
 ##       [--growth 0.2] [--facing -1] [--at 1.5] [--gaze 1] [--arousal 0.8] [--size 420] [--planned 6] [--seed 7]
+##       [--sprites DIR] (also use the drawn pictures in DIR) [--no-sprites] (only the 3D body)
+##       [--then sit[/VARIANT] --switch-at 3.0] (change to another activity part-way through)
 
 const GROUND_MARGIN := 0.11        # of his height, kept below the paws for the shadow and for limbs that reach towards the viewer
 const CAMERA_PITCH := 0.14         # radians; a slight look down so the ground reads as a surface
@@ -23,6 +25,7 @@ var _shadow := MeshInstance3D.new()
 var _bowl := MeshInstance3D.new()
 var _menu := PopupMenu.new()
 var _voice := preload("res://voice.gd").new()
+var _sprites := preload("res://sprites.gd").new()   # pictures drawn with a real coat, where there are any
 
 var _peer := StreamPeerUDS.new()
 var _inbox := PackedByteArray()
@@ -48,6 +51,8 @@ var _selftest_path := ""
 var _selftest_at := 1.5
 var _drawn_at_start := 0
 var _selftest_speed := 0.0               # heights per second to pretend he is moving at
+var _selftest_then := ""                 # an activity to change to part-way through ("sit" or "sit/1")
+var _selftest_switch := -1.0             # when
 var _clock := 0.0
 
 
@@ -105,6 +110,7 @@ func _ready() -> void:
 	add_child(_bowl)
 	add_child(_dog)
 	add_child(_voice)
+	add_child(_sprites)
 
 	for entry in [["Good boy!", "praise"], ["Give a treat", "treat"], ["Give food", "feed"], ["Give water", "water"], [], ["Go to sleep", "sleep"], ["Wake up", "wake"],
 			["Hide for 15 minutes", "hide"], [], ["Quiet mode", "quiet"], ["Privacy mode", "privacy"], [], ["Quit Buddy", "quit"]]:
@@ -127,8 +133,14 @@ func _ready() -> void:
 	if _selftest_path != "":
 		RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 		_selftest_at = float(option.call("--at", "1.5"))
+		_selftest_then = option.call("--then", "")
+		_selftest_switch = float(option.call("--switch-at", "3.0"))
 		_drawn_at_start = Engine.get_frames_drawn()
 		_selftest_speed = float(option.call("--speed", "0"))
+		if option.call("--sprites", "") != "":
+			_sprites.find_sets(option.call("--sprites", ""))
+		if "--no-sprites" in args:
+			_sprites._sets.clear()
 		var growth := float(option.call("--growth", "1.0"))
 		_apply_state({
 			"activity": option.call("--activity", "stand"), "variant": int(option.call("--variant", "0")), "intensity": 0.7,
@@ -236,6 +248,7 @@ func _apply_state(state: Dictionary) -> void:
 		return
 	_state = state
 	_dog.apply_growth(state["growth"])
+	_sprites.use_growth(state["growth"])
 	_dog.scale = Vector3.ONE * float(state["scale"])
 	_dog.set_facing(int(state["facing"]))
 	_dog.set_mood(state["valence"], state["arousal"], state["sleepiness"], state.get("confusion", 0.0))
@@ -324,6 +337,11 @@ func _process(delta: float) -> void:
 	_dog.set_viewer_offset(clampf((_usable.get_center().x - centre_x) / maxf(_usable.size.x, 1.0), -0.5, 0.5))
 	var travelled := (_shown_x - previous) / (_pixels_per_unit * _layout_key.x)
 	_dog.advance(delta, travelled if _selftest_speed == 0.0 else _selftest_speed * minf(delta, 0.05))
+	# Where there are drawn pictures of what he is doing, they are shown instead of the 3D body,
+	# which keeps moving unseen underneath and decides which pictures fit.
+	var pictures := _sprites.update(delta, _dog, _state["activity"], int(_state["variant"]), int(_state["facing"]))
+	_dog.visible = not pictures
+	_shadow.visible = not pictures
 
 	# Draw only as often as what he is doing needs.
 	var activity: String = _state["activity"]
@@ -333,6 +351,15 @@ func _process(delta: float) -> void:
 	Engine.max_fps = fps if float(_state.get("load", 0.0)) < 0.8 else maxi(fps * 3 / 5, 8)
 
 	# Only frames that were really drawn count: a window that is slow to appear draws nothing at first.
+	if _selftest_then != "" and _clock >= _selftest_switch:
+		var parts := _selftest_then.split("/")
+		var next := _state.duplicate()
+		next["activity"] = parts[0]
+		next["variant"] = int(parts[1]) if parts.size() > 1 else 0
+		next["seed"] = int(_state["seed"]) + 1
+		next["started"] = Time.get_unix_time_from_system()
+		_selftest_then = ""
+		_apply_state(next)
 	if _selftest_path != "" and _clock >= _selftest_at and Engine.get_frames_drawn() >= _drawn_at_start + 20:
 		_finish_selftest()
 

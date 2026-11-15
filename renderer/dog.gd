@@ -46,6 +46,7 @@ var _arousal := 0.3
 var _sleepiness := 0.2
 var _confusion := 0.0
 var _viewer := Vector3(0.0, 0.45, 1.0).normalized()
+var _gaze_target := Vector3.BACK  # where his attention is aimed this frame, in scene space
 
 var _pose: Dictionary = NEUTRAL.duplicate()
 var _yaw := YAW_RIGHT
@@ -223,6 +224,7 @@ func advance(delta: float, travelled: float) -> void:
 	p["ears"] -= 0.6 * puzzled
 	var at_you: bool = _eye_contact > 0.0 or motion.get("hold_gaze", 0.0) > 0.5 or puzzled > 0.3
 	var gaze := _viewer if at_you or _aim_left <= 0.0 else _aim
+	_gaze_target = gaze
 	var wants_viewer: bool = (at_you or _aim_left > 0.0) and awake > 0.5
 	var held := _follow(_attention, 1.0 if wants_viewer else 0.0, _attention_speed, 0.28 if wants_viewer else 0.5, 8.0, delta)
 	_attention = held.x
@@ -290,6 +292,27 @@ func advance(delta: float, travelled: float) -> void:
 			_next_dream = _chance.randf_range(40.0, 120.0)
 			_dream = 1.0
 	_dream = maxf(_dream - delta * (0.4 if _activity == "sleep" else 4.0), 0.0)
+
+
+## How much his gaze is held by the viewer or by something on the screen, 0..1.
+func attention() -> float:
+	return _attention
+
+
+## Which way that something is, as an angle in degrees around him seen from above:
+## 0 is straight out of the screen at the viewer, positive to the screen's right.
+func gaze_angle() -> float:
+	return rad_to_deg(atan2(_gaze_target.x, _gaze_target.z))
+
+
+## Where his legs are in a stride, 0..1, and how fast he is going (1 = a walk).
+func stride() -> Vector2:
+	return Vector2(fposmod(_phase, TAU) / TAU, _gait)
+
+
+## The posture he is in or settling into: "stand", "sit" or "lie".
+func posture() -> String:
+	return _posture
 
 
 ## True while something quick is happening and a low frame rate would show.
