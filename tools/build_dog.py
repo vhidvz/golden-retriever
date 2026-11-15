@@ -64,7 +64,8 @@ PAD = srgb(0.10, 0.08, 0.075)
 HEAD_DRAWN = (0.40, 0.85)          # the head is described level, with the top of the neck here …
 HEAD_AT = (0.355, 0.885)           # … and then carried here, high on an upright neck, with the nose a little down
 HEAD_TILT = math.radians(-7.0)
-HEAD_SIZE = 1.12                   # … at this size: a broad, heavy head, about half his height at the withers
+HEAD_SIZE = 0.97                   # … at this size: occiput to nose tip about 0.40 of his height at the withers
+                                   # (measured on photographs of Goldens: 0.385; see docs/proportions.md)
 STOP = 0.56                        # where, on the head as described, the forehead drops to the muzzle
 
 # The same dog at eight weeks. A puppy is not a small adult: his body is short and
@@ -82,7 +83,6 @@ PUP_MUZZLE = 0.42                  # his muzzle is this fraction of the adult's 
 PUP_TAIL = 0.55
 PUP_LEG = 1.5                      # his legs are this much thicker for their length
 PUP_FLUFF = (0.060, 0.064, 0.066)  # the coat on his back, flanks and belly
-TAIL_ROOT = (-0.425, 0.632)
 
 
 def tilt(p):
@@ -90,6 +90,68 @@ def tilt(p):
     x, y = p[0] - HEAD_DRAWN[0], p[1] - HEAD_DRAWN[1]
     c, s = math.cos(HEAD_TILT) * HEAD_SIZE, math.sin(HEAD_TILT) * HEAD_SIZE
     return (HEAD_AT[0] + x * c - y * s, HEAD_AT[1] + x * s + y * c) + tuple(v * HEAD_SIZE for v in p[2:])
+
+
+# ---- conformation: where his joints are -------------------------------------------------------
+# The legs and the rump were first drawn by eye. Measured against breed standards and limb
+# studies (tools/measure_dog.py, docs/proportions.md), the upper arm was too short and too
+# upright, the femur too short, the shin too long, the rump overhung the hind feet and the
+# body was too long. The corrected joints below follow these rules, with the height at the
+# withers (0.715) unchanged:
+#   - shoulder blade laid back about 30 degrees from vertical (Zink & Schlehr 2020);
+#   - upper arm about 0.9 of the blade (AKC "about the same length"; Beagle adults 0.88);
+#   - elbow under the withers, at half the height (AKC, UKC, GRCA judges' education);
+#   - foreleg shares 28 : 25 : 47 (blade : upper arm : forearm and foot; Beagle adults);
+#   - femur at about 90-100 degrees to a pelvis sloping 30 degrees (AKC);
+#   - hind leg shares 36 : 34 : 30 (femur : shin : foot; Beagle adults);
+#   - a plumb line from the point of buttocks reaching the ground at the front of the hind
+#     toes (Zink & Schlehr 2020), and body length 12:11 of the height (AKC).
+# Each part of a leg, as first described, is carried along onto the corrected skeleton by
+# along(), so the shapes keep their thickness and their coat.
+FRONT_CHAIN_DRAWN = [(0.20, 0.65), (0.230, 0.510), (0.172, 0.372), (0.178, 0.048)]          # above the shoulder, shoulder, elbow, paw
+FRONT_CHAIN = [(0.20, 0.65), (0.257, 0.523), (0.146, 0.357), (0.152, 0.048)]
+HIND_CHAIN_DRAWN = [(-0.30, 0.66), (-0.310, 0.550), (-0.238, 0.362), (-0.426, 0.186), (-0.416, 0.048)]   # above the hip, hip, stifle, hock, paw
+HIND_CHAIN = [(-0.33, 0.66), (-0.332, 0.550), (-0.240, 0.296), (-0.463, 0.186), (-0.453, 0.048)]
+FRONT_PAW_SHIFT = FRONT_CHAIN[-1][0] - FRONT_CHAIN_DRAWN[-1][0]
+HIND_PAW_SHIFT = HIND_CHAIN[-1][0] - HIND_CHAIN_DRAWN[-1][0]
+RUMP_FROM, RUMP_SCALE = -0.21, 0.70      # behind this the body, as first drawn, is shortened to this much
+
+
+def rump(x):
+    """Where a point of the body as first drawn lies along it now: the rump is shorter."""
+    return x if x >= RUMP_FROM else RUMP_FROM + (x - RUMP_FROM) * RUMP_SCALE
+
+
+TAIL_SHIFT = rump(-0.425) + 0.425        # the tail keeps its length and moves with the end of the rump
+TAIL_ROOT = (-0.425 + TAIL_SHIFT, 0.632)
+
+
+def along(drawn, chain, p):
+    """Carries a point described against one chain of joints onto another: it keeps where it
+    is along its segment and how far it stands out from it, turned with the segment."""
+    p = np.asarray(p[:2], dtype=float)
+    best = None
+    for i in range(len(drawn) - 1):
+        a, b = np.asarray(drawn[i]), np.asarray(drawn[i + 1])
+        t = float(np.clip(np.dot(p - a, b - a) / np.dot(b - a, b - a), 0.0, 1.0))
+        d = float(np.linalg.norm(p - (a + t * (b - a))))
+        if best is None or d < best[0]:
+            best = (d, i, t)
+    _, i, t = best
+    a, b = np.asarray(drawn[i]), np.asarray(drawn[i + 1])
+    na, nb = np.asarray(chain[i]), np.asarray(chain[i + 1])
+    offset = p - (a + t * (b - a))
+    turn = math.atan2(*(nb - na)[::-1]) - math.atan2(*(b - a)[::-1])
+    c, s_ = math.cos(turn), math.sin(turn)
+    return tuple(na + t * (nb - na) + np.array([offset[0] * c - offset[1] * s_, offset[0] * s_ + offset[1] * c]))
+
+
+def front(x, y):
+    return along(FRONT_CHAIN_DRAWN, FRONT_CHAIN, (x, y))
+
+
+def hind(x, y):
+    return along(HIND_CHAIN_DRAWN, HIND_CHAIN, (x, y))
 
 
 def as_puppy(points):
@@ -147,11 +209,17 @@ def as_puppy(points):
     return np.stack([bx * (1.0 - w) + head_x * w, by * (1.0 - w) + head_y * w, z * (1.0 - w) + head_z * w], axis=1)
 
 
-FRONT_LEG_LINE = ([0.058, 0.125, 0.220, 0.330, 0.395, 0.470, 0.560], [0.185, 0.179, 0.175, 0.172, 0.178, 0.205, 0.216])     # heights, and how far along the body
-HIND_LEG_LINE = ([0.056, 0.120, 0.186, 0.218, 0.292, 0.362, 0.420, 0.500, 0.600], [-0.412, -0.420, -0.426, -0.385, -0.300, -0.242, -0.256, -0.285, -0.300])
-TAIL_LINE = [(-0.425, 0.632), (-0.500, 0.630), (-0.600, 0.600), (-0.665, 0.580), (-0.730, 0.555), (-0.800, 0.528), (-0.865, 0.505), (-1.2, 0.38)]
+def _line(points, carry):
+    """A line down the middle of a leg, as (heights, how far along the body), carried onto the corrected leg."""
+    moved = sorted(carry(x, y)[::-1] for y, x in points)
+    return [p[0] for p in moved], [p[1] for p in moved]
+
+
+FRONT_LEG_LINE = _line(zip([0.058, 0.125, 0.220, 0.330, 0.395, 0.470, 0.560], [0.185, 0.179, 0.175, 0.172, 0.178, 0.205, 0.216]), front)
+HIND_LEG_LINE = _line(zip([0.056, 0.120, 0.186, 0.218, 0.292, 0.362, 0.420, 0.500, 0.600], [-0.412, -0.420, -0.426, -0.385, -0.300, -0.242, -0.256, -0.285, -0.300]), hind)
+TAIL_LINE = [(x + TAIL_SHIFT, y) for x, y in [(-0.425, 0.632), (-0.500, 0.630), (-0.600, 0.600), (-0.665, 0.580), (-0.730, 0.555), (-0.800, 0.528), (-0.865, 0.505), (-1.2, 0.38)]]
 NECK_LINE = [(0.190, 0.555), (HEAD_AT[0] + 0.018, HEAD_AT[1] - 0.008)]     # from the shoulders to the back of the skull
-PAWS = {"front": (0.198, 0.0), "hind": (-0.392, 0.0)}   # where each sole meets the ground (x, y)
+PAWS = {"front": (0.198 + FRONT_PAW_SHIFT, 0.0), "hind": (-0.392 + HIND_PAW_SHIFT, 0.0)}   # where each sole meets the ground (x, y)
 
 # ---- skeleton: name, parent, where the joint is -------------------------------------------
 def bones(young=False):
@@ -167,24 +235,24 @@ def bones(young=False):
         ("jaw", "head", head(0.475, 0.800)),
         ("ear_l", "head", head(0.452, 0.920, 0.068)),
         ("ear_r", "head", head(0.452, 0.920, -0.068)),
-        ("tail1", "hips", (-0.47, 0.636, 0.0)),
-        ("tail2", "tail1", (-0.60, 0.600, 0.0)),
-        ("tail3", "tail2", (-0.73, 0.555, 0.0)),
+        ("tail1", "hips", (-0.47 + TAIL_SHIFT, 0.636, 0.0)),
+        ("tail2", "tail1", (-0.60 + TAIL_SHIFT, 0.600, 0.0)),
+        ("tail3", "tail2", (-0.73 + TAIL_SHIFT, 0.555, 0.0)),
     ]
-    for front, name, parent, x, y, z in (
-            (True, "upper", "chest", 0.230, 0.510, 0.088), (True, "lower", "upper", 0.172, 0.372, 0.088),
-            (False, "upper", "hips", -0.310, 0.550, 0.092), (False, "lower", "upper", -0.238, 0.362, 0.092)):
+    for is_front, name, parent, joint, z in (
+            (True, "upper", "chest", FRONT_CHAIN[1], 0.088), (True, "lower", "upper", FRONT_CHAIN[2], 0.088),
+            (False, "upper", "hips", HIND_CHAIN[1], 0.092), (False, "lower", "upper", HIND_CHAIN[2], 0.092)):
         for side, sign in (("l", 1), ("r", -1)):
-            leg = ("front_" if front else "hind_") + side
-            found.append((f"{leg}_{name}", parent if name == "upper" else f"{leg}_{parent}", (x, y, z * sign)))
+            leg = ("front_" if is_front else "hind_") + side
+            found.append((f"{leg}_{name}", parent if name == "upper" else f"{leg}_{parent}", (joint[0], joint[1], z * sign)))
     # the toes of each paw, which stay flat on the ground whatever the leg above them does,
     # and the long foot between a hind leg's hock and its toes
     for side, sign in (("l", 1), ("r", -1)):
-        found.append((f"front_{side}_paw", f"front_{side}_lower", (0.178, 0.048, 0.088 * sign)))
+        found.append((f"front_{side}_paw", f"front_{side}_lower", (FRONT_CHAIN[3][0], FRONT_CHAIN[3][1], 0.088 * sign)))
     for side, sign in (("l", 1), ("r", -1)):
-        found.append((f"hind_{side}_foot", f"hind_{side}_lower", (-0.426, 0.186, 0.092 * sign)))
+        found.append((f"hind_{side}_foot", f"hind_{side}_lower", (HIND_CHAIN[3][0], HIND_CHAIN[3][1], 0.092 * sign)))
     for side, sign in (("l", 1), ("r", -1)):
-        found.append((f"hind_{side}_paw", f"hind_{side}_foot", (-0.416, 0.048, 0.092 * sign)))
+        found.append((f"hind_{side}_paw", f"hind_{side}_foot", (HIND_CHAIN[4][0], HIND_CHAIN[4][1], 0.092 * sign)))
     if young:
         found = [(name, parent, tuple(as_puppy(at)[0])) for name, parent, at in found]
     return found
@@ -211,15 +279,15 @@ def trunk():
     c, h = {"chest": 1.0}, {"hips": 1.0}
     return {"name": "trunk", "face": (0, 1, 0), "caps": (0.9, 0.8), "cuts": [
         cut(0.300, 0.560, 0.100, 0.105, 0.078, (0.045, 0.050, 0.065), (GOLD, GOLD, LIGHT), c),
-        cut(0.240, 0.575, 0.125, 0.185, 0.106, (0.036, 0.040, 0.066), (GOLD, GOLD, LIGHT), c),
-        cut(0.170, 0.580, 0.135, 0.238, 0.122, (0.032, 0.036, 0.058), (DEEP, GOLD, LIGHT), c, square=2.15),
-        cut(0.080, 0.580, 0.128, 0.256, 0.132, (0.030, 0.036, 0.056), (DEEP, GOLD, LIGHT), {"chest": 0.6, "hips": 0.4}, square=2.2),
-        cut(-0.020, 0.585, 0.117, 0.250, 0.134, (0.030, 0.036, 0.062), (DEEP, GOLD, LIGHT), {"chest": 0.25, "hips": 0.75}, square=2.2),
-        cut(-0.120, 0.590, 0.108, 0.226, 0.134, (0.030, 0.036, 0.068), (DEEP, GOLD, LIGHT), h, square=2.1),
-        cut(-0.210, 0.595, 0.100, 0.188, 0.117, (0.030, 0.036, 0.066), (DEEP, GOLD, LIGHT), h),
-        cut(-0.300, 0.595, 0.098, 0.165, 0.112, (0.030, 0.036, 0.050), (DEEP, GOLD, LIGHT), h),
-        cut(-0.380, 0.590, 0.098, 0.130, 0.100, (0.032, 0.040, 0.060), (DEEP, GOLD, LIGHT), h),
-        cut(-0.450, 0.580, 0.075, 0.098, 0.072, (0.036, 0.050, 0.075), (GOLD, LIGHT, CREAM), h),
+        cut(0.240, 0.575, 0.125, 0.168, 0.106, (0.036, 0.040, 0.066), (GOLD, GOLD, LIGHT), c),
+        cut(0.170, 0.580, 0.135, 0.214, 0.122, (0.032, 0.036, 0.058), (DEEP, GOLD, LIGHT), c, square=2.15),
+        cut(0.080, 0.580, 0.128, 0.230, 0.132, (0.030, 0.036, 0.056), (DEEP, GOLD, LIGHT), {"chest": 0.6, "hips": 0.4}, square=2.2),
+        cut(-0.020, 0.585, 0.117, 0.228, 0.134, (0.030, 0.036, 0.062), (DEEP, GOLD, LIGHT), {"chest": 0.25, "hips": 0.75}, square=2.2),
+        cut(-0.120, 0.590, 0.108, 0.212, 0.134, (0.030, 0.036, 0.068), (DEEP, GOLD, LIGHT), h, square=2.1),
+        cut(-0.210, 0.595, 0.100, 0.182, 0.117, (0.030, 0.036, 0.066), (DEEP, GOLD, LIGHT), h),
+        cut(rump(-0.300), 0.595, 0.098, 0.165, 0.112, (0.030, 0.036, 0.050), (DEEP, GOLD, LIGHT), h),
+        cut(rump(-0.380), 0.590, 0.098, 0.130, 0.100, (0.032, 0.040, 0.060), (DEEP, GOLD, LIGHT), h),
+        cut(rump(-0.450), 0.580, 0.075, 0.098, 0.072, (0.036, 0.050, 0.075), (GOLD, LIGHT, CREAM), h),
     ]}
 
 
@@ -299,7 +367,7 @@ def front_leg(sign):
         cut(0.206, 0.032, 0.031, 0.029, 0.047, (0.010, 0.010, 0.004), (GOLD, GOLD, GOLD), {f"front_{s}_paw": 1.0}, z=z, square=2.4),
         cut(0.240, 0.027, 0.023, 0.024, 0.045, (0.009, 0.009, 0.004), (GOLD, GOLD, GOLD), {f"front_{s}_paw": 1.0}, z=z, square=2.5),
     ]}
-    return [leg, paw]
+    return [carried(leg, front), shifted(paw, FRONT_PAW_SHIFT)]
 
 
 def hind_leg(sign):
@@ -322,19 +390,33 @@ def hind_leg(sign):
         cut(-0.394, 0.031, 0.030, 0.028, 0.045, (0.010, 0.010, 0.004), (GOLD, GOLD, GOLD), {f"hind_{s}_paw": 1.0}, z=z, square=2.4),
         cut(-0.360, 0.026, 0.022, 0.023, 0.042, (0.009, 0.009, 0.004), (GOLD, GOLD, GOLD), {f"hind_{s}_paw": 1.0}, z=z, square=2.5),
     ]}
-    return [leg, paw]
+    return [carried(leg, hind), shifted(paw, HIND_PAW_SHIFT)]
+
+
+def carried(part, carry):
+    """A part described against the legs as first drawn, carried onto the corrected skeleton."""
+    for c in part["cuts"]:
+        x, y = carry(c["at"][0], c["at"][1])
+        c["at"] = (x, y, c["at"][2])
+    return part
+
+
+def shifted(part, dx):
+    for c in part["cuts"]:
+        c["at"] = (c["at"][0] + dx, c["at"][1], c["at"][2])
+    return part
 
 
 def tail():
     t1, t2, t3 = {"tail1": 1.0}, {"tail2": 1.0}, {"tail3": 1.0}
     return {"name": "tail", "face": (0, 1, 0), "caps": (0.5, 1.0), "cuts": [
-        cut(-0.425, 0.632, 0.046, 0.050, 0.046, (0.036, 0.046, 0.070), (GOLD, GOLD, LIGHT), {"hips": 1.0}),
-        cut(-0.500, 0.630, 0.034, 0.036, 0.034, (0.040, 0.052, 0.095), (GOLD, GOLD, LIGHT), t1),
-        cut(-0.600, 0.600, 0.028, 0.030, 0.028, (0.042, 0.056, 0.125), (GOLD, LIGHT, CREAM), {"tail1": 0.5, "tail2": 0.5}),
-        cut(-0.665, 0.580, 0.024, 0.026, 0.024, (0.042, 0.056, 0.130), (GOLD, LIGHT, CREAM), t2),
-        cut(-0.730, 0.555, 0.020, 0.022, 0.020, (0.040, 0.054, 0.120), (GOLD, LIGHT, CREAM), {"tail2": 0.5, "tail3": 0.5}),
-        cut(-0.800, 0.528, 0.016, 0.017, 0.016, (0.038, 0.050, 0.100), (GOLD, LIGHT, CREAM), t3),
-        cut(-0.865, 0.505, 0.012, 0.012, 0.012, (0.034, 0.042, 0.070), (LIGHT, LIGHT, CREAM), t3),
+        cut(-0.425 + TAIL_SHIFT, 0.632, 0.046, 0.050, 0.046, (0.036, 0.046, 0.070), (GOLD, GOLD, LIGHT), {"hips": 1.0}),
+        cut(-0.500 + TAIL_SHIFT, 0.630, 0.034, 0.036, 0.034, (0.040, 0.052, 0.095), (GOLD, GOLD, LIGHT), t1),
+        cut(-0.600 + TAIL_SHIFT, 0.600, 0.028, 0.030, 0.028, (0.042, 0.056, 0.125), (GOLD, LIGHT, CREAM), {"tail1": 0.5, "tail2": 0.5}),
+        cut(-0.665 + TAIL_SHIFT, 0.580, 0.024, 0.026, 0.024, (0.042, 0.056, 0.130), (GOLD, LIGHT, CREAM), t2),
+        cut(-0.730 + TAIL_SHIFT, 0.555, 0.020, 0.022, 0.020, (0.040, 0.054, 0.120), (GOLD, LIGHT, CREAM), {"tail2": 0.5, "tail3": 0.5}),
+        cut(-0.800 + TAIL_SHIFT, 0.528, 0.016, 0.017, 0.016, (0.038, 0.050, 0.100), (GOLD, LIGHT, CREAM), t3),
+        cut(-0.865 + TAIL_SHIFT, 0.505, 0.012, 0.012, 0.012, (0.034, 0.042, 0.070), (LIGHT, LIGHT, CREAM), t3),
     ]}
 
 
@@ -344,18 +426,30 @@ PARTS = [trunk(), neck(), skull(), jaw(), tail(), ear(1), ear(-1)] + front_leg(1
 LUMPS = [((0.305, 0.525, 0.0), (0.045, 0.055, 0.055), False)]            # the breastbone
 for _s in (1, -1):
     LUMPS += [
-        ((0.215, 0.520, 0.078 * _s), (0.060, 0.085, 0.030), False),      # shoulder
+        (front(0.215, 0.520) + (0.078 * _s,), (0.060, 0.085, 0.030), False),      # shoulder
         ((0.505, 0.818, 0.056 * _s), (0.050, 0.038, 0.027), True),       # cheek
         ((0.545, 0.906, 0.036 * _s), (0.022, 0.012, 0.022), True),       # brow
         ((0.600, 0.792, 0.040 * _s), (0.050, 0.020, 0.012), True),       # the upper lip hanging over the jaw
     ]
-    for _x, _z in ((0.248, 0.088), (-0.352, 0.092)):
+    for _x, _z in ((0.248 + FRONT_PAW_SHIFT, 0.088), (-0.352 + HIND_PAW_SHIFT, 0.092)):
         for _off in (-0.035, -0.012, 0.012, 0.035):                       # four toes on every paw
             _reach = 0.0 if abs(_off) > 0.02 else 0.010
             LUMPS.append(((_x + _reach, 0.026, (_z + _off) * _s), (0.026, 0.022, 0.0125), False))
 
 NOSE = {"at": (0.668, 0.846, 0.0), "radii": (0.016, 0.019, 0.024), "nostril": ((0.681, 0.841, 0.011), (0.0075, 0.0055, 0.006))}
 EYES = {"from": (0.500, 0.872, 0.022), "towards": (0.95, 0.04, 0.30), "radius": 0.0150, "opening": (0.0145, 0.0092, 0.020)}
+
+
+def head_landmarks():
+    """The points of the head that anatomy is measured between, as the head is described
+    (before tilt()): the occiput (the top of the back of the skull), the stop (where the
+    forehead meets the muzzle, on the top line) and the tip of the nose."""
+    cuts = skull()["cuts"]
+    top = [(c["at"][0], c["at"][1] + c["up"]) for c in cuts]     # the top line, front to back
+    occiput = top[-1]
+    stop_y = float(np.interp(STOP, [t[0] for t in reversed(top)], [t[1] for t in reversed(top)]))
+    nose = (NOSE["at"][0] + NOSE["radii"][0], NOSE["at"][1])
+    return {"occiput": occiput + (0.0,), "stop": (STOP, stop_y, 0.0), "nose_tip": nose + (0.0,)}
 
 
 def young(part):
@@ -857,6 +951,11 @@ def build(preview=None, write=True):
         "eyes": [{"at": [round(c, 4) for c in (e["at"] - head_joint)], "gaze": [round(c, 3) for c in e["gaze"]], "radius": round(EYES["radius"] * HEAD_SIZE, 4)} for e in eyes],
         "tongue": {"at": [round(c, 4) for c in (Vector(tilt((0.595, 0.805, 0.0))) - Vector(BONES[BONE_INDEX["jaw"]][2]))], "half": [0.066, 0.0065, 0.023]},
         "puppy": puppy,
+        # Where tools/measure_dog.py measures the head from (the rest it finds on the surface).
+        "landmarks": {
+            "adult": {name: [round(c, 4) for c in tilt(at)] for name, at in head_landmarks().items()},
+            "puppy": {name: [round(float(c), 4) for c in as_puppy(tilt(at))[0]] for name, at in head_landmarks().items()},
+        },
         **out,
     }
     if not write:

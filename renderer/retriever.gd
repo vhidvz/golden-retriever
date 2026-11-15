@@ -316,7 +316,7 @@ func _place_leg(upper: String, lower: String, pivot: Node3D, front: bool, stride
 		if not front and knee.y > joint.y + 0.07 and joint.y < 0.2 and target.y < 0.1:
 			# Lying on his front: the knee rests beside the belly instead of standing up over
 			# his back, and the shin folds back from it along the ground.
-			thigh_angle = asin(clampf(0.07 / a, -1.0, 1.0))
+			thigh_angle = asin(clampf(-0.01 / a, -1.0, 1.0))     # level with the hip: higher, a long femur would stand up over his back
 			knee = Vector2(joint.x, joint.y) + Vector2.from_angle(thigh_angle) * a
 			target = knee + Vector2.from_angle(PI + asin(clampf((knee.y - 0.035) / b, 0.0, 1.0))) * b
 		upper_turn = thigh_angle - Vector2(thigh.x, thigh.y).angle() - lean
