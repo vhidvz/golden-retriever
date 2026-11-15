@@ -278,43 +278,54 @@ A real coat is far beyond what his graphics card can draw live, so the realistic
 look is drawn beforehand, the way games such as Factorio make theirs. Godot runs
 the very same dog code headless and records how every bone moves, frame by frame
 (`renderer/export_poses.gd`); Blender rebuilds his body at the same age from the
-model file, grows about 230,000 individual hairs on it (length, direction, colour
-and the hang of the long coat all come from the model), moves body and hair with
-the bones and renders each frame in Cycles through exactly the camera his window
-has (`tools/bake_sprites.py`).
+model file, grows a coat of individual hairs on it (about 230,000 on the puppy;
+length, direction, colour and the hang of the long coat all come from the model),
+gives him eyes with an iris and a wet cornea and a leather nose, moves everything
+with the bones and renders each frame in Cycles through exactly the camera his
+window has (`tools/bake_sprites.py`).
 
-    scripts/bake-pictures.sh          # for his age now: a few hours, in the background, at the lowest priority
+The daemon does this by itself, and only while you are away: it starts when the
+screen is locked or nothing has been touched for ten minutes, is paused the moment
+you are back (the drawing process is stopped, not killed, and carries on later),
+and runs at the lowest priority. His growth is divided into nine stages; the
+pictures for the stage he is in are drawn first, then those for the next, so they
+are ready before he gets there. A stage takes a few hours. When the model or the
+drawing script changes, the pictures are drawn again, and the old ones stay in use
+until the new ones are complete. `buddy status` says how far it has got.
 
-Pictures go to `~/.local/share/buddy/sprites/growth-NNN/`. The renderer
-(`renderer/sprites.gd`) shows them in place of the 3D body whenever there are
-pictures of what he is doing; the 3D dog keeps moving unseen underneath and still
-decides his posture, stride and where he looks, and the matching pictures are
-picked and crossfaded. A movement is used as soon as all its pictures exist, so a
-bake can be stopped and resumed, and its work appears while it runs.
+    buddy set pictures away       # the default
+    buddy set pictures always     # also while you are here (at the lowest priority)
+    buddy set pictures off
+
+Pictures go to `~/.local/share/buddy/sprites/`. The renderer (`renderer/sprites.gd`)
+shows them in place of the 3D body whenever there are pictures of what he is doing;
+the 3D dog keeps moving unseen underneath and still decides his posture, stride
+and where he looks, and the matching pictures are picked: a walk, trot or gallop
+by his pace and where his legs are in the stride, one of five drawn looks by where
+his attention is, a stretch by how far through it he is, a drawn change between
+standing, sitting, lying and sleeping on his side, and otherwise a stretch of the
+movement played forwards and back. Clips crossfade into each other, facing left
+is the mirror image (light included), and his bowl is drawn into the pictures of
+him eating and drinking. A movement is used as soon as all its pictures exist.
 
 Drawing a frame this way costs about 0.12 ms of the graphics card, against 2.5 to
 3.5 ms for the live body. Drawing the pictures costs about 10 seconds each on the
-processor, roughly 860 for one stage of his growth.
+processor, roughly 1,200 for one stage of his growth (about 30 MB).
 
-What is drawn so far: standing, sitting, lying, three ways of sleeping, the walk,
-looking in five directions while standing, sitting or lying, and the changes
-between standing, sitting, lying and sleeping on his side. Everything else (a
-stretch, a roll, a trot, eating, playing) is still the live 3D body. A set is
-drawn for one stage of growth and is used while he is within 0.08 of it; facing
-left is the mirror image of facing right, light included.
-
-To use a different model, provide the methods the renderer calls (`apply_growth`,
-`begin`, `set_facing`, `set_mood`, `set_viewer_offset`, `look_at_viewer`,
-`look_towards`, `advance`, `get_reach`) and point `Dog` in `renderer/main.gd` at
-it. `renderer/dog.gd`, the earlier stand-in made of ellipsoids, is kept as the
-simplest example.
+What is drawn: standing, sitting, lying (two ways), sleeping (three ways), the
+walk, trot and gallop, eating, drinking, sniffing the ground and the air, the
+play bow, two stretches, looking in five directions while standing, sitting or
+lying, and the changes between standing, sitting, lying and sleeping on his side.
+The rest (a roll, scratching, grooming, shaking off, chasing his tail, greeting)
+is still the live 3D body.
 
 ## Known gaps
 
 - Only part of what he does has pictures with a real coat; the rest is the stylised
   live body, so the two can be seen to alternate (see "Pictures with a real coat").
-  Each stage of his growth needs its own few hours of drawing; nothing does that
-  automatically yet.
+  Pictures are drawn only while the computer is left alone; on a computer that is
+  switched off whenever its user leaves, they may take days to appear.
+- In the pictures he looks in one of five drawn directions, not anywhere at all.
 - When the graphics card runs out of memory (other programs had 1.8 of its 2 GB
   during testing), a frame can come out empty; this showed up as occasional blank
   renders in the self-test and has not been made robust yet.

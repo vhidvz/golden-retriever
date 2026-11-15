@@ -18,7 +18,7 @@ pub struct Renderer {
     wanted: bool,
 }
 
-fn find_godot() -> Option<PathBuf> {
+pub fn find_godot() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("BUDDY_GODOT") {
         return Some(PathBuf::from(p));
     }
@@ -26,7 +26,7 @@ fn find_godot() -> Option<PathBuf> {
     std::env::split_paths(&path).flat_map(|dir| ["godot", "godot4"].map(|name| dir.join(name))).find(|p| p.is_file())
 }
 
-fn find_project() -> Option<PathBuf> {
+pub fn find_project() -> Option<PathBuf> {
     let is_project = |dir: &Path| dir.join("project.godot").is_file();
     if let Some(dir) = std::env::var_os("BUDDY_RENDERER_DIR").map(PathBuf::from) {
         return is_project(&dir).then_some(dir);

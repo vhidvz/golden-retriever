@@ -3,6 +3,7 @@
 
 mod assist;
 
+use crate::baker::Baker;
 use crate::renderer::Renderer;
 use crate::skills::{Permissions, Undo};
 use anyhow::{Context, Result, anyhow, bail};
@@ -260,6 +261,8 @@ struct Daemon {
     sim: Sim,
     clients: HashMap<u64, Client>,
     renderer: Option<Renderer>,
+    /// Draws his pictures with a real coat while the user is away (none with --no-renderer).
+    baker: Option<Baker>,
     reporting: HashMap<String, Reporting>,
     tx: Sender<Incoming>,
     helpers: [Helper; 2],
@@ -521,6 +524,7 @@ impl Daemon {
             "needs": self.sim.needs,
             "settings": self.sim.settings,
             "renderer": renderer,
+            "pictures": self.baker.as_ref().map_or("not drawn (--no-renderer)", |b| b.note()),
             "renderers_connected": self.clients.values().filter(|c| c.is_renderer).count(),
             "observing": observing,
             "database": paths::db_path(),
@@ -623,7 +627,15 @@ impl Daemon {
                     Some("stay_in_fullscreen") => Command::StayInFullscreen(matches!(value, "on" | "true" | "yes")),
                     Some("vision_model") => Command::VisionModel(value.to_string()),
                     Some("language_model") => Command::LanguageModel(value.to_string()),
-                    other => bail!("unknown setting {other:?} (name, size_px, adult_days, stay_in_fullscreen, vision_model, language_model)"),
+                    Some("pictures") => {
+                        if !matches!(value, "away" | "always" | "off") {
+                            bail!("pictures can be: away (draw only while you are away), always, off");
+                        }
+                        self.sim.settings.pictures = value.to_string();
+                        self.persist(at)?;
+                        return Ok(Value::Null);
+                    }
+                    other => bail!("unknown setting {other:?} (name, size_px, adult_days, stay_in_fullscreen, vision_model, language_model, pictures)"),
                 }
             }
             other => bail!("unknown command '{other}'"),
@@ -789,6 +801,7 @@ pub fn run(no_renderer: bool) -> Result<()> {
         sim: Sim::new(identity, life, settings, body, mind, seed),
         clients: HashMap::new(),
         renderer: (!no_renderer).then(Renderer::new),
+        baker: (!no_renderer).then(Baker::new),
         reporting: HashMap::new(),
         tx: tx.clone(),
         helpers: [
@@ -870,6 +883,10 @@ pub fn run(no_renderer: bool) -> Result<()> {
         if let Some(renderer) = daemon.renderer.as_mut() {
             renderer.poll(visible);
         }
+        if let Some(baker) = daemon.baker.as_mut() {
+            let state = daemon.sim.snapshot(at);
+            baker.poll(state.growth, daemon.sim.settings.size_px, !state.user_here, &daemon.sim.settings.pictures);
+        }
     }
 
     let end = now();
@@ -879,6 +896,9 @@ pub fn run(no_renderer: bool) -> Result<()> {
     }
     if let Some(renderer) = daemon.renderer.as_mut() {
         renderer.stop();
+    }
+    if let Some(baker) = daemon.baker.as_mut() {
+        baker.stop();
     }
     daemon.store.journal(end as i64, "session_end", &json!({ "secs": end - start }))?;
     daemon.persist(end)?;

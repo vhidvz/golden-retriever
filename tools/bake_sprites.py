@@ -1,6 +1,6 @@
 """Draws Buddy's movements with a real coat of hair, as pictures for the desktop.
 
-    blender -b --factory-startup --python tools/bake_sprites.py -- POSES.json OUT_DIR [--samples 24] [--strands 150000] [--only stand,walk]
+    blender -b --factory-startup --python tools/bake_sprites.py -- POSES.json OUT_DIR [--samples 24] [--strands 150000] [--only stand,walk] [--version V]
 
 POSES.json comes from renderer/export_poses.gd: for every frame, how each bone of
 his skeleton has moved. This script builds his body at the same age from
@@ -9,7 +9,9 @@ direction, colour and the hang of the long coat all come from the model), moves
 body and hair with the bones frame by frame, and renders each frame in Cycles
 through exactly the camera his window has, so each picture can be shown in the
 window as it is. Pictures that already exist are not drawn again, so a bake can be
-stopped and resumed. OUT_DIR/manifest.json lists what was drawn.
+stopped and resumed (each picture is written whole, under a temporary name, then
+renamed). OUT_DIR/manifest.json lists what is drawn, and says "complete" once
+every picture exists.
 
 It is slow (seconds per picture) and is meant to run in the background, once per
 stage of his growth; showing the pictures afterwards costs almost nothing.
@@ -291,6 +293,39 @@ def material_nose():
     return m
 
 
+def bowl():
+    """His bowl, as the live renderer draws it (a steel bowl 0.30 across at the rim, 0.07 deep),
+    with water or food in it. Returns the bowl, the water and the food, at size 1, resting on the floor."""
+    profile = [(0.0, 0.0), (0.11, 0.0), (0.15, 0.07), (0.138, 0.07), (0.10, 0.013), (0.0, 0.013)]
+    steps = 48
+    verts, faces = [], []
+    for r, y in profile:
+        for k in range(steps):
+            a = 2 * math.pi * k / steps
+            verts.append((r * math.cos(a), y, r * math.sin(a)))
+    for i in range(len(profile) - 1):
+        for k in range(steps):
+            a, b = i * steps + k, i * steps + (k + 1) % steps
+            faces.append((a, b, b + steps, a + steps))
+    dish = mesh_object("bowl", verts, faces)
+    dish.data.materials.append(material_plain("steel", linear([0.62, 0.66, 0.72]), 0.35))
+    dish.data.materials[0].node_tree.nodes["Principled BSDF"].inputs["Metallic"].default_value = 0.7
+    fill = lambda name, height: mesh_object(name, [(0.0, height, 0.0)] + [(0.128 * math.cos(2 * math.pi * k / steps), height, 0.128 * math.sin(2 * math.pi * k / steps)) for k in range(steps)],
+                                            [(0, (k + 1) % steps + 1, k + 1) for k in range(steps)])
+    water = fill("water", 0.045)
+    water.data.materials.append(material_plain("water", linear([0.05, 0.07, 0.08]), 0.04, coat=1.0))
+    food = fill("food", 0.05)
+    kibble = material_plain("food", linear([0.42, 0.24, 0.11]), 0.8)
+    cells = kibble.node_tree.nodes.new("ShaderNodeTexVoronoi")
+    cells.inputs["Scale"].default_value = 60.0
+    lump = kibble.node_tree.nodes.new("ShaderNodeBump")
+    lump.inputs["Strength"].default_value = 1.0
+    kibble.node_tree.links.new(cells.outputs["Distance"], lump.inputs["Height"])
+    kibble.node_tree.links.new(lump.outputs["Normal"], kibble.node_tree.nodes["Principled BSDF"].inputs["Normal"])
+    food.data.materials.append(kibble)
+    return dish, water, food
+
+
 def mesh_object(name, verts, faces, smooth=True):
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata([tuple(p) for p in verts], [], [tuple(f) for f in faces])
@@ -365,8 +400,12 @@ def main():
     paint = flesh.data.attributes.new("paint", "FLOAT_COLOR", "POINT")
     # Under the coat the body is painted in the coat's own colour, half as bright, so that
     # wherever the hairs leave a gap it reads as more coat rather than as dark skin.
-    shade = np.where(body.skin[:, None] > 0.5, 1.0, float(E("UNDER", "0.5")))
-    paint.data.foreach_set("color", np.concatenate([linear(body.tone) * shade, np.ones((len(body.rest), 1))], axis=1).ravel())
+    # (Dulled as well as darkened: where the coat parts at a bent joint, saturated skin shows as an orange patch.)
+    under = linear(body.tone)
+    under = under + (under.mean(axis=1, keepdims=True) - under) * 0.5
+    bare = body.skin[:, None] > 0.5
+    shown = np.where(bare, linear(body.tone), under * float(E("UNDER", "0.5")))
+    paint.data.foreach_set("color", np.concatenate([shown, np.ones((len(body.rest), 1))], axis=1).ravel())
     rough = flesh.data.attributes.new("rough", "FLOAT", "POINT")
     # Matte under the coat (a shine there shows through the hair as bright patches); wet on the nose.
     rough.data.foreach_set("value", np.where(body.skin > 0.5, 0.75 - 0.6 * body.shine, 1.0).astype(np.float32))
@@ -413,6 +452,10 @@ def main():
     verts, faces = sphere("tongue", 16, 8)
     tongue = mesh_object("tongue", [np.array(v) * tongue_half[2] for v in verts], faces)
     tongue.data.materials.append(material_plain("tongue", linear([0.80, 0.36, 0.40]), 0.35))
+
+    dish, water, food = bowl()
+    for thing in (dish, water, food):
+        thing.hide_render = True
 
     # Light that looks the same mirrored (he is drawn facing right; facing left is the mirror image).
     world = bpy.data.worlds.new("sky")
@@ -471,7 +514,9 @@ def main():
 
     # The manifest goes first: the renderer uses each clip as soon as all its pictures exist.
     manifest = {key: poses[key] for key in ("growth", "scale", "size_px", "window", "margin")}
-    manifest["clips"] = [dict({key: clip.get(key) for key in ("name", "kind", "fps", "gaze")}, frames=len(clip["frames"])) for clip in poses["clips"]]
+    manifest["version"] = option("--version", "")
+    manifest["complete"] = False
+    manifest["clips"] = [dict({key: clip.get(key) for key in ("name", "kind", "fps", "gaze", "speed", "bowl")}, frames=len(clip["frames"])) for clip in poses["clips"]]
     with open(os.path.join(out_dir, "manifest.json"), "w") as f:
         json.dump(manifest, f, indent=1)
     drawn = 0
@@ -479,6 +524,15 @@ def main():
         if only and clip["name"] not in only:
             continue
         os.makedirs(os.path.join(out_dir, clip["name"]), exist_ok=True)
+        has_bowl = clip.get("bowl") is not None
+        for thing in (dish, water, food):
+            thing.hide_render = not has_bowl
+        if has_bowl:
+            spot = Matrix.Translation(Vector(clip["bowl"]["at"]) - Vector((0.0, 0.035 * clip["bowl"]["scale"], 0.0))) @ Matrix.Scale(clip["bowl"]["scale"], 4)
+            for thing in (dish, water, food):
+                thing.matrix_world = spot
+            water.hide_render = not clip["bowl"]["water"]
+            food.hide_render = clip["bowl"]["water"]
         for index, frame in enumerate(clip["frames"]):
             path = os.path.join(out_dir, clip["name"], f"{index:03d}.webp")
             if os.path.exists(path):
@@ -505,6 +559,7 @@ def main():
                 lids[1].matrix_world = place @ Matrix.Rotation(lower, 4, "Z") @ size
             tongue.hide_render = not frame["tongue"]["shown"]
             tongue.matrix_world = to_blender(matrices(frame["tongue"]["transform"])[0])
+            final, path = path, path[:-len(".webp")] + ".part.webp"
             scene.render.filepath = path
             if FOCUS:
                 from bpy_extras.object_utils import world_to_camera_view
@@ -521,9 +576,14 @@ def main():
                 picture.file_format = "WEBP"
                 picture.save()
                 bpy.data.images.remove(picture)
+            os.replace(path, final)
             drawn += 1
             print(f"BAKE {clip['name']} {index + 1}/{len(clip['frames'])} in {time.time() - t:.1f} s", flush=True)
-    print(f"BAKE done: {drawn} pictures drawn, {time.time() - started:.0f} s", flush=True)
+    if not only and all(os.path.exists(os.path.join(out_dir, c["name"], f"{k:03d}.webp")) for c in poses["clips"] for k in range(len(c["frames"]))):
+        manifest["complete"] = True
+        with open(os.path.join(out_dir, "manifest.json"), "w") as f:
+            json.dump(manifest, f, indent=1)
+    print(f"BAKE done: {drawn} pictures drawn, {time.time() - started:.0f} s{', set complete' if manifest['complete'] else ''}", flush=True)
 
 
 if __name__ == "__main__":

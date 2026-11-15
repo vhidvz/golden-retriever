@@ -342,6 +342,7 @@ func _process(delta: float) -> void:
 	var pictures := _sprites.update(delta, _dog, _state["activity"], int(_state["variant"]), int(_state["facing"]))
 	_dog.visible = not pictures
 	_shadow.visible = not pictures
+	_bowl.visible = activity_has_bowl() and not _sprites.shows_bowl()
 
 	# Draw only as often as what he is doing needs.
 	var activity: String = _state["activity"]
@@ -362,6 +363,10 @@ func _process(delta: float) -> void:
 		_apply_state(next)
 	if _selftest_path != "" and _clock >= _selftest_at and Engine.get_frames_drawn() >= _drawn_at_start + 20:
 		_finish_selftest()
+
+
+func activity_has_bowl() -> bool:
+	return not _state.is_empty() and _state["activity"] in ["eat", "drink"]
 
 
 func _input(event: InputEvent) -> void:

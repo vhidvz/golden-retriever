@@ -1,6 +1,7 @@
 //! `buddy` — the daemon that keeps Buddy alive, and the command-line remote for it.
 
 mod ai;
+mod baker;
 mod claude;
 mod client;
 mod daemon;
@@ -47,7 +48,9 @@ On the computer (try: buddy say 'find my tax report'):
   buddy look [--file IMAGE]      have him look at the screen once (or at an image) and say what he makes of it
   buddy sense SOURCE on|off      system | desktop | window_titles | screen | camera | microphone
   buddy set KEY VALUE            name | size_px (adult height) | adult_days (growth timeline) |
-                                 stay_in_fullscreen (on/off) | vision_model | language_model
+                                 stay_in_fullscreen (on/off) | vision_model | language_model |
+                                 pictures (away: draw his pictures only while you are away,
+                                 the default; always; off)
   buddy snapshot [FILE.png]      save exactly what his window shows right now (nothing else on
                                  the screen), with what he was doing, to report a drawing problem
   buddy journal [N]              the last N things that happened (default 20)

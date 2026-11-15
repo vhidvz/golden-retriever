@@ -16,10 +16,12 @@ const CAMERA_PITCH := 0.14         # these three must match main.gd
 const GROUND_MARGIN := 0.11
 const STEP := 1.0 / 60.0
 
-## What is drawn. "loop": a stretch of an activity that is played round and round;
-## "cycle": one stride, shown according to how far he has walked; "once": a change of
-## posture, played through once. "gaze" turns his attention towards a direction
-## (degrees around him: 0 is the viewer, positive to the right).
+## What is drawn. "loop": a stretch of an activity that is played forwards and back;
+## "cycle": one stride, shown according to how far he has walked (at "speed" times his
+## walking pace); "once": a change of posture, played through once; "progress": an
+## activity that unfolds over its whole length (a stretch), shown according to how far
+## through it he is. "gaze" turns his attention towards a direction (degrees around
+## him: 0 is the viewer, positive to the right). "bowl": his bowl is in the picture.
 static func clips() -> Array:
 	var all := [
 		{"name": "stand", "activity": "stand", "secs": 4.0, "fps": 12, "kind": "loop"},
@@ -29,7 +31,16 @@ static func clips() -> Array:
 		{"name": "sleep_side", "activity": "sleep", "variant": 0, "secs": 5.0, "fps": 10, "kind": "loop", "sleepy": true},
 		{"name": "sleep_curled", "activity": "sleep", "variant": 1, "secs": 5.0, "fps": 10, "kind": "loop", "sleepy": true},
 		{"name": "sleep_chin", "activity": "sleep", "variant": 2, "secs": 5.0, "fps": 10, "kind": "loop", "sleepy": true},
-		{"name": "walk", "activity": "walk", "frames": 16, "kind": "cycle"},
+		{"name": "walk", "activity": "walk", "frames": 16, "kind": "cycle", "speed": 1.0},
+		{"name": "trot", "activity": "walk", "frames": 16, "kind": "cycle", "speed": 2.0},
+		{"name": "gallop", "activity": "zoomies", "frames": 16, "kind": "cycle", "speed": 3.4},
+		{"name": "eat", "activity": "eat", "secs": 4.0, "fps": 12, "kind": "loop", "bowl": true},
+		{"name": "drink", "activity": "drink", "secs": 4.0, "fps": 12, "kind": "loop", "bowl": true},
+		{"name": "sniff", "activity": "sniff", "variant": 0, "secs": 4.0, "fps": 12, "kind": "loop"},
+		{"name": "sniff_air", "activity": "sniff", "variant": 1, "secs": 3.0, "fps": 12, "kind": "loop"},
+		{"name": "play_bow", "activity": "play_bow", "secs": 3.7, "fps": 12, "kind": "loop"},
+		{"name": "stretch", "activity": "stretch", "variant": 0, "frames": 30, "kind": "progress", "secs": 3.0},
+		{"name": "stretch_back", "activity": "stretch", "variant": 1, "frames": 30, "kind": "progress", "secs": 3.0},
 	]
 	for posture in ["stand", "sit", "lie"]:
 		for angle in [-60, -25, 0, 25, 60]:
@@ -105,18 +116,32 @@ func _record(clip: Dictionary) -> Dictionary:
 	_dog._chance.seed = hash(clip["name"])
 	var frames := []
 	if clip["kind"] == "cycle":
-		# One full stride at walking pace, in equal steps of the stride.
+		# One full stride at the given pace, in equal steps of the stride.
+		var speed: float = _dog.WALK_SPEED * float(clip["speed"])
 		_dog.begin(clip["activity"], 0, 0.6, 600.0, 11)
-		_run(2.0, _dog.WALK_SPEED)
+		_run(2.0, speed)
 		var count: int = clip["frames"]
-		var stride_secs: float = _dog.STRIDE / _dog.WALK_SPEED
+		# How long one stride takes at this pace (strides lengthen into a gallop).
+		var before: float = _dog._phase
+		_run(0.5, speed)
+		var stride_secs := 0.5 * TAU / maxf(_dog._phase - before, 1e-6)
 		# Start where the stride starts, so frame k is at k/count of it.
-		while _dog.stride().x > 0.02:
-			_run(STEP, _dog.WALK_SPEED)
+		while _dog.stride().x > 0.01:
+			_run(STEP / 8.0, speed)
 		for k in count:
 			frames.append(_snap())
-			_run(stride_secs / count, _dog.WALK_SPEED)
-		return {"name": clip["name"], "kind": "cycle", "fps": count / stride_secs, "frames": frames}
+			_run(stride_secs / count, speed)
+		return {"name": clip["name"], "kind": "cycle", "speed": clip["speed"], "frames": frames}
+
+	if clip["kind"] == "progress":
+		# The whole activity, from start to end, in equal steps.
+		var secs: float = clip["secs"]
+		_dog.begin(clip["activity"], int(clip.get("variant", 0)), 0.6, secs, 19)
+		var count: int = clip["frames"]
+		for k in count:
+			frames.append(_snap())
+			_run(secs / (count - 1), 0.0)
+		return {"name": clip["name"], "kind": "progress", "frames": frames}
 
 	if clip.has("from"):
 		_dog.begin(clip["from"], int(clip.get("from_variant", 0)), 0.6, 600.0, 13)
@@ -129,7 +154,11 @@ func _record(clip: Dictionary) -> Dictionary:
 	for k in count:
 		frames.append(_snap())
 		_run(1.0 / fps, 0.0, clip.get("gaze", null))
-	return {"name": clip["name"], "kind": clip["kind"], "fps": fps, "gaze": clip.get("gaze", null), "frames": frames}
+	var recorded := {"name": clip["name"], "kind": clip["kind"], "fps": fps, "gaze": clip.get("gaze", null), "frames": frames}
+	if clip.get("bowl", false):
+		# Where main.gd puts his bowl, at his size, facing right.
+		recorded["bowl"] = {"at": _vector(Vector3(_dog.get_bowl_distance(), 0.035, 0.2) * _dog.scale.x), "scale": _dog.scale.x, "water": clip["activity"] == "drink"}
+	return recorded
 
 
 ## Moves him on for `secs`, walking at `speed` (units a second), his attention held by `gaze` if given.

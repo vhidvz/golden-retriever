@@ -62,6 +62,7 @@ pub fn status(as_json: bool) -> Result<()> {
         s["life"]["pets"]
     );
     println!("  renderer:    {}", text(&s["renderer"]));
+    println!("  pictures:    {}", s["pictures"].as_str().unwrap_or("?"));
     println!("  privacy:     {}", if st["privacy"] == true { "ON — all observation suspended" } else { "off" });
     println!("  observing:   {}", text(&s["observing"]));
     println!("  memory:      {} (schema v{})", text(&s["database"]), s["schema_version"]);

@@ -49,6 +49,9 @@ pub struct Settings {
     pub language_model: String,
     /// Hours his night is shifted later, for a user who works late.
     pub night_shift_hours: f64,
+    /// When his pictures with a real coat may be drawn: "away" (only while the user is
+    /// away), "always", or "off".
+    pub pictures: String,
 }
 
 impl Default for Settings {
@@ -65,6 +68,7 @@ impl Default for Settings {
             vision_model: "gemma4:e4b".into(),
             language_model: "gemma4:e4b".into(),
             night_shift_hours: 0.0,
+            pictures: "away".into(),
         }
     }
 }

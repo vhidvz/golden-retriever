@@ -14,7 +14,7 @@ extensions="${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions"
 if [ "${1:-}" = "--remove" ]; then
     systemctl --user disable --now buddy.service 2>/dev/null || true
     rm -f "$units/buddy.service" "$bin/buddy"
-    rm -rf "$share/renderer" "$share/perception" "$extensions/$extension"
+    rm -rf "$share/renderer" "$share/perception" "$share/tools" "$extensions/$extension"
     gnome-extensions disable "$extension" 2>/dev/null || true
     systemctl --user daemon-reload
     echo "Buddy removed. His memory is still in $share (delete it yourself if you really mean it)."
@@ -23,6 +23,8 @@ fi
 
 command -v godot >/dev/null 2>&1 || command -v godot4 >/dev/null 2>&1 || [ -n "${BUDDY_GODOT:-}" ] ||
     echo "warning: Godot 4 was not found; Buddy will live but not be drawn (install godot, or set BUDDY_GODOT in ~/.config/buddy/env)" >&2
+command -v blender >/dev/null 2>&1 || [ -n "${BUDDY_BLENDER:-}" ] ||
+    echo "note: Blender was not found; Buddy will be drawn live only, without the pictures with a real coat (install blender to have them)" >&2
 
 (cd "$repo" && cargo build --release)
 mkdir -p "$bin" "$share" "$units"
@@ -33,6 +35,10 @@ mkdir "$share/renderer"
 cp "$repo"/renderer/project.godot "$repo"/renderer/*.tscn "$repo"/renderer/*.gd "$repo"/renderer/*.gdshader "$repo"/renderer/*.gdshaderinc "$share/renderer/"
 cp -r "$repo/renderer/sounds" "$share/renderer/sounds"
 cp -r "$repo/renderer/dog" "$share/renderer/dog"
+# The script that draws his pictures with a real coat, run by the daemon while you are away.
+rm -rf "$share/tools"
+mkdir "$share/tools"
+cp "$repo/tools/bake_sprites.py" "$share/tools/"
 rm -rf "$share/perception"
 mkdir "$share/perception"
 cp "$repo"/perception/*.py "$share/perception/"
