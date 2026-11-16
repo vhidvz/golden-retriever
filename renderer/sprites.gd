@@ -34,6 +34,16 @@ var _fade_speed := 1.0 / CROSSFADE
 var _visible := 0.0              # 0 = 3D body, 1 = pictures
 var _base := ""                  # the posture family last shown ("stand", "sit", "lie", "sleep_side", …)
 var _recheck := 30.0             # seconds until clips still being drawn are looked for again
+## The posture each clip is drawn in. A change of posture plays the drawn change between
+## them (stand_to_sit, …) where there is one; clips of one posture fade into each other.
+const POSTURE := {
+	"walk": "stand", "trot": "stand", "gallop": "stand", "eat": "stand", "drink": "stand", "sniff": "stand",
+	"sniff_air": "stand", "play_bow": "stand", "stretch": "stand", "stretch_back": "stand", "yawn_stand": "stand",
+	"shake": "stand", "greet": "stand", "invite": "stand", "invite_bow": "stand", "tail_chase": "stand", "tail_chase_back": "stand",
+	"yawn_sit": "sit", "scratch_l": "sit", "scratch_r": "sit", "groom_flank": "sit", "seek_attention": "sit", "seek_paw": "sit",
+	"lie_chin": "lie", "yawn_lie": "lie", "groom_paw": "lie", "sleep_chin": "lie", "sleep_curled": "lie",
+	"lie_side": "sleep_side",
+}
 var _facing := 1
 var _decoded := {}               # frame key -> Image: the few pictures decoded last, so none is decoded twice
 var _images := {}                # slot -> the Image last put there (reading a texture back loses its colour)
@@ -146,13 +156,30 @@ func _choose(dog, activity: String, variant: int, facing: int) -> String:
 		"stand", "sit", "eat", "drink", "play_bow":
 			base = activity
 		"lie":
-			base = {0: "lie", 2: "lie_chin"}.get(variant, "")
+			base = {0: "lie", 1: "lie_side", 2: "lie_chin"}.get(variant, "")
 		"sleep":
 			base = {0: "sleep_side", 1: "sleep_curled", 2: "sleep_chin"}.get(variant, "")
 		"sniff":
 			base = {0: "sniff", 1: "sniff_air"}.get(variant, "")
 		"stretch":
 			base = {0: "stretch", 1: "stretch_back"}.get(variant, "")
+		"yawn":
+			base = "yawn_" + String(dog.posture())       # he yawns in whatever posture he is in
+		"shake", "roll":
+			base = activity
+		"scratch":
+			base = {0: "scratch_l", 1: "scratch_r"}.get(variant, "")
+		"groom":
+			base = {0: "groom_paw", 1: "groom_flank"}.get(variant, "")
+		"tail_chase":
+			base = {0: "tail_chase", 1: "tail_chase_back"}.get(variant, "")
+		"greet":
+			base = "greet" if variant == 0 else ""          # the other way includes a turn and a bow: not drawn
+		"invite":
+			# The third way starts with a quick turn on the spot, which is not drawn; then it is the first.
+			base = {0: "invite", 1: "invite_bow"}.get(variant, "invite" if dog.progress() >= 0.3 else "")
+		"seek_attention":
+			base = {0: "seek_attention", 1: "seek_paw"}.get(variant, "")
 	if base == "" or not clips.has(base):
 		return ""
 	# Looking at you, or at something on the screen: the drawn look nearest to where it is.
@@ -195,7 +222,10 @@ func update(delta: float, dog, activity: String, variant: int, facing: int) -> b
 				_start(change, CROSSFADE)
 				_queued = wanted
 			else:
-				_start(wanted, POSTURE_FADE if family != _base and _clip != "" else CROSSFADE)
+				# A look turning into another look, or into the plain posture, is quick;
+				# anything that moves the whole body takes as long as the body would.
+				var quick := family == _base and _clip.begins_with(family) and wanted.begins_with(family)
+				_start(wanted, CROSSFADE if quick or _clip == "" else POSTURE_FADE)
 				_queued = ""
 			_base = family
 		elif wanted == _queued and _clip_done():
@@ -220,12 +250,10 @@ func shows_bowl() -> bool:
 
 
 func _family(clip: String) -> String:
-	if clip in ["walk", "trot", "gallop"]:
-		return "stand"
 	for posture in ["stand", "sit", "lie"]:
 		if clip.begins_with(posture + "_look"):
 			return posture
-	return {"lie_chin": "lie"}.get(clip, clip)
+	return POSTURE.get(clip, clip)
 
 
 func _clip_done() -> bool:
@@ -262,6 +290,14 @@ func _show(dog, facing: int) -> void:
 			position = minf(_clip_time * float(info["fps"]), count - 1.0)
 		"progress":
 			position = dog.progress() * (count - 1.0)
+		"repeat":
+			# One round of a quick movement, round and round at the speed it was recorded.
+			position = fmod(_clip_time * float(info["fps"]), float(count))
+		"spin":
+			# A turn on the spot: the picture drawn at the angle he has turned to (mirrored
+			# when he faces left, which turns the other way), a picture at a time.
+			var turn := fposmod((dog.turned() * float(facing) - float(info.get("start_turn", 0.0))) * float(info.get("direction", 1.0)), 1.0)
+			position = fposmod(floorf(turn * count + 0.5), float(count))
 		_:
 			# Forwards and back again: the end of a stretch of life never meets its start,
 			# so going round would jump; turning back does not.
@@ -269,12 +305,12 @@ func _show(dog, facing: int) -> void:
 	var frame := int(floor(position)) % count
 	var next := frame + 1
 	if next >= count:
-		next = 0 if info["kind"] == "cycle" else frame
+		next = 0 if info["kind"] in ["cycle", "repeat", "spin"] else frame
 	if frame != _shown_frame:
 		_put("cur", _picture(entry, frame))
 		_put("nxt", _picture(entry, next))
 		_shown_frame = frame
-	_material.set_shader_parameter("blend", position - floor(position))
+	_material.set_shader_parameter("blend", 0.0 if info["kind"] == "spin" else position - floor(position))
 	_material.set_shader_parameter("fade", _fade)
 	_material.set_shader_parameter("shown", _visible)
 	_material.set_shader_parameter("flip", facing < 0)

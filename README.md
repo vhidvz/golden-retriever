@@ -307,28 +307,35 @@ shows them in place of the 3D body whenever there are pictures of what he is doi
 the 3D dog keeps moving unseen underneath and still decides his posture, stride
 and where he looks, and the matching pictures are picked: a walk, trot or gallop
 by his pace and where his legs are in the stride, one of five drawn looks by where
-his attention is, a stretch by how far through it he is, a drawn change between
-standing, sitting, lying and sleeping on his side, and otherwise a stretch of the
-movement played forwards and back. Clips crossfade into each other, facing left
+his attention is, a stretch, a yawn, shaking off or a roll by how far through it he
+is, a tail chase by how far round he has turned, a scratch or a lick as one quick
+repetition going round, a drawn change when he goes from standing to sitting, lying
+or sleeping on his side and back, and otherwise a stretch of the movement played
+forwards and back. Each clip belongs to a posture, so going from sitting to shaking
+off, say, first plays the drawn change from sitting to standing. Clips crossfade into each other, facing left
 is the mirror image (light included), and his bowl is drawn into the pictures of
 him eating and drinking. A movement is used as soon as all its pictures exist.
 
 Drawing a frame this way costs about 0.12 ms of the graphics card, against 2.5 to
 3.5 ms for the live body. Drawing the pictures costs about 10 seconds each on the
-processor, roughly 1,200 for one stage of his growth (about 30 MB).
+processor, roughly 1,700 for one stage of his growth (about 40 MB).
 
-What is drawn: standing, sitting, lying (two ways), sleeping (three ways), the
-walk, trot and gallop, eating, drinking, sniffing the ground and the air, the
-play bow, two stretches, looking in five directions while standing, sitting or
-lying, and the changes between standing, sitting, lying and sleeping on his side.
-The rest (a roll, scratching, grooming, shaking off, chasing his tail, greeting)
-is still the live 3D body.
+What is drawn: standing, sitting, lying (three ways, one on his side), sleeping
+(three ways), the walk, trot and gallop, eating, drinking, sniffing the ground and
+the air, the play bow, two stretches, yawning standing, sitting or lying, shaking
+off, rolling on his back, scratching with either hind leg, licking a paw or his
+flank, chasing his tail either way round, greeting, both ways of inviting you to
+let him help, asking for attention (with and without a paw offered), looking in
+five directions while standing, sitting or lying, and the changes between standing,
+sitting, lying and sleeping on his side. What is still the live 3D body: greeting
+with a turn and a bow, and the quick turn that starts one way of inviting you.
 
 ## Known gaps
 
-- Only part of what he does has pictures with a real coat; the rest is the stylised
-  live body, so the two can be seen to alternate (see "Pictures with a real coat").
-  Pictures are drawn only while the computer is left alone; on a computer that is
+- Nearly everything he does has pictures with a real coat; until they are drawn for
+  his age, and for the two movements not drawn, he is the stylised live body (see
+  "Pictures with a real coat"). Pictures are drawn only while the computer is left
+  alone, about five hours for each stage of his growth; on a computer that is
   switched off whenever its user leaves, they may take days to appear.
 - In the pictures he looks in one of five drawn directions, not anywhere at all.
 - When the graphics card runs out of memory (other programs had 1.8 of its 2 GB

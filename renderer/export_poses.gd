@@ -20,8 +20,12 @@ const STEP := 1.0 / 60.0
 ## "cycle": one stride, shown according to how far he has walked (at "speed" times his
 ## walking pace); "once": a change of posture, played through once; "progress": an
 ## activity that unfolds over its whole length (a stretch), shown according to how far
-## through it he is. "gaze" turns his attention towards a direction (degrees around
-## him: 0 is the viewer, positive to the right). "bowl": his bowl is in the picture.
+## through it he is; "repeat": exactly one round of a quick, regular movement (a hind leg
+## scratching, licking), played forwards and round again at the speed it was recorded;
+## "spin": one whole turn on the spot, shown according to how far round he has turned.
+## "from" is the posture he is in when it starts. "gaze" turns his attention towards a
+## direction (degrees around him: 0 is the viewer, positive to the right). "bowl": his
+## bowl is in the picture.
 static func clips() -> Array:
 	var all := [
 		{"name": "stand", "activity": "stand", "secs": 4.0, "fps": 12, "kind": "loop"},
@@ -41,6 +45,23 @@ static func clips() -> Array:
 		{"name": "play_bow", "activity": "play_bow", "secs": 3.7, "fps": 12, "kind": "loop"},
 		{"name": "stretch", "activity": "stretch", "variant": 0, "frames": 30, "kind": "progress", "secs": 3.0},
 		{"name": "stretch_back", "activity": "stretch", "variant": 1, "frames": 30, "kind": "progress", "secs": 3.0},
+		{"name": "yawn_stand", "from": "stand", "activity": "yawn", "frames": 24, "kind": "progress", "secs": 2.5},
+		{"name": "yawn_sit", "from": "sit", "activity": "yawn", "frames": 24, "kind": "progress", "secs": 2.5},
+		{"name": "yawn_lie", "from": "lie", "activity": "yawn", "frames": 24, "kind": "progress", "secs": 2.5},
+		{"name": "shake", "activity": "shake", "frames": 60, "kind": "progress", "secs": 2.0},
+		{"name": "roll", "activity": "roll", "frames": 48, "kind": "progress", "secs": 4.0},
+		{"name": "scratch_l", "activity": "scratch", "variant": 0, "frames": 8, "kind": "repeat", "secs": TAU / 36.0},
+		{"name": "scratch_r", "activity": "scratch", "variant": 1, "frames": 8, "kind": "repeat", "secs": TAU / 36.0},
+		{"name": "groom_paw", "activity": "groom", "variant": 0, "frames": 12, "kind": "repeat", "secs": TAU / 6.5},
+		{"name": "groom_flank", "activity": "groom", "variant": 1, "frames": 12, "kind": "repeat", "secs": TAU / 6.5},
+		{"name": "tail_chase", "activity": "tail_chase", "variant": 0, "frames": 24, "kind": "spin"},
+		{"name": "tail_chase_back", "activity": "tail_chase", "variant": 1, "frames": 24, "kind": "spin"},
+		{"name": "greet", "activity": "greet", "variant": 0, "secs": 3.0, "fps": 12, "kind": "loop"},
+		{"name": "invite", "activity": "invite", "variant": 0, "secs": 3.0, "fps": 12, "kind": "loop"},
+		{"name": "invite_bow", "activity": "invite", "variant": 1, "secs": 2.6, "fps": 12, "kind": "loop"},
+		{"name": "seek_attention", "activity": "seek_attention", "variant": 0, "secs": 3.4, "fps": 12, "kind": "loop"},
+		{"name": "seek_paw", "activity": "seek_attention", "variant": 1, "secs": 3.4, "fps": 12, "kind": "loop"},
+		{"name": "lie_side", "activity": "lie", "variant": 1, "secs": 4.0, "fps": 12, "kind": "loop"},
 	]
 	for posture in ["stand", "sit", "lie"]:
 		for angle in [-60, -25, 0, 25, 60]:
@@ -133,9 +154,40 @@ func _record(clip: Dictionary) -> Dictionary:
 			_run(stride_secs / count, speed)
 		return {"name": clip["name"], "kind": "cycle", "speed": clip["speed"], "frames": frames}
 
+	if clip["kind"] == "spin":
+		# One whole turn on the spot, in equal steps of the turn.
+		_dog.begin(clip["activity"], int(clip.get("variant", 0)), 0.6, 600.0, 23)
+		_run(2.0, 0.0)
+		var count: int = clip["frames"]
+		var start: float = _dog._spin
+		var direction: float = signf(_dog._spin - start + 1e-9)
+		_run(STEP, 0.0)
+		direction = signf(_dog._spin - start)
+		for k in count:
+			frames.append(_snap())
+			var target := start + direction * TAU * (k + 1) / count
+			while (_dog._spin - target) * direction < 0.0:
+				_run(STEP / 4.0, 0.0)
+		# Where in the turn the first picture is, so a picture can be matched to an angle.
+		return {"name": clip["name"], "kind": "spin", "direction": direction, "start_turn": fposmod(start, TAU) / TAU, "frames": frames}
+
+	if clip["kind"] == "repeat":
+		# One round of a quick, regular movement, in equal steps of time.
+		_dog.begin(clip["activity"], int(clip.get("variant", 0)), 0.6, 600.0, 29)
+		_run(4.0, 0.0)
+		var count: int = clip["frames"]
+		var secs: float = clip["secs"]
+		for k in count:
+			frames.append(_snap())
+			_run(secs / count, 0.0)
+		return {"name": clip["name"], "kind": "repeat", "fps": count / secs, "frames": frames}
+
 	if clip["kind"] == "progress":
 		# The whole activity, from start to end, in equal steps.
 		var secs: float = clip["secs"]
+		if clip.has("from"):
+			_dog.begin(clip["from"], 0, 0.6, 600.0, 13)
+			_run(4.0, 0.0)
 		_dog.begin(clip["activity"], int(clip.get("variant", 0)), 0.6, secs, 19)
 		var count: int = clip["frames"]
 		for k in count:

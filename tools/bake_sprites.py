@@ -516,7 +516,7 @@ def main():
     manifest = {key: poses[key] for key in ("growth", "scale", "size_px", "window", "margin")}
     manifest["version"] = option("--version", "")
     manifest["complete"] = False
-    manifest["clips"] = [dict({key: clip.get(key) for key in ("name", "kind", "fps", "gaze", "speed", "bowl")}, frames=len(clip["frames"])) for clip in poses["clips"]]
+    manifest["clips"] = [dict({key: clip.get(key) for key in ("name", "kind", "fps", "gaze", "speed", "bowl", "direction", "start_turn")}, frames=len(clip["frames"])) for clip in poses["clips"]]
     with open(os.path.join(out_dir, "manifest.json"), "w") as f:
         json.dump(manifest, f, indent=1)
     drawn = 0

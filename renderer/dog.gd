@@ -305,6 +305,11 @@ func gaze_angle() -> float:
 	return rad_to_deg(atan2(_gaze_target.x, _gaze_target.z))
 
 
+## How far round he has turned on the spot (chasing his tail, say), 0..1 of a whole turn.
+func turned() -> float:
+	return fposmod(_spin, TAU) / TAU
+
+
 ## How far through what he is doing he is, 0..1 (for activities with a planned length).
 func progress() -> float:
 	return clampf(_since / _planned, 0.0, 1.0) if _planned > 0.0 else 0.0
