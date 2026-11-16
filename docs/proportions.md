@@ -87,26 +87,29 @@ with them about under the point of buttocks.
 
 There is no breed standard for a puppy. The one quantitative reference is the
 Beagle study, which measured the same puppies at nine weeks. Buddy's puppy body is
-made from the adult's by a single rule (`as_puppy` in `tools/build_dog.py`). So it
-followed the corrections to the legs, but not completely.
+made from the adult's by a single rule (`as_puppy` in `tools/build_dog.py`). After
+the adult was corrected the puppy followed only partly: the shoulder blade, which
+lies in the body, kept the adult's length while the leg below it was shortened, and
+the shin came out a little long. So the rule now also lifts the puppy's shoulder joint
+and, less, his elbow, and his hock, by amounts solved with `tools/measure_dog.py` to
+give those puppies' shares. The lift fades out gradually away from the legs and is
+nothing at the ground and at the withers.
 
-| Limb share | Beagle puppies, 9 weeks | Before | After |
-|---|---|---|---|
-| Shoulder blade | 29.0% | 37.6% | 35.2% |
-| Upper arm | 24.0% | 17.0% | 21.9% |
-| Forearm and forefoot | 47.0% | 45.4% | 42.9% |
-| Femur | 33.8% | 30.1% | 33.9% |
-| Shin | 30.9% | 34.7% | 33.4% |
-| Hind foot | 35.2% | 35.1% | 32.6% |
+| Limb share | Beagle puppies, 9 weeks | Before | After the adult was corrected | Now |
+|---|---|---|---|---|
+| Shoulder blade | 29.0% | 37.6% | 35.2% | 28.9% |
+| Upper arm | 24.0% | 17.0% | 21.9% | 24.1% |
+| Forearm and forefoot | 47.0% | 45.4% | 42.9% | 47.0% |
+| Femur | 33.8% | 30.1% | 33.9% | 33.4% |
+| Shin | 30.9% | 34.7% | 33.4% | 31.3% |
+| Hind foot | 35.2% | 35.1% | 32.6% | 35.3% |
 
-The hind leg now matches. The foreleg is closer than before, but its shoulder blade is
-still too long. That is because the rule shortens the puppy's legs below the body and
-lowers the body as a whole, so the shoulder blade, which lies in the body, keeps the
-adult's length. Shortening it would mean moving the puppy's shoulder joints
-separately from the rest of his trunk, which the single rule cannot do. An earlier
-attempt to give each part of the puppy its own rule creased the surface where the parts
-meet, which is why there is one rule. This is left for later, and written down here
-rather than hidden.
+The shin and hind foot were reported as matching after the adult was corrected; they
+did not quite (33.4% against a range of 29 to 33%, and 32.6% against 33 to 37%). That
+was wrong, and is fixed by the lift of the hock.
+
+The plumb line from the buttocks is a rule for adult working dogs and is not scored
+for the puppy.
 
 ![Landmarks and measured bones, puppy, after](anatomy/after-puppy.png)
 
@@ -135,8 +138,11 @@ with the longer femur, the old rule stood it up over his back.
   by `get_reach()`, which was not touched).
 - Every pose still fits in the window: 136 test pictures, one for each activity, both
   of its variants and both facings, puppy and adult.
-- The surface of the puppy derived from the adult has 7 of 40,484 triangles turned
-  over (before: 1), in the lower legs near the hock and the front pastern.
+- The surface of the puppy derived from the adult has 10 of 40,484 triangles turned
+  over (before: 1), all small and on the underside of the chest between the forelegs,
+  level with the elbows, where the lift of the puppy's foreleg meets the strong
+  shortening of his body in height. Removing them would mean reshaping how the puppy's
+  body is lowered, which would undo the shares above.
 
 ## Limits
 

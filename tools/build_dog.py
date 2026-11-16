@@ -83,6 +83,15 @@ PUP_MUZZLE = 0.42                  # his muzzle is this fraction of the adult's 
 PUP_TAIL = 0.55
 PUP_LEG = 1.5                      # his legs are this much thicker for their length
 PUP_FLUFF = (0.060, 0.064, 0.066)  # the coat on his back, flanks and belly
+# His foreleg: shortening the leg below the body leaves the shoulder blade, which lies in
+# the body, at the adult's length, so it came out at 35% of the foreleg where puppies of
+# nine weeks have 29% (Helmsmuller et al. 2013). Lifting his shoulder joint and, less, his
+# elbow restores 29 : 24 : 47 (solved with tools/measure_dog.py; docs/proportions.md).
+PUP_SHOULDER_LIFT = 0.0405         # in the puppy's own units (his height at the withers is about 0.5)
+PUP_ELBOW_LIFT = 0.0255
+# The same for his hind leg: his shin came out a little long and his foot short (33 and 33%
+# where those puppies have 31 and 35%); his hock is lifted, his stifle stays.
+PUP_HOCK_LIFT = 0.0195
 
 
 def tilt(p):
@@ -170,7 +179,20 @@ def as_puppy(points):
     off = np.sqrt((x - line_x) ** 2 + (z - line_z) ** 2)
     # (fading out slowly with the distance from the leg: a quick fade would fold the surface over)
     thicker = (PUP_LEG - 1.0) * ease((0.46 - y) / 0.10) * (1.0 - ease((off - 0.035) / 0.07)) * (1.0 - np.clip((0.07 - y) / 0.05, 0.0, 1.0) * 0.6)
-    thicker *= ease(np.abs(z) / 0.05)        # and not at all on his middle, between a pair of legs, or the two would cross
+    # and not at all on his middle, between a pair of legs, or the two would cross; the chest
+    # comes down between the forelegs to the elbow, so the fade starts well away from the middle
+    thicker *= ease((np.abs(z) - 0.02) / 0.06)
+    # The lift of his legs (see PUP_SHOULDER_LIFT): nothing at the ground; on a foreleg most at
+    # the shoulder joint and nothing at the withers, on a hind leg most at the hock and nothing
+    # at the stifle; fading out slowly away from the leg and towards his middle (a quick fade
+    # folds the surface over where the elbow meets the chest).
+    sy, ey, wy = FRONT_CHAIN[1][1], FRONT_CHAIN[2][1], 0.715
+    fore_lift = np.where(y <= ey, PUP_ELBOW_LIFT * np.clip(y / ey, 0.0, 1.0),
+                         np.where(y <= sy, PUP_ELBOW_LIFT + (PUP_SHOULDER_LIFT - PUP_ELBOW_LIFT) * (y - ey) / (sy - ey),
+                                  PUP_SHOULDER_LIFT * np.clip((wy - y) / (wy - sy), 0.0, 1.0)))
+    ky, hy = HIND_CHAIN[2][1], HIND_CHAIN[3][1]
+    hind_lift = np.where(y <= hy, PUP_HOCK_LIFT * np.clip(y / hy, 0.0, 1.0), PUP_HOCK_LIFT * np.clip((ky - y) / (ky - hy), 0.0, 1.0))
+    lift = np.where(front, fore_lift, hind_lift) * (1.0 - ease((off - 0.05) / 0.12)) * ease(np.abs(z) / 0.08)
     x = x + (x - line_x) * thicker
     z = z + (z - line_z) * thicker
 
@@ -180,7 +202,7 @@ def as_puppy(points):
     foot = np.clip((0.09 - y) / 0.06, 0.0, 1.0)
     sole = np.where(x > -0.1, PAWS["front"][0], PAWS["hind"][0])
     bx = x * PUP_SHORT * (1.0 - foot) + (sole * PUP_SHORT + (x - sole)) * foot
-    by = y * (PUP_LOW + (1.0 - PUP_LOW) * foot) * (1.0 - high) + (y - PUP_SINK) * high
+    by = y * (PUP_LOW + (1.0 - PUP_LOW) * foot) * (1.0 - high) + (y - PUP_SINK) * high + lift
 
     # The tail: shorter along its length, as thick as it was.
     xs, ys = [c[0] for c in TAIL_LINE], [c[1] for c in TAIL_LINE]

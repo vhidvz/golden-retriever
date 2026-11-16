@@ -211,7 +211,7 @@ def main():
         return
     refs = dict(REFERENCE)
     if age == "puppy":
-        refs = {k: v for k, v in REFERENCE.items() if k not in ("length_to_height", "elbow_height", "brisket_to_elbow", "chest_depth", "head_length", "muzzle_to_skull", "neck", "hock_height", "tail_reach", "upper_arm_to_blade")}
+        refs = {k: v for k, v in REFERENCE.items() if k not in ("length_to_height", "elbow_height", "brisket_to_elbow", "chest_depth", "head_length", "muzzle_to_skull", "neck", "hock_height", "tail_reach", "upper_arm_to_blade", "plumb_to_toes")}
         refs.update(PUPPY_REFERENCE)
     print(f"{'measure':22} {'Buddy':>8}  {'reference':>13}  {'':4} kind  source")
     for key, value in result.items():
