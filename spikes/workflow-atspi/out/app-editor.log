@@ -1,0 +1,8 @@
+
+(gnome-text-editor:162949): libenchant-WARNING **: 15:24:15.367: broker.vala:159: Error loading plugin: libaspell.so.15: cannot open shared object file: No such file or directory
+
+(gnome-text-editor:162949): libenchant-WARNING **: 15:24:15.367: broker.vala:159: Error loading plugin: libhspell.so.0: cannot open shared object file: No such file or directory
+
+(gnome-text-editor:162949): libenchant-WARNING **: 15:24:15.368: broker.vala:159: Error loading plugin: libnuspell.so.5: cannot open shared object file: No such file or directory
+
+(gnome-text-editor:162949): libenchant-WARNING **: 15:24:15.369: broker.vala:159: Error loading plugin: libvoikko.so.1: cannot open shared object file: No such file or directory

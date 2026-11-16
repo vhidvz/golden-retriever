@@ -1,0 +1,107 @@
+application 'gnome-calculator' id=org.gnome.Calculator
+  frame 'Calculator' id=MathWindow [win.close,win.paste,win.back,window.close,window.minimize,win.preferences,win.clear,win.copy,window.toggle-maximized,default.activate]
+    panel ''
+      panel ''
+        panel ''
+          grouping '' id=___object_1___
+            grouping '' id=___object_2___
+              panel '' id=___object_3___
+                panel '' id=display_box
+                  panel '' id=history
+                    scroll pane '' id=scrolled_window
+                      panel '' id=viewport
+                        list '' id=listbox
+                  panel '' id=_display
+                    panel '' id=___object_1___
+                      scroll pane '' id=display_scrolled
+                        text '' id=source_view [clipboard.copy,selection.delete,text.clear,clipboard.paste,clipboard.cut,selection.select-all,menu.popup] editable
+                      button 'Backspace' id=backspace_button [click]
+                    panel '' id=info_box
+                      text '' id=info_view [clipboard.copy,selection.delete,clipboard.paste,clipboard.cut,menu.popup,selection.select-all] editable
+                panel '' id=_buttons [cal.logarithm,cal.clear,cal.square,cal.subtract,cal.solve,cal.nth-root,cal.insert-numeric-point,cal.undo]
+                  grouping ''
+                    panel ''
+                      panel '' id=BasicButtonPanel
+                        panel '' id=basic
+                          button 'C' id=calc_clear_button [click]
+                            label 'C' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                          toggle button '↑n' id=calc_superscript_button [click]
+                            label '↑n' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                          toggle button '↓n' id=calc_subscript_button [click]
+                            label '↓n' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                          button '7' id=calc_7_button [click]
+                            label '7' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                          button '8' id=calc_8_button [click]
+                            label '8' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                          button '9' id=calc_9_button [click]
+                            label '9' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                          button '4' id=calc_4_button [click]
+                            label '4' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                          button '5' id=calc_5_button [click]
+                            label '5' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                          button '6' id=calc_6_button [click]
+                            label '6' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                          button '1' id=calc_1_button [click]
+                            label '1' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                          button '2' id=calc_2_button [click]
+                            label '2' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                          button '3' id=calc_3_button [click]
+                            label '3' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                          button '0' id=calc_0_button [click]
+                            label '0' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                          button '.' id=calc_numeric_point_button [click]
+                            label '.' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                          button 'x' id=calc_memory_button
+                            toggle button 'x' [click]
+                              panel ''
+                                label 'x' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                                panel ''
+                          button 'f(x)' id=calc_function_button
+                            toggle button 'f(x)' [click]
+                              panel ''
+                                label 'f(x)' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                                panel ''
+                          button '÷' id=calc_divide_button [click]
+                            label '÷' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                          button '×' id=calc_multiply_button [click]
+                            label '×' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                          button '−' id=calc_subtract_button [click]
+                            label '−' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                          button '+' id=calc_add_button [click]
+                            label '+' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                          button 'mod' id=calc_modulus_divide_button [click]
+                            label 'mod' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                          button '%' id=calc_percentage_button [click]
+                            label '%' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                          button '\u200e( )' id=calc_group_button [click]
+                            label '\u200e( )' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                          button '=' id=calc_result_button [click]
+                            label '=' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+            grouping ''
+              panel ''
+                panel ''
+                  grouping '' id=headerbar
+                    panel ''
+                      panel ''
+                        panel ''
+                          panel ''
+                            button 'Undo' id=undo_button [click]
+                            button 'Redo' id=redo_button [click]
+                        panel ''
+                          button 'Basic' id=menu_button
+                            toggle button 'Basic' [click]
+                              panel ''
+                                label 'Basic' [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                                panel ''
+                        panel ''
+                          panel ''
+                            button 'Main Menu' id=primary_menu_button
+                              toggle button 'Main Menu' [click]
+                                panel ''
+                            grouping ''
+                              button 'Minimize' [click]
+                              button 'Maximize' [click]
+                              button 'Close' [click]
+            grouping ''
+              panel ''
+                panel ''

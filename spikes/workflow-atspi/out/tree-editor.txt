@@ -1,0 +1,85 @@
+application 'gnome-text-editor' id=org.gnome.TextEditor
+  frame 'New Document (Draft) - Text Editor' id=EditorWindow [page.move-right,settings.show-right-margin,page.save-as,win.show-preferences,win.close-current-page,page.move-to-new-window,settings.spellcheck,win.close-other-pages,session.new-draft,win.focus-search,default.activate,settings.discover-settings,window.minimize,win.open,page.begin-search,win.toggle-fullscreen,win.close-page-or-window,win.fullscreen,page.copy-all,page.print,page.zoom-in,window.close,settings.wrap-text,settings.auto-indent,page.move-left,page.change-encoding,page.save,page.zoom-out,page.confirm-save,win.show-primary-menu,page.begin-replace,window.toggle-maximized,page.change-language,page.infobar-discard-changes,settings.show-line-numbers]
+    panel ''
+      panel ''
+        panel ''
+          grouping '' id=multi_layout
+            panel '' id=fullscreen_box
+              grouping ''
+                grouping '' id=split_view
+                  panel ''
+                    grouping '' id=___object_25___
+                      grouping '' id=stack
+                        panel ''
+                          panel '' id=___object_8___
+                            grouping '' id=tab_view
+                              panel 'New Document'
+                                panel ''
+                                  panel '' id=EditorPage [search.hide,page.goto-line,view.auto-indent,page.show-goto-line]
+                                    panel '' id=box
+                                      panel '' id=infobar
+                                        panel '' id=box
+                                          panel '' id=access_infobar
+                                            grouping ''
+                                          panel '' id=discard_infobar
+                                            grouping ''
+                                          panel '' id=encoding_infobar
+                                            grouping ''
+                                      grouping '' id=toolbar_view
+                                        panel '' id=overlay
+                                          panel '' id=___object_1___
+                                            scroll pane '' id=scroller
+                                              text '' id=view [buffer.delete-line,buffer.select-line,misc.insert-emoji,clipboard.copy,page.zoom-in,clipboard.paste,page.zoom-one,selection.select-all,menu.popup,spelling.enabled,page.zoom-out,selection.delete,spelling.add,text.clear,spelling.ignore,buffer.duplicate-line,clipboard.cut] editable
+                                                panel ''
+                                                  panel ''
+                                        grouping ''
+                                          panel ''
+                                            panel ''
+                                        grouping ''
+                                          panel ''
+                                            panel ''
+                                              panel '' id=___object_2___
+                                                grouping '' id=goto_line_revealer
+                                                grouping '' id=search_revealer
+                        panel ''
+                grouping ''
+                  panel ''
+                    panel ''
+                      grouping '' id=___object_23___
+                        grouping '' id=header_bar
+                          panel ''
+                            panel ''
+                              panel ''
+                                panel ''
+                                  button 'Open' id=open_menu_button
+                                    toggle button 'Open' [click]
+                                      panel ''
+                                        grouping ''
+                                          grouping '' id=open_button_stack
+                                            panel ''
+                                              panel '' id=___object_15___
+                                                label 'Open' id=___object_16___ [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                                                image '' id=___object_17___
+                                            panel ''
+                                  button 'New Tab' id=new_button [click]
+                              panel ''
+                                panel '' id=___object_11___
+                                  panel '' id=___object_12___
+                                    label 'New Document' id=title [clipboard.copy,selection.delete,clipboard.paste,link.open,clipboard.cut,link.copy,menu.popup,selection.select-all]
+                                  panel '' id=___object_13___
+                              panel ''
+                                panel ''
+                                  toggle button 'Document Properties' id=properties_button [click]
+                                  button 'Main Menu' id=primary_menu
+                                    toggle button 'Main Menu' [click]
+                                      panel ''
+                                  grouping ''
+                                    button 'Minimize' [click]
+                                    button 'Maximize' [click]
+                                    button 'Close' [click]
+                      grouping '' id=___object_24___
+                        panel '' id=tab_bar
+                          grouping '' id=revealer
+                grouping ''
+                  panel ''
+                    panel ''

@@ -1,0 +1,16 @@
+
+(gnome-calculator:162824): Adwaita-WARNING **: 15:24:10.941: The resource style-dark.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.
+
+(gnome-calculator:162824): Adwaita-WARNING **: 15:24:10.942: The resource style-hc.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.
+
+** (gnome-calculator:162824): WARNING **: 15:24:10.954: imf-provider.vala:100: Failed to read exchange rates: Failed to open file “/tmp/tmp.VjRgHSGUPV/cache/gnome-calculator/rms_five.xls”: No such file or directory
+
+** (gnome-calculator:162824): WARNING **: 15:24:10.954: currency-provider.vala:105: Cannot use United Nations Treasury rates as we don't have USD rate yet, retrying
+
+** (gnome-calculator:162824): WARNING **: 15:24:10.954: currency-provider.vala:105: Cannot use European Central Bank rates as we don't have EUR rate yet, retrying
+
+** (gnome-calculator:162824): WARNING **: 15:24:10.954: currency-provider.vala:105: Cannot use Bank of Canada rates as we don't have CAD rate yet, retrying
+
+** (gnome-calculator:162824): WARNING **: 15:24:12.110: currency-provider.vala:105: Cannot use Bank of Canada rates as we don't have CAD rate yet, retrying
+
+** (gnome-calculator:162824): WARNING **: 15:24:12.113: currency-provider.vala:105: Cannot use European Central Bank rates as we don't have EUR rate yet, retrying

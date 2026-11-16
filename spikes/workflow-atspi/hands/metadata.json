@@ -1,0 +1,1 @@
+{"uuid": "buddyhands@spike", "name": "Buddy workflow spike hands", "description": "Spike only: a stand-in user on a headless desktop. Presses keys and clicks when the probe asks, and reports windows.", "shell-version": ["50"]}

@@ -1,0 +1,61 @@
+{
+ "a11y.enabled": "true",
+ "desktop.apps_at_start": [
+  "gnome-shell",
+  "xdg-desktop-portal-gtk",
+  "ibus-extension-gtk3",
+  "rustdesk"
+ ],
+ "survey.calculator": {
+  "nodes": 107,
+  "depth": 16,
+  "named": 63,
+  "with_id": 49,
+  "interfaces": {
+   "Action": 105,
+   "Text": 27,
+   "EditableText": 2,
+   "Value": 0,
+   "Selection": 1,
+   "Component": 106
+  },
+  "roles": {
+   "panel": 32,
+   "button": 30,
+   "label": 25,
+   "grouping": 7,
+   "toggle button": 6,
+   "scroll pane": 2,
+   "text": 2,
+   "application": 1
+  },
+  "seconds": 0.09,
+  "toolkit": "GTK 4.22.5"
+ },
+ "survey.editor": {
+  "nodes": 85,
+  "depth": 25,
+  "named": 14,
+  "with_id": 41,
+  "interfaces": {
+   "Action": 79,
+   "Text": 3,
+   "EditableText": 1,
+   "Value": 0,
+   "Selection": 0,
+   "Component": 84
+  },
+  "roles": {
+   "panel": 46,
+   "grouping": 23,
+   "button": 6,
+   "toggle button": 3,
+   "label": 2,
+   "application": 1,
+   "frame": 1,
+   "scroll pane": 1
+  },
+  "seconds": 0.07,
+  "toolkit": "GTK 4.22.5"
+ }
+}
