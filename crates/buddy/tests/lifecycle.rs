@@ -23,6 +23,8 @@ impl Sandbox {
     fn buddy(&self) -> Command {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_buddy"));
         cmd.env("BUDDY_DATA_DIR", self.dir.join("data")).env("BUDDY_SOCKET", self.dir.join("s.sock"));
+        // Midday: at night he may fall asleep part-way through a test, and a sleeping dog answers differently.
+        cmd.env("BUDDY_HOUR", "12");
         cmd
     }
 

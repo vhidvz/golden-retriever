@@ -213,8 +213,13 @@ fn look(model: &str, file: Option<PathBuf>, restore_token: Option<String>) -> Re
 }
 
 /// The hour of the day on the wall clock, 0.0..24.0. His sleep follows the user's day.
+/// The hour of the day where the user is (0..24). BUDDY_HOUR fixes it, for tests whose
+/// outcome would otherwise depend on whether they run at night, when he sleeps.
 fn local_hour() -> f64 {
     use chrono::Timelike;
+    if let Some(hour) = std::env::var("BUDDY_HOUR").ok().and_then(|h| h.parse::<f64>().ok()) {
+        return hour.rem_euclid(24.0);
+    }
     let t = chrono::Local::now();
     f64::from(t.hour()) + f64::from(t.minute()) / 60.0
 }
