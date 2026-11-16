@@ -39,7 +39,8 @@ var _recheck := 30.0             # seconds until clips still being drawn are loo
 const POSTURE := {
 	"walk": "stand", "trot": "stand", "gallop": "stand", "eat": "stand", "drink": "stand", "sniff": "stand",
 	"sniff_air": "stand", "play_bow": "stand", "stretch": "stand", "stretch_back": "stand", "yawn_stand": "stand",
-	"shake": "stand", "greet": "stand", "invite": "stand", "invite_bow": "stand", "tail_chase": "stand", "tail_chase_back": "stand",
+	"shake": "stand", "greet": "stand", "greet_turn": "stand", "invite": "stand", "invite_bow": "stand", "invite_turn": "stand",
+	"tail_chase": "stand", "tail_chase_back": "stand",
 	"yawn_sit": "sit", "scratch_l": "sit", "scratch_r": "sit", "groom_flank": "sit", "seek_attention": "sit", "seek_paw": "sit",
 	"lie_chin": "lie", "yawn_lie": "lie", "groom_paw": "lie", "sleep_chin": "lie", "sleep_curled": "lie",
 	"lie_side": "sleep_side",
@@ -174,10 +175,10 @@ func _choose(dog, activity: String, variant: int, facing: int) -> String:
 		"tail_chase":
 			base = {0: "tail_chase", 1: "tail_chase_back"}.get(variant, "")
 		"greet":
-			base = "greet" if variant == 0 else ""          # the other way includes a turn and a bow: not drawn
+			base = "greet" if variant == 0 else "greet_turn"   # the other way: a whole turn, then a bow
 		"invite":
-			# The third way starts with a quick turn on the spot, which is not drawn; then it is the first.
-			base = {0: "invite", 1: "invite_bow"}.get(variant, "invite" if dog.progress() >= 0.3 else "")
+			# The third way starts with a quick turn on the spot, then goes on as the first.
+			base = {0: "invite", 1: "invite_bow"}.get(variant, "invite" if dog.progress() >= 0.3 else "invite_turn")
 		"seek_attention":
 			base = {0: "seek_attention", 1: "seek_paw"}.get(variant, "")
 	if base == "" or not clips.has(base):

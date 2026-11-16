@@ -294,9 +294,12 @@ screen is locked or nothing has been touched for ten minutes, is paused the mome
 you are back (the drawing process is stopped, not killed, and carries on later),
 and runs at the lowest priority. His growth is divided into nine stages; the
 pictures for the stage he is in are drawn first, then those for the next, so they
-are ready before he gets there. A stage takes a few hours. When the model or the
-drawing script changes, the pictures are drawn again, and the old ones stay in use
-until the new ones are complete. `buddy status` says how far it has got.
+are ready before he gets there. A stage takes a few hours. When the body model or
+the drawing script changes, every picture is drawn again, and the old ones stay in
+use until the new ones are complete. When only the way he moves changes (a new
+movement, a changed one), the set is brought up to date in place: each movement's
+recorded poses carry a fingerprint, and only movements whose poses changed, or that
+are new, are drawn again. `buddy status` says how far it has got.
 
     buddy set pictures away       # the default
     buddy set pictures always     # also while you are here (at the lowest priority)
@@ -326,15 +329,14 @@ the air, the play bow, two stretches, yawning standing, sitting or lying, shakin
 off, rolling on his back, scratching with either hind leg, licking a paw or his
 flank, chasing his tail either way round, greeting, both ways of inviting you to
 let him help, asking for attention (with and without a paw offered), looking in
-five directions while standing, sitting or lying, and the changes between standing,
-sitting, lying and sleeping on his side. What is still the live 3D body: greeting
-with a turn and a bow, and the quick turn that starts one way of inviting you.
+five directions while standing, sitting or lying, greeting with a whole turn and a
+bow, the quick turn that starts one way of inviting you, and the changes between
+standing, sitting, lying and sleeping on his side. Every activity he has is drawn.
 
 ## Known gaps
 
-- Nearly everything he does has pictures with a real coat; until they are drawn for
-  his age, and for the two movements not drawn, he is the stylised live body (see
-  "Pictures with a real coat"). Pictures are drawn only while the computer is left
+- Everything he does has pictures with a real coat; until they are drawn for his
+  age, he is the stylised live body (see "Pictures with a real coat"). Pictures are drawn only while the computer is left
   alone, about five hours for each stage of his growth; on a computer that is
   switched off whenever its user leaves, they may take days to appear.
 - In the pictures he looks in one of five drawn directions, not anywhere at all.

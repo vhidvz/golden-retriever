@@ -9,9 +9,12 @@
 //!
 //! His growth is divided into a few stages. The pictures for the stage he is in come
 //! first, then those for the next, so they are ready before he gets there. Each set is
-//! named after the stage and after the things it was drawn from (the model, the
-//! drawing script, the pose recorder, his size): when any of those changes, the set
-//! is drawn again, and the old one stays in use until the new one is complete.
+//! named after the stage and after what changes every picture in it (the model, the
+//! drawing script, his size): when any of those changes, the set is drawn again, and
+//! the old one stays in use until the new one is complete. A change to how he moves
+//! (the pose recorder, the animation code) is not that drastic: the set is brought up
+//! to date in place, and only the movements whose poses changed, or that are new, are
+//! drawn again.
 
 use crate::renderer;
 use buddy_core::paths;
@@ -140,8 +143,9 @@ fn progress(dir: &Path) -> (usize, usize) {
     (done, total)
 }
 
-fn complete(dir: &Path) -> bool {
-    manifest(dir).is_some_and(|m| m["complete"] == true)
+/// Whether a set has every picture, drawn from the movements as they are now.
+fn complete(dir: &Path, poses_version: &str) -> bool {
+    manifest(dir).is_some_and(|m| m["complete"] == true && m["poses_version"] == poses_version)
 }
 
 impl Baker {
@@ -149,16 +153,19 @@ impl Baker {
         Self { job: None, next_check: Instant::now(), note: "not drawn yet".into(), counted: Instant::now() - CHECK_EVERY }
     }
 
-    /// The fingerprint of everything a set is drawn from, at this size.
+    /// The fingerprint of what every picture of a set depends on: the body, the way it is
+    /// drawn, his size. A change means a new set.
     fn version(tools: &Tools, size_px: f64) -> String {
         let read = |p: PathBuf| fs::read(p).unwrap_or_default();
         let size = format!("{size_px:.0}");
-        fingerprint(&[
-            &read(tools.project.join("dog/retriever.json")),
-            &read(tools.script.clone()),
-            &read(tools.project.join("export_poses.gd")),
-            size.as_bytes(),
-        ])
+        fingerprint(&[&read(tools.project.join("dog/retriever.json")), &read(tools.script.clone()), size.as_bytes()])
+    }
+
+    /// The fingerprint of how he moves: the pose recorder and the animation code. A change
+    /// means the set is brought up to date, redrawing only the movements that changed.
+    fn poses_version(tools: &Tools) -> String {
+        let read = |name: &str| fs::read(tools.project.join(name)).unwrap_or_default();
+        fingerprint(&[&read("export_poses.gd"), &read("dog.gd"), &read("retriever.gd")])
     }
 
     /// Call regularly. `growth` and `size_px` are his; `away` is whether the user has gone;
@@ -204,7 +211,8 @@ impl Baker {
                 }
                 Ok(Some(exit)) => {
                     let job = self.job.take().expect("a job");
-                    if complete(&sprites_dir().join(&job.name)) {
+                    let finished = find_tools().is_ok_and(|tools| complete(&sprites_dir().join(&job.name), &Self::poses_version(&tools)));
+                    if finished {
                         self.retire_older(job.stage, &job.name);
                         self.next_check = Instant::now();
                     } else {
@@ -233,7 +241,8 @@ impl Baker {
             }
         };
         let version = Self::version(&tools, size_px);
-        let done = |stage: f64| complete(&sprites_dir().join(set_name(stage, &version)));
+        let poses_version = Self::poses_version(&tools);
+        let done = |stage: f64| complete(&sprites_dir().join(set_name(stage, &version)), &poses_version);
         let Some(stage) = wanted_stage(growth, done) else {
             self.note = format!("ready for {:.0}% grown and the next stage", stage_for(growth) * 100.0);
             return;
@@ -281,6 +290,7 @@ impl Baker {
         let out = sprites_dir().join(&recorded.name);
         let log = fs::File::create(recorded.work.join("bake.log"));
         let version = recorded.name.rsplit('-').next().unwrap_or_default().to_string();
+        let poses_version = Self::poses_version(&tools);
         let spawned = log.and_then(|log| {
             Command::new("nice")
                 .args(["-n", "19"])
@@ -290,7 +300,7 @@ impl Baker {
                 .arg("--")
                 .arg(recorded.work.join("poses.json"))
                 .arg(&out)
-                .args(["--version", &version])
+                .args(["--version", &version, "--poses-version", &poses_version])
                 .stdin(Stdio::null())
                 .stdout(log.try_clone()?)
                 .stderr(log)
@@ -356,6 +366,21 @@ mod tests {
         assert_eq!(wanted_stage(0.03, |s| s <= 0.15), None);
         assert_eq!(wanted_stage(1.0, |_| true), None);
         assert_eq!(wanted_stage(1.0, |s| s < 1.0), Some(1.0));
+    }
+
+    #[test]
+    fn a_set_is_complete_only_for_the_movements_as_they_are_now() {
+        let dir = std::env::temp_dir().join(format!("buddy-baker-test-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let write = |json: &str| fs::write(dir.join("manifest.json"), json).unwrap();
+        write(r#"{"complete": true, "poses_version": "aaaa1111"}"#);
+        assert!(complete(&dir, "aaaa1111"));
+        assert!(!complete(&dir, "bbbb2222"), "drawn from older movements: to be brought up to date");
+        write(r#"{"complete": false, "poses_version": "aaaa1111"}"#);
+        assert!(!complete(&dir, "aaaa1111"));
+        write(r#"{"complete": true}"#);
+        assert!(!complete(&dir, "aaaa1111"), "a set from before poses were versioned is brought up to date");
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -57,8 +57,12 @@ static func clips() -> Array:
 		{"name": "tail_chase", "activity": "tail_chase", "variant": 0, "frames": 24, "kind": "spin"},
 		{"name": "tail_chase_back", "activity": "tail_chase", "variant": 1, "frames": 24, "kind": "spin"},
 		{"name": "greet", "activity": "greet", "variant": 0, "secs": 3.0, "fps": 12, "kind": "loop"},
+		# Greeting with a whole turn and then a bow: the turn and the bow follow how far through it he is.
+		{"name": "greet_turn", "activity": "greet", "variant": 1, "frames": 48, "kind": "progress", "secs": 4.0},
 		{"name": "invite", "activity": "invite", "variant": 0, "secs": 3.0, "fps": 12, "kind": "loop"},
 		{"name": "invite_bow", "activity": "invite", "variant": 1, "secs": 2.6, "fps": 12, "kind": "loop"},
+		# The quick turn on the spot that starts the third way of inviting: by how far round he is.
+		{"name": "invite_turn", "activity": "invite", "variant": 2, "frames": 24, "kind": "spin", "planned": 8.0, "settle": 0.0},
 		{"name": "seek_attention", "activity": "seek_attention", "variant": 0, "secs": 3.4, "fps": 12, "kind": "loop"},
 		{"name": "seek_paw", "activity": "seek_attention", "variant": 1, "secs": 3.4, "fps": 12, "kind": "loop"},
 		{"name": "lie_side", "activity": "lie", "variant": 1, "secs": 4.0, "fps": 12, "kind": "loop"},
@@ -155,19 +159,25 @@ func _record(clip: Dictionary) -> Dictionary:
 		return {"name": clip["name"], "kind": "cycle", "speed": clip["speed"], "frames": frames}
 
 	if clip["kind"] == "spin":
-		# One whole turn on the spot, in equal steps of the turn.
-		_dog.begin(clip["activity"], int(clip.get("variant", 0)), 0.6, 600.0, 23)
-		_run(2.0, 0.0)
+		# One whole turn on the spot, in equal steps of the turn. A turn that is only part of
+		# an activity (the start of an invitation) is given a short planned length, so that it
+		# is quick, and recorded from the very start.
+		_dog.begin(clip["activity"], int(clip.get("variant", 0)), 0.6, float(clip.get("planned", 600.0)), 23)
+		_run(float(clip.get("settle", 2.0)), 0.0)
 		var count: int = clip["frames"]
 		var start: float = _dog._spin
-		var direction: float = signf(_dog._spin - start + 1e-9)
-		_run(STEP, 0.0)
-		direction = signf(_dog._spin - start)
+		var probe: float = _dog._spin
+		_run(STEP / 4.0, 0.0)
+		var direction: float = signf(_dog._spin - probe)
 		for k in count:
 			frames.append(_snap())
+			if k == count - 1:
+				break
 			var target := start + direction * TAU * (k + 1) / count
-			while (_dog._spin - target) * direction < 0.0:
+			var steps := 0
+			while (_dog._spin - target) * direction < 0.0 and steps < 100000:     # (a turn that stops short ends the clip there)
 				_run(STEP / 4.0, 0.0)
+				steps += 1
 		# Where in the turn the first picture is, so a picture can be matched to an angle.
 		return {"name": clip["name"], "kind": "spin", "direction": direction, "start_turn": fposmod(start, TAU) / TAU, "frames": frames}
 

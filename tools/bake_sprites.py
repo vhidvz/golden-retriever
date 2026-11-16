@@ -1,6 +1,6 @@
 """Draws Buddy's movements with a real coat of hair, as pictures for the desktop.
 
-    blender -b --factory-startup --python tools/bake_sprites.py -- POSES.json OUT_DIR [--samples 24] [--strands 150000] [--only stand,walk] [--version V]
+    blender -b --factory-startup --python tools/bake_sprites.py -- POSES.json OUT_DIR [--samples 24] [--strands 150000] [--only stand,walk] [--version V] [--poses-version P]
 
 POSES.json comes from renderer/export_poses.gd: for every frame, how each bone of
 his skeleton has moved. This script builds his body at the same age from
@@ -11,7 +11,9 @@ through exactly the camera his window has, so each picture can be shown in the
 window as it is. Pictures that already exist are not drawn again, so a bake can be
 stopped and resumed (each picture is written whole, under a temporary name, then
 renamed). OUT_DIR/manifest.json lists what is drawn, and says "complete" once
-every picture exists.
+every picture exists. It also keeps a fingerprint of each movement's recorded poses:
+drawing into a set again redraws only the movements whose poses have changed, or that
+are new, and keeps the rest.
 
 It is slow (seconds per picture) and is meant to run in the background, once per
 stage of his growth; showing the pictures afterwards costs almost nothing.
@@ -512,11 +514,27 @@ def main():
     scene.render.image_settings.color_mode = "RGBA"
     scene.render.image_settings.quality = 90
 
+    # Movements whose poses have changed since this set was drawn lose their pictures, to be
+    # drawn again; the others keep theirs.
+    import hashlib, shutil
+    pose_hash = lambda clip: hashlib.sha1(json.dumps(clip, sort_keys=True).encode()).hexdigest()[:12]
+    before = {}
+    try:
+        with open(os.path.join(out_dir, "manifest.json")) as f:
+            before = {c["name"]: c.get("pose_hash") for c in json.load(f).get("clips", [])}
+    except (OSError, ValueError):
+        pass
+    for clip in poses["clips"]:
+        if clip["name"] in before and before[clip["name"]] != pose_hash(clip):
+            shutil.rmtree(os.path.join(out_dir, clip["name"]), ignore_errors=True)
+            print(f"BAKE {clip['name']}: its movement changed, so it is drawn again", flush=True)
+
     # The manifest goes first: the renderer uses each clip as soon as all its pictures exist.
     manifest = {key: poses[key] for key in ("growth", "scale", "size_px", "window", "margin")}
     manifest["version"] = option("--version", "")
+    manifest["poses_version"] = option("--poses-version", "")
     manifest["complete"] = False
-    manifest["clips"] = [dict({key: clip.get(key) for key in ("name", "kind", "fps", "gaze", "speed", "bowl", "direction", "start_turn")}, frames=len(clip["frames"])) for clip in poses["clips"]]
+    manifest["clips"] = [dict({key: clip.get(key) for key in ("name", "kind", "fps", "gaze", "speed", "bowl", "direction", "start_turn")}, frames=len(clip["frames"]), pose_hash=pose_hash(clip)) for clip in poses["clips"]]
     with open(os.path.join(out_dir, "manifest.json"), "w") as f:
         json.dump(manifest, f, indent=1)
     drawn = 0
