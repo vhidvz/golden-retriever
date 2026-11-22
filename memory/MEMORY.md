@@ -1,0 +1,5 @@
+- [Buddy product decisions](buddy-product-decisions.md) — no paid assets, no human voice, English and Persian from day one, staged camera/mic, explicit approval before new phases
+- [Buddy additional requirements](buddy-additional-requirements.md) — proactive help from habits, learned workflows, feedback, eye contact, Ollama as an optional peer provider
+- [User acts through bash only](user-bash-only-access.md) — give every requested step as a copy-pasteable command; flag GUI-only actions
+- [Blender is installed, use it](blender-is-installed-use-it.md) — Blender 5.2.2 headless builds Buddy's body; check installed tools before writing a substitute
+- [Where work files live](work-files-location.md) — /tmp is wiped between sessions; renders, bakes and helpers go in ~/.cache/buddy-spikes/
