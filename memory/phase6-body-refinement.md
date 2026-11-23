@@ -1,6 +1,6 @@
 ---
 name: phase6-body-refinement
-description: Phase 6 started with a measured-skeleton-preserving surface pass on cheeks, lips, ears and tail; sprite bakes are invalidated and KDE remains
+description: Phase 6 started with a measured-skeleton-preserving surface pass on cheeks, lips, ears and tail; sprite bakes are invalidated; KDE focus/pointer/overview added
 metadata:
   type: project
 ---
@@ -17,11 +17,12 @@ skeleton, head landmarks and limb proportions are untouched. The Godot self-test
 the adult with coat and eyes. The body change correctly invalidates the pre-drawn sprite
 sets, so the baker will rebuild them while the user is away.
 
-A KDE Plasma sense was added 2026-11-24: a KWin script reports focused application and
-pointer position to a session D-Bus bridge in the daemon. The bridge was tested over the
-real session bus; KDE clicks/overview/titles need a separate KWin effect. Still open:
-remaining fur/model/puppy craft. Durable decisions: `docs/decisions.md` "Phase 6 body
-refinement"; measurements: `docs/proportions.md`.
+A KDE Plasma sense was added 2026-11-24: a KWin script reports focused application,
+pointer position and overview state to a session D-Bus bridge in the daemon. The bridge
+was tested over the real session bus; overview is polled with QTimer. KDE clicks and
+window titles need a native KWin effect and remain open. Still open: remaining
+fur/model/puppy craft. Durable decisions: `docs/decisions.md` "Phase 6 body refinement";
+measurements: `docs/proportions.md`.
 
 **Why:** the silhouette and proportions were already measured; the visible gap is craft,
 so do not disturb the skeleton while improving the surface.

@@ -434,8 +434,9 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
   growling and a puppy's yawn have none yet.
 - No toys yet, so no fetch.
 - The desktop sense is fully supported on GNOME. KDE Plasma has a KWin script for
-  focused application and pointer position; its clicks, overview and window titles are not
-  reported without a separate KWin effect. Other desktops still have the system sense.
+  focused application, pointer position and overview state; its clicks and window titles
+  are not reported without a native KWin effect. Other desktops still have the system
+  sense.
 - The managed Ollama runtime is Linux/systemd only. The model catalogue marks
   unevaluated models; only `gemma4:e4b` has measurements from this project.
 - Looking at the screen is on request only (`buddy look`), sees the whole monitor
@@ -477,8 +478,8 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
 6. Refinement: fur and model quality, the puppy shape, KDE. Started 2026-11-24 with a
    body-surface pass (softer cheek/lip volume, broader ears, fuller tail base) while the
    measured skeleton and all proportion checks stayed unchanged. Added a KDE Plasma
-   bridge: a KWin script reports focused application and pointer over a session D-Bus
-   bridge. KDE clicks/overview/titles and further visual craft remain open.
+   bridge: a KWin script reports focused application, pointer and overview state over a
+   session D-Bus bridge. KDE clicks/titles and further visual craft remain open.
 7. Automation beyond accessible actions — **done on the helper path** (2026-11-24).
    The owner can register named argv-only helper scripts; the local model sees one tool
    per helper with its declared arguments; helper runs support an optional bubblewrap

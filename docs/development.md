@@ -201,5 +201,8 @@ Create the directory when needed; it is not part of the repository.
   readable active-window D-Bus method. `crates/buddy/src/kde.rs` serves
   `local.buddy.Sense` over the session bus; `kde/kwin/buddy` is installed into
   `~/.local/share/kwin/scripts/buddy-sense` and enabled in `kwinrc` when KDE tools exist.
-  Test the bridge with `gdbus call ... local.buddy.Sense.Focus APP` and `.Pointer X Y`.
-  Normal KWin scripts cannot report clicks; a KWin effect would be a separate slice.
+  Test the bridge with `gdbus call ... local.buddy.Sense.Focus APP`, `.Pointer X Y` and
+  `.Overview true|false`. Overview is polled by the KWin script with `QTimer` because
+  KWin has no overview signal. Normal KWin scripts cannot report clicks; the JS effect
+  `mouseChanged` path cannot call `startMousePolling()`, so a native effect is needed and
+  is not implemented.

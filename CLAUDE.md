@@ -159,8 +159,8 @@ Two crates, one long-running process, a replaceable renderer, and an optional na
   pictures when a set matches his age and activity. `voice.gd` plays his sounds.
   `export_poses.gd` records poses for the Blender bake.
 - `kde/kwin/buddy/` — an optional KWin script; it calls the daemon's session D-Bus sense
-  bridge (`crates/buddy/src/kde.rs`) for focused application and pointer position. KDE
-  clicks/overview/titles are not covered without a KWin effect.
+  bridge (`crates/buddy/src/kde.rs`) for focused application, pointer position and polled
+  overview state. KDE clicks/titles need a native KWin effect and are not covered.
 - `shell-extension/` and `perception/` — his senses. The GNOME Shell extension also
   registers the guided-capture shortcut (`Super+Shift+B` by default) from its compiled
   schema, and reports

@@ -309,10 +309,14 @@ implementation. The evidence, options and recommendation are in
 - **The body change invalidates sprite sets by design.** The baker will rebuild the
   pictures while the user is away; the live 3D body and tests keep working meanwhile.
 - **KDE Plasma sense added 2026-11-24.** KWin 6 has no readable active-window D-Bus
-  method, so a KWin script reports focused application and pointer position to a session
-  D-Bus bridge in the daemon. The bridge was tested with `gdbus` Focus/Pointer calls.
-  Normal KWin scripts cannot see button events; clicks, overview and titles remain open
-  and are not claimed as KDE support. The installer copies/enables the script only when
-  KDE tools are present.
-- **Still open for Phase 6:** KDE click/overview/title coverage and the remaining
-  fur/model craft (surface detail, coat response, puppy-specific polish).
+  method, so a KWin script reports focused application, pointer position and overview
+  state to a session D-Bus bridge in the daemon. The bridge was tested with real `gdbus`
+  Focus/Pointer/Overview calls. Overview has no signal, so the script polls
+  `workspace.isEffectActive("overview")` with a `QTimer`.
+- **KDE clicks are not implemented.** Normal KWin scripts cannot see button events, and
+  KWin's JS effect `mouseChanged` path is effectively dead because `startMousePolling()`
+  is not scriptable. A native C++ (or a carefully designed QML) effect would be needed;
+  it is not claimed and was not testable on this GNOME machine. Window titles on KDE are
+  also not exposed by the script path.
+- **Still open for Phase 6:** KDE native click/title coverage and the remaining fur/model
+  craft (surface detail, coat response, puppy-specific polish).

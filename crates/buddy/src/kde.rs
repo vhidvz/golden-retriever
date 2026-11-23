@@ -41,10 +41,15 @@ impl Bridge {
         }
     }
 
-    /// Optional click hook for a future KWin effect. Normal KWin scripts cannot see
-    /// button events, so the shipped script does not call this yet.
+    /// Optional click hook for a future native KWin effect. Normal KWin scripts cannot
+    /// see button events, so the shipped script does not call this yet.
     fn click(&self, button: u32, region: String) {
         self.report("click", json!({ "button": button, "region": region }));
+    }
+
+    /// KWin has no overview signal, but its scripting API can poll the effect state.
+    fn overview(&self, on: bool) {
+        self.report("overview", json!({ "on": on }));
     }
 }
 

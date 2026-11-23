@@ -26,3 +26,18 @@ function pointer() {
 focus(workspace.activeWindow);
 workspace.windowActivated.connect(focus);
 workspace.cursorPosChanged.connect(pointer);
+
+// KWin exposes no overview signal, so poll the effect state at a low frequency.
+// QTimer is the supported timer in KWin scripts; setTimeout is not available.
+let overview = workspace.isEffectActive("overview");
+callDBus("local.buddy.Sense", "/Sense", "local.buddy.Sense", "Overview", overview);
+const overviewTimer = new QTimer();
+overviewTimer.interval = 250;
+overviewTimer.timeout.connect(function () {
+    const now = workspace.isEffectActive("overview");
+    if (now !== overview) {
+        overview = now;
+        callDBus("local.buddy.Sense", "/Sense", "local.buddy.Sense", "Overview", now);
+    }
+});
+overviewTimer.start();
