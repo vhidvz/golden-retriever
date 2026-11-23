@@ -95,7 +95,10 @@ Not tested: Persian speech (no sample or microphone), long sessions, and
 streaming latency for spoken commands. `spikes/local-llm/ollama_eval.py`
 reproduces everything except the audio test.
 
-## Claude Code (`claude-code/`)
+## Claude Code (`claude-code/`) — historical
+
+Claude Code was removed from Buddy on 2026-11-22; these measurements are kept for the
+record and are not part of the current runtime.
 
 With the installed CLI 2.1.322 and a subscription login, from a clean environment:
 
@@ -125,6 +128,22 @@ fell below -0.08 on a scale of -1 to 1, and he made at most one loud sound in
 his busiest hour. He looks up at the viewer about 40 times per waking hour,
 which adds up to 2.3% of his waking time.
 
+## Managed Ollama and model selection (self-contained AI, measured 2026-11-22)
+
+- A user-local Ollama layout (`bin/ollama` with `../lib/ollama`) was run from a temporary
+  directory with `OLLAMA_HOST=127.0.0.1:11435` and a separate models directory on Ollama
+  0.40.16. `/api/version` answered; the system Ollama on 11434 stayed active and was not
+  touched.
+- `buddy ai status` and `buddy ai doctor` reported the manifest, endpoint, version,
+  service, store, disk, system Ollama and selected model correctly against that runtime.
+- `buddy ai setup --yes` was exercised against a mock `/api/pull` stream on the same
+  endpoint: it detected the machine, chose `gemma4:e4b`, parsed progress, verified the
+  digest, wrote `runtime.json`, and selected the model through a running daemon.
+- The 1.44 GiB official Ollama tarball download was **not** run end-to-end; the installer
+  is syntax-checked and its layout and checksum parsing are verified separately.
+- Only `gemma4:e4b` has project measurements. The other catalogue entries are marked
+  unevaluated.
+
 ## Skills and helpers (Phase 5, measured 2026-11-14)
 
 - A request placed by vocabulary alone ("find my tax report", «گزارش مالیات رو پیدا کن»)
@@ -135,7 +154,8 @@ which adds up to 2.3% of his waking time.
 - A read-only hand-off to Claude Code ("Is there a bug in geometry.py?") came back
   in 10 s with the right answer, left the file untouched, and reported 21% of the
   five-hour allowance used. The same request for a folder he had not been given
-  was refused before Claude Code was started.
+  was refused before Claude Code was started. (Historical: the integration was
+  removed on 2026-11-22.)
 - With a habit seeded (Terminal, then code, then Calculator), bringing Terminal and
   then code to the front made him invite within seconds; "تو این کار کمکم نکن"
   ended it and marked the habit never to be offered again.

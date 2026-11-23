@@ -2,7 +2,10 @@ use anyhow::{Context, Result, anyhow, bail};
 use buddy_core::{ClientMsg, ServerMsg, paths};
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Write};
+use std::net::{SocketAddr, TcpStream};
 use std::os::unix::net::UnixStream;
+use std::path::Path;
+use std::process::Command;
 use std::time::Duration;
 
 /// Sends one command to the running daemon and returns its reply data.
@@ -285,7 +288,7 @@ fn show_outcome(r: &Value) -> Result<()> {
     Ok(())
 }
 
-/// Commands whose answer may take as long as the work does (a search, a command, Claude Code).
+/// Commands whose answer may take as long as the work does (a search, a command).
 pub fn act(name: &str, args: Value) -> Result<()> {
     show_outcome(&request_within(name, args, Duration::from_secs(16 * 60))?)
 }
@@ -323,32 +326,151 @@ pub fn listing(what: &str) -> Result<()> {
     Ok(())
 }
 
+/// How the managed runtime is doing, without needing the daemon.
+pub fn ai_status() -> Result<()> {
+    let manifest = crate::ai_runtime::Runtime::path();
+    let endpoint = crate::ai::endpoint();
+    println!("Buddy's local AI runtime");
+    match crate::ai_runtime::Runtime::load_from(&manifest) {
+        Ok(runtime) => {
+            println!("  runtime:   Ollama {}", if runtime.ollama_version.is_empty() { "(unknown version)" } else { &runtime.ollama_version });
+            println!("  endpoint:  {endpoint}");
+            println!("  service:   {}", runtime.service);
+            println!("  models:    {}", runtime.models_dir.display());
+            if let Some(model) = runtime.model {
+                println!("  selected:  {model}");
+            }
+        }
+        Err(why) if manifest.exists() => {
+            println!("  runtime:   manifest is invalid");
+            println!("  manifest:  {} — {why:#}", manifest.display());
+            println!("  endpoint:  {endpoint} (BUDDY_OLLAMA_URL can override it)");
+        }
+        Err(_) => {
+            println!("  runtime:   not installed");
+            println!("  manifest:  {}", manifest.display());
+            println!("  endpoint:  {endpoint} (BUDDY_OLLAMA_URL can override it)");
+        }
+    }
+    match crate::ai::version() {
+        Ok(version) => println!("  health:    running, Ollama {version}"),
+        Err(why) => println!("  health:    not available — {why:#}"),
+    }
+    match crate::ai::models() {
+        Ok(models) if models.is_empty() => println!("  installed models: none"),
+        Ok(models) => println!("  installed models: {}", models.join(", ")),
+        Err(_) => {}
+    }
+    Ok(())
+}
+
+/// A plain-language check of the runtime's pieces: manifest, health, service, store,
+/// the separately installed Ollama, disk and the selected model.
+pub fn ai_doctor() -> Result<()> {
+    let manifest = crate::ai_runtime::Runtime::path();
+    let endpoint = crate::ai::endpoint();
+    let runtime = crate::ai_runtime::Runtime::load_from(&manifest);
+    println!("Buddy AI doctor");
+    match &runtime {
+        Ok(runtime) => {
+            println!("  manifest:  ok ({})", manifest.display());
+            println!("  endpoint:  {endpoint}");
+            println!("  service:   {}", runtime.service);
+            println!("  models:    {}", runtime.models_dir.display());
+            if let Some(digest) = &runtime.model_digest {
+                println!("  digest:    {digest}");
+            }
+            match std::fs::metadata(&runtime.models_dir) {
+                Ok(meta) if meta.is_dir() => println!("  store:     the models directory exists"),
+                Ok(_) => println!("  store:     {} is not a directory", runtime.models_dir.display()),
+                Err(_) => println!("  store:     the models directory is missing ({})", runtime.models_dir.display()),
+            }
+            let state = Command::new("systemctl")
+                .args(["--user", "is-active", &runtime.service])
+                .output()
+                .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
+                .unwrap_or_else(|_| "unknown".into());
+            println!("  unit:      {} ({state})", runtime.service);
+            if let Some(free) = disk_free(&runtime.models_dir) {
+                println!("  disk:      {} free on the models volume", human_bytes(free));
+            }
+            match crate::ai::models() {
+                Ok(models) => {
+                    if let Some(model) = &runtime.model {
+                        if models.iter().any(|m| m == model) {
+                            println!("  model:     {model} is installed");
+                        } else {
+                            println!("  model:     {model} is selected but not installed (run: buddy ai repair)");
+                        }
+                    } else {
+                        println!("  model:     no model selected (run: buddy ai setup)");
+                    }
+                }
+                Err(why) => println!("  model:     cannot list models — {why:#}"),
+            }
+        }
+        Err(why) if manifest.exists() => {
+            println!("  manifest:  invalid ({} — {why:#})", manifest.display());
+            println!("  endpoint:  {endpoint}");
+            println!("  next:      repair or remove the manifest, then run scripts/install.sh");
+        }
+        Err(_) => {
+            println!("  manifest:  missing ({})", manifest.display());
+            println!("  endpoint:  {endpoint}");
+            println!("  next:      run scripts/install.sh, or set BUDDY_OLLAMA_URL to use another runtime");
+        }
+    }
+    match crate::ai::version() {
+        Ok(version) => println!("  health:    running, Ollama {version} at {endpoint}"),
+        Err(why) => println!("  health:    not available — {why:#}"),
+    }
+    let system = SocketAddr::from(([127, 0, 0, 1], 11434));
+    if TcpStream::connect_timeout(&system, Duration::from_millis(300)).is_ok() {
+        println!("  system:    an Ollama service is also listening on 127.0.0.1:11434 (left untouched)");
+    } else {
+        println!("  system:    nothing is listening on 127.0.0.1:11434");
+    }
+    Ok(())
+}
+
+fn disk_free(path: &Path) -> Option<u64> {
+    let out = Command::new("df").arg("-Pk").arg(path).output().ok()?;
+    let text = String::from_utf8(out.stdout).ok()?;
+    let line = text.lines().nth(1)?;
+    line.split_whitespace().nth(3)?.parse::<u64>().ok().map(|kb| kb * 1024)
+}
+
+fn human_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["B", "KB", "MB", "GB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    format!("{value:.1} {}", UNITS[unit])
+}
+
 pub fn providers() -> Result<()> {
     let p = request_within("providers", Value::Null, Duration::from_secs(20))?;
     let local = &p["local"];
     if local["available"] == true {
         let models: Vec<&str> = local["models"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
-        println!("Local models (Ollama): available — {}", models.join(", "));
+        if models.is_empty() {
+            println!("Local models (Ollama): available — no models installed");
+        } else {
+            println!("Local models (Ollama): available — {}", models.join(", "));
+        }
+        println!("  runtime: {} at {}", local["version"].as_str().unwrap_or("unknown version"), local["endpoint"].as_str().unwrap_or("?"));
         println!(
             "  language: {}    images: {}",
             local["understands_language_with"].as_str().unwrap_or("?"),
             local["looks_at_images_with"].as_str().unwrap_or("?")
         );
     } else {
-        println!("Local models (Ollama): not available — {}", local["why"].as_str().unwrap_or("?"));
-    }
-    let claude = &p["claude"];
-    if claude["available"] == true {
-        println!(
-            "Claude Code: available — signed in with {} ({}), login valid until {}",
-            claude["signed_in_with"].as_str().unwrap_or("?"),
-            claude["plan"].as_str().unwrap_or("?"),
-            claude["login_expires"].as_str().unwrap_or("?")
-        );
-    } else {
-        println!("Claude Code: not available — {}", claude["why"].as_str().unwrap_or("?"));
+        println!("Local models (Ollama): not available at {} — {}", local["endpoint"].as_str().unwrap_or("?"), local["why"].as_str().unwrap_or("?"));
     }
     println!("Order: {}.", p["order"].as_str().unwrap_or("?"));
-    println!("Without either, he still lives, obeys the words he knows, and does what his own vocabulary can work out.");
+    println!("Without it, he still lives, obeys the words he knows, and does what his own vocabulary can work out.");
     Ok(())
 }

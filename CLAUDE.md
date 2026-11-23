@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this repository is
 
 Buddy is a Golden Retriever who lives on a Linux desktop: a long-running Rust daemon
-simulates his life, a Godot overlay draws him, and optional local or remote models help
-him understand language and act on the computer. The project is at **Phase 5 (skills and
+simulates his life, a Godot overlay draws him, and an optional local model helps him
+understand language and act on the computer. The project is at **Phase 5 (skills and
 helpers)**; Phase 6 (refinement) has begun with his body. `README.md` is the user-facing
 specification and describes every command and behaviour. `docs/decisions.md` records the
 project owner's binding decisions; `docs/development.md` records the machine, tools and
@@ -15,8 +15,9 @@ indexes what future Claude Code sessions should recall.
 
 The invariants that matter most:
 
-- **Local first.** His life never depends on a language model or a network. Ollama and
-  Claude Code are optional helpers that fail independently.
+- **Local first.** His life never depends on a language model or a network. The local
+  Ollama runtime is an optional helper that fails independently; Claude Code was removed
+  on 2026-11-22.
 - **He is a dog.** Barks, whines, posture, gaze and motion; never text-to-speech or a
   human voice.
 - **English and Persian from day one.** Language data lives in
@@ -32,7 +33,7 @@ The invariants that matter most:
 
 ```sh
 cargo build --release
-cargo test                                    # 68 tests, under 30 s on the dev machine
+cargo test                                    # 88 tests, under 30 s on the dev machine
 cargo test -p buddy-core <test_name>          # one unit test
 cargo test -p buddy --test lifecycle          # daemon persistence/lifecycle integration test
 cargo fmt --check                             # rustfmt.toml: max_width 150 (currently reports pre-existing diffs)
@@ -49,7 +50,8 @@ toolchain; do not reformat unrelated files unless the task is formatting.
 `buddy` is both the daemon and its CLI; the CLI talks to the daemon over one Unix
 socket. `README.md` lists the full command set. The diagnostic commands worth knowing:
 `buddy why` (current decision and alternatives), `buddy status`, `buddy senses`,
-`buddy providers`, `buddy journal`, `buddy snapshot` (only Buddy's window, for drawing
+`buddy providers`, `buddy ai status` and `buddy ai doctor`, `buddy journal`,
+`buddy snapshot` (only Buddy's window, for drawing
 bugs), and `buddy simulate DAYS --user absent|attentive|office` (long-run behaviour
 check).
 
@@ -98,7 +100,7 @@ the affected clips through the fingerprints in `manifest.json`.
 tests/shell-sense/run.sh          # headless GNOME Shell + extension + daemon; exit 0 on success
 spikes/overlay-gnome/run.sh       # overlay / click-through / focus harness
 spikes/local-llm/ollama_eval.py MODEL [speed|intent|tools|vision|persian]
-spikes/claude-code/run.sh         # Claude Code boundary; uses the user's own login
+spikes/claude-code/run.sh         # historical: the Claude Code boundary was removed
 ```
 
 ### Test and runtime isolation
@@ -124,7 +126,9 @@ Two crates, one long-running process, and a replaceable renderer.
   socket. `client.rs` is the CLI half. `renderer.rs` supervises Godot and restarts it
   with backoff. `skills.rs` is the only code that touches files or processes.
   `daemon/assist.rs` resolves requests, gates them on permission, and handles his own
-  offers. `ai.rs` is the Ollama client; `claude.rs` is the optional Claude Code helper.
+  offers. `ai.rs` is the Ollama client; `ai_runtime.rs` owns the managed runtime
+  manifest, endpoint and port checks; `ai_hardware.rs`, `ai_catalog.rs` and `ai_setup.rs`
+  implement the first-run hardware assessment and model choice. Claude Code was removed.
   `baker.rs` runs the offline sprite bake only while the user is away. `system.rs` polls
   idle time, lock and load.
 - `renderer/` — the Godot overlay. `main.gd` connects to the socket and draws the state
@@ -168,7 +172,8 @@ lives in `memory/`; start at `memory/MEMORY.md`.
 - Daemon, CLI, protocol: `crates/buddy/src/daemon.rs`, `client.rs`,
   `crates/buddy-core/src/proto.rs`.
 - Skills, permissions, offers: `crates/buddy/src/skills.rs`, `daemon/assist.rs`.
-- Optional providers: `crates/buddy/src/ai.rs` (Ollama), `claude.rs` (Claude Code).
+- Optional provider: `crates/buddy/src/ai.rs` (Ollama), managed by `ai_runtime.rs` on
+  `127.0.0.1:11435` with its own model store; first-run choice in `ai_setup.rs`.
 - Renderer and body: `renderer/main.gd`, `retriever.gd`, `sprites.gd`,
   `renderer/dog/retriever.json`, `tools/build_dog.py`, `tools/bake_sprites.py`.
 - Senses: `shell-extension/`, `perception/`, `crates/buddy/src/system.rs`.

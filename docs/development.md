@@ -15,11 +15,15 @@ The measurements in `spikes/RESULTS.md` were taken on 2026-11-12 on this baselin
   testing, which is why the daemon eases off under load and the renderer is deliberately
   cheap.
 
+On 2026-11-22 the machine used for the self-contained-AI work reported a GeForce GTX
+1650 Mobile (4 GB), an i5-10300H and 31.2 GB RAM. The measurements above were taken on
+the older GT 1030 baseline; re-run a speed comparison before treating a model result as
+portable between the two.
+
 Toolchain checked on 2026-11-22:
 
 - rustc and cargo 1.97.1, Python 3.14.7.
 - Blender 5.2.2 LTS at `/usr/bin/blender` (installed with pacman).
-- Claude Code 2.1.323, logged in by the user.
 - GNOME Shell 50.5.
 - Godot is **not** on `PATH` here: no `godot`, no `godot4`, no Flatpak. The project needs
   Godot 4.6 or newer (the project file targets 4.7). When it is available, point
@@ -52,14 +56,14 @@ Create the directory when needed; it is not part of the repository.
   so explicitly and offer a terminal-only alternative where one exists. Do not design a
   verification step that waits on GUI interaction. They can see the screen at least some
   of the time, so a visual check is acceptable when there is no terminal equivalent.
-- **Use installed tools.** Blender, Python, GNOME Shell, Ollama and Claude Code are
-  present on the development machine. Prefer them over new dependencies, especially for
-  anything the project must keep free and redistributable.
+- **Use installed tools.** Blender, Python, GNOME Shell and Ollama are present on the
+  development machine. Prefer them over new dependencies, especially for anything the
+  project must keep free and redistributable.
 - **Do not commit or push unless asked.** New phases and large persistent changes were
   staged behind spike results, a written plan and explicit approval. Keep that habit.
   This repository uses the owner's own commit messages and history; do not rewrite them.
-- **Local first.** Never make Buddy's life depend on Ollama, Claude Code or the network.
-  Each provider must fail on its own and be reported in plain words.
+- **Local first.** Never make Buddy's life depend on Ollama or the network. The model
+  provider must fail on its own and be reported in plain words.
 - **He is a dog.** No text-to-speech, no human voice, no chatbot persona. Invitations,
   replies and feedback are dog behaviour and dog sounds.
 - **English and Persian by architecture.** Vocabulary is data, not code. Add new phrases
@@ -75,7 +79,7 @@ Create the directory when needed; it is not part of the repository.
 
 ## Testing and runtime traps
 
-- `cargo test` currently runs 68 tests in under 30 seconds. Unit tests sit beside their
+- `cargo test` currently runs 88 tests in under 30 seconds. Unit tests sit beside their
   modules; the daemon lifecycle test is `crates/buddy/tests/lifecycle.rs`.
 - **Wall-clock time:** tests must not depend on the hour. The lifecycle sandbox sets
   `BUDDY_HOUR=12` because a sleeping dog answers differently; a test that passes at noon
@@ -91,20 +95,28 @@ Create the directory when needed; it is not part of the repository.
 - **Desktop sense test:** `tests/shell-sense/run.sh` starts an isolated headless GNOME
   Shell in its own D-Bus session. It needs `gnome-shell`, `dbus-run-session` and a
   writable runtime directory. `BUDDY_TRACE_SENSES=1` makes the daemon log what it hears.
-- **Claude Code:** `crates/buddy/src/claude.rs` clears the environment before running the
-  user's `claude` and removes API keys, so work is not silently billed to a key. It is
-  read-only unless `--edit`; it always asks first. The spike in
-  `spikes/claude-code/run.sh` makes real calls on the user's subscription.
-- **Ollama:** the daemon expects it at `127.0.0.1:11434`. It is optional; every caller
-  copes with it being absent. `spikes/local-llm/ollama_eval.py` reproduces the
-  measurements except the audio test.
+- **Ollama:** `scripts/install.sh` installs a pinned runtime under
+  `$BUDDY_DATA_DIR/ollama/<version>` and starts `buddy-ollama.service` on
+  `127.0.0.1:11435` with its own model store. A system Ollama on 11434 is left untouched.
+  `BUDDY_OLLAMA_URL` overrides the endpoint for tests. `buddy ai status` and
+  `buddy ai doctor` report the state; `buddy ai setup` recommends, pulls and verifies a
+  model. Every caller copes with the runtime being absent.
+  `spikes/local-llm/ollama_eval.py` reproduces the measurements except the audio test.
+- **Model catalogue:** `crates/buddy/data/ai_models.json` is data, not code. Add a model
+  only after evaluating it with `spikes/local-llm/ollama_eval.py`; mark `verified` only
+  when the project has measurements.
+- **Claude Code:** removed on 2026-11-22. The historical spike remains under
+  `spikes/claude-code/` for the record; it is not part of Buddy's runtime.
 - **Screenshots:** `buddy snapshot` saves only Buddy's window, not the desktop. Use it for
   drawing bugs; do not capture the user's screen for diagnosis.
 
 ## Evidence and limits
 
-- `spikes/RESULTS.md` — overlay, fur performance, local-model benchmarks, Claude Code
-  behaviour and long-run simulation results. The design rests on these measurements.
+- `spikes/RESULTS.md` — overlay, fur performance, local-model benchmarks and long-run
+  simulation results. The Claude Code section is historical. The design rests on these
+  measurements.
+- `spikes/ai4animation/` — the MANN dog BVH research spike. It is licence-gated and is
+  not part of the runtime or the installer.
 - `docs/proportions.md` — how Buddy's body was measured against breed standards,
   photographs and skeletal studies, and what changed as a result.
 - `README.md` "Known gaps" — the current, maintained list of what is not done. Prefer it

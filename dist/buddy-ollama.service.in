@@ -1,0 +1,23 @@
+[Unit]
+Description=Buddy's managed Ollama runtime
+After=network.target
+
+[Service]
+ExecStart="@OLLAMA_BIN@" serve
+Environment="HOME=@OLLAMA_HOME@"
+Environment="OLLAMA_HOST=@OLLAMA_HOST@"
+Environment="OLLAMA_MODELS=@OLLAMA_MODELS@"
+Environment=OLLAMA_NO_CLOUD=1
+Environment=OLLAMA_MAX_LOADED_MODELS=1
+Environment=OLLAMA_NUM_PARALLEL=1
+Environment=OLLAMA_KEEP_ALIVE=5m
+Restart=always
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths="@OLLAMA_DIR@"
+
+[Install]
+WantedBy=default.target

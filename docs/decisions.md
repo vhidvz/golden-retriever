@@ -25,13 +25,17 @@ records what he must remain.
    must activate later without an architectural change.
 5. **Staging and approval.** No main implementation before the owner has seen spike
    results (overlay and click-through on GNOME, fur/render performance with a
-   placeholder, local-model CPU benchmark, Claude Code connectivity) and a detailed
+   placeholder, local-model CPU benchmark) and a detailed
    implementation plan. The original brief also says persistent project changes begin
    only after an explicit commit request. Phases 1-5 have passed this gate; keep the same
    habit for new phases.
 6. **Non-commercial motion data is optional and separate.** CC BY-NC material, such as
    the AI4Animation dog mocap set, may be offered to the user as a separate download. It
    is never bundled in the MIT repository and never a hard dependency.
+   **Amended 2026-11-22:** it stays optional and separate and is never a hard dependency
+   of the daemon. If a motion feature adopts it, it becomes a required data component of
+   that feature, gated by licence acceptance. See `docs/self-contained-ai-decision.md`
+   D8.
 
 **Scope.** A realistic, autonomous, trainable, bilingual virtual dog, not a humanoid
 robot and not a human voice assistant.
@@ -76,6 +80,8 @@ It covers proactive assistance, learning, local AI and natural interaction.
 10. **Recommend other models for this hardware**, possibly different ones per capability.
 11. **Ollama and Claude Code complement each other.** Provider choice depends on task,
     availability, quota, privacy, latency and preference.
+    **Superseded 2026-11-22:** Ollama is the sole AI runtime; the Claude Code
+    integration is removed. See `docs/self-contained-ai-decision.md` D1.
 12. **Priority rule.** Unfinished or already approved work is completed and verified
     first; these additions come after it.
 
@@ -92,11 +98,21 @@ animation and personality layer.
 
 - Habit detection lives in `crates/buddy-core/src/patterns.rs`; offers and their
   permission gate live in `crates/buddy/src/daemon/assist.rs`.
-- Ollama is the local provider in `crates/buddy/src/ai.rs`; Claude Code is in
-  `crates/buddy/src/claude.rs`.
+- Ollama is the local provider in `crates/buddy/src/ai.rs`. Claude Code was removed in
+  Phase 1 of the approved self-contained-AI plan on 2026-11-22.
 - Still open: recording and replaying workflows inside applications with per-step
-  verification, step-by-step approval for Claude Code, toys and fetch, and the remaining
-  gaps listed in README "Known gaps".
+  verification, toys and fetch, and the remaining gaps listed in README "Known gaps".
 
 The measurements behind the design, including the `gemma4:e4b` evaluation, are in
 `spikes/RESULTS.md`.
+
+## Amendments (approved 2026-11-22)
+
+- **Self-contained AI runtime.** Decision record:
+  `docs/self-contained-ai-decision.md`. Implementation plan:
+  `docs/self-contained-ai-plan.md`. Approved by the project owner on 2026-11-22. It
+  amends decision 6 (AI4Animation remains optional and separate; it becomes required
+  only for a motion feature that consumes it, never for the daemon) and supersedes
+  additional requirement 11 (Ollama becomes the sole AI runtime; Claude Code is
+  removed). Phases 0–3 are implemented and Phase 4 is a completed research spike; no
+  commit has been made. Status and deferred items are in the plan.

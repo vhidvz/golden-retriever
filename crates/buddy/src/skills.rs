@@ -44,7 +44,7 @@ pub struct Skill {
     pub arguments: &'static [&'static str],
 }
 
-pub const SKILLS: [Skill; 8] = [
+pub const SKILLS: [Skill; 7] = [
     Skill { name: "find_files", what: "Find files by name in the folders he may use.", risk: Risk::Looks, arguments: &["query"] },
     Skill { name: "read_file", what: "Read a text file in the folders he may use.", risk: Risk::Looks, arguments: &["path"] },
     Skill { name: "open_app", what: "Open an installed application.", risk: Risk::Changes, arguments: &["name"] },
@@ -52,12 +52,6 @@ pub const SKILLS: [Skill; 8] = [
     Skill { name: "make_note", what: "Add a line to his notes file.", risk: Risk::Changes, arguments: &["text"] },
     Skill { name: "move_file", what: "Move or rename a file within the folders he may use.", risk: Risk::Changes, arguments: &["from", "to"] },
     Skill { name: "run_command", what: "Run a shell command.", risk: Risk::Sensitive, arguments: &["command"] },
-    Skill {
-        name: "ask_claude",
-        what: "Hand a task to Claude Code, which sends it to Anthropic.",
-        risk: Risk::Sensitive,
-        arguments: &["task", "folder", "mode"],
-    },
 ];
 
 pub fn skill(name: &str) -> Option<&'static Skill> {
@@ -138,11 +132,6 @@ pub fn describe(name: &str, args: &Value) -> String {
         "make_note" => format!("note down \u{201c}{}\u{201d}", arg("text")),
         "move_file" => format!("move {} to {}", arg("from"), arg("to")),
         "run_command" => format!("run the command: {}", arg("command")),
-        "ask_claude" => format!(
-            "hand this to Claude Code{}: \u{201c}{}\u{201d} — the task and any files Claude reads go to Anthropic",
-            if args["mode"] == "edit" { ", letting it edit files" } else { " (read-only)" },
-            arg("task")
-        ),
         other => format!("do '{other}'"),
     }
 }
@@ -456,6 +445,13 @@ mod tests {
     }
 
     #[test]
+    fn the_skill_list_is_the_seven_local_skills() {
+        assert_eq!(SKILLS.len(), 7);
+        assert!(skill("ask_claude").is_none(), "Claude Code was removed; it is not a skill");
+        assert!(skill("run_command").is_some());
+    }
+
+    #[test]
     fn sensitive_skills_always_ask_and_a_deny_is_final() {
         let mut permissions = Permissions::default();
         assert_eq!(permissions.policy("find_files"), Policy::Allow);
@@ -463,10 +459,9 @@ mod tests {
         assert_eq!(permissions.policy("run_command"), Policy::Ask);
         assert_eq!(permissions.policy("no_such_skill"), Policy::Deny);
         assert!(permissions.set_policy("run_command", Policy::Allow).is_err());
-        assert!(permissions.set_policy("ask_claude", Policy::Allow).is_err());
         permissions.set_policy("open_app", Policy::Allow).unwrap();
-        permissions.set_policy("ask_claude", Policy::Deny).unwrap();
-        assert_eq!((permissions.policy("open_app"), permissions.policy("ask_claude")), (Policy::Allow, Policy::Deny));
+        permissions.set_policy("run_command", Policy::Deny).unwrap();
+        assert_eq!((permissions.policy("open_app"), permissions.policy("run_command")), (Policy::Allow, Policy::Deny));
         let restored: Permissions = serde_json::from_str(&serde_json::to_string(&permissions).unwrap()).unwrap();
         assert_eq!(restored, permissions);
     }

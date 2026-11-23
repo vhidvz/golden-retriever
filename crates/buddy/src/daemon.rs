@@ -630,6 +630,9 @@ impl Daemon {
                     Some("size_px") => Command::SetSize(number()?),
                     Some("adult_days") => Command::SetAdultDays(number()?),
                     Some("stay_in_fullscreen") => Command::StayInFullscreen(matches!(value, "on" | "true" | "yes")),
+                    Some("vision_model" | "language_model") if crate::ai::is_cloud_model(value) => {
+                        bail!("cloud models are not used: Buddy runs a local model")
+                    }
                     Some("vision_model") => Command::VisionModel(value.to_string()),
                     Some("language_model") => Command::LanguageModel(value.to_string()),
                     Some("pictures") => {
@@ -752,10 +755,6 @@ impl Daemon {
                 ClientMsg::Command { name, args } if name == "look" => self.start_look(id, &args),
                 ClientMsg::Command { name, args } if name == "approve" || name == "deny" => {
                     self.answer(id, args["id"].as_u64(), name == "approve", args["lasting"] == true, at)
-                }
-                ClientMsg::Command { name, args } if name == "ask_claude" => {
-                    let mode = if args["edit"] == true { "edit" } else { "advise" };
-                    self.propose(id, "ask_claude", json!({ "task": args["task"], "folder": args["folder"], "mode": mode }), None, "you", at)
                 }
                 ClientMsg::Command { name, args } if name == "say" => self.said(id, args["text"].as_str().unwrap_or_default(), at),
                 ClientMsg::Command { name, args } => {

@@ -82,11 +82,7 @@ impl Daemon {
         let _ = at;
         let (permissions, tx, skill) = (self.permissions.clone(), self.tx.clone(), skill.to_string());
         thread::spawn(move || {
-            let outcome = if skill == "ask_claude" {
-                ask_claude(&args, &permissions)
-            } else {
-                skills::run(&skill, &args, &permissions, &notes()).map(|d| (d.summary, d.detail, d.undo))
-            };
+            let outcome = skills::run(&skill, &args, &permissions, &notes()).map(|d| (d.summary, d.detail, d.undo));
             let _ = tx.send(Incoming::Did { requester, skill, args, habit, outcome: outcome.map_err(|e| format!("{e:#}")) });
         });
     }
@@ -267,34 +263,18 @@ impl Daemon {
                 Ok(json!({ "undid": what, "how": how }))
             })(),
             "result" => self.last_result.clone().map(|r| json!(r)).context("he has not done anything for you yet"),
-            "providers" => Ok(json!({
-                "local": match crate::ai::models() {
-                    Ok(models) => json!({ "available": true, "models": models, "understands_language_with": self.sim.settings.language_model, "looks_at_images_with": self.sim.settings.vision_model }),
-                    Err(why) => json!({ "available": false, "why": format!("{why:#}") }),
-                },
-                "claude": crate::claude::status(),
-                "order": "his own vocabulary first, then the local model; Claude Code only when asked for by name",
-            })),
+            "providers" => {
+                let endpoint = crate::ai::endpoint();
+                let version = crate::ai::version().ok();
+                Ok(json!({
+                    "local": match crate::ai::models() {
+                        Ok(models) => json!({ "available": true, "endpoint": endpoint, "version": version, "models": models, "understands_language_with": self.sim.settings.language_model, "looks_at_images_with": self.sim.settings.vision_model }),
+                        Err(why) => json!({ "available": false, "endpoint": endpoint, "version": version, "why": format!("{why:#}") }),
+                    },
+                    "order": "his own vocabulary first, then the local model",
+                }))
+            }
             _ => return None,
         })
     }
-}
-
-/// Hands a task to Claude Code. The folder must be one he may use.
-fn ask_claude(args: &Value, permissions: &skills::Permissions) -> Result<(String, String, Option<Undo>)> {
-    let task = args["task"].as_str().context("it needs a task")?;
-    let folder = match args["folder"].as_str().filter(|f| !f.is_empty()) {
-        Some(folder) => PathBuf::from(folder),
-        None => permissions.folders.first().cloned().context("he needs a folder to work in (give him one with: buddy folders add PATH)")?,
-    };
-    if !permissions.folders.iter().filter_map(|f| f.canonicalize().ok()).any(|ok| folder.canonicalize().is_ok_and(|real| real.starts_with(ok))) {
-        bail!("{} is outside the folders he may use (see: buddy folders)", folder.display());
-    }
-    let answer = crate::claude::ask(task, &folder, args["mode"] == "edit")?;
-    // Say how much of the subscription's allowance is gone, when Claude Code reports it.
-    let used = answer.limit["unifiedWindows"]["five_hour"]["utilization"]
-        .as_f64()
-        .map(|u| format!(" ({:.0}% of the five-hour allowance used)", u * 100.0))
-        .unwrap_or_default();
-    Ok((format!("Claude Code answered in {:.0} s{used}", answer.secs), answer.text, None))
 }

@@ -1,25 +1,250 @@
 #!/bin/sh
 # Installs Buddy for the current user only (no root): the binary, the renderer
-# project and a systemd user service that starts him with the graphical session.
+# project, the perception helpers and a systemd user service that starts him with the
+# graphical session. It also installs a pinned Ollama runtime under Buddy's data
+# directory, unless --no-ai is given.
 #   scripts/install.sh            install and start
-#   scripts/install.sh --remove   stop and remove (his memory in ~/.local/share/buddy is kept)
+#   scripts/install.sh --no-ai    install Buddy without a local model runtime
+#   scripts/install.sh --remove   stop and remove (his memory and models are kept)
 set -eu
 repo=$(cd "$(dirname "$0")/.." && pwd)
 bin="$HOME/.local/bin"
-share="${XDG_DATA_HOME:-$HOME/.local/share}/buddy"
+share="${BUDDY_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/buddy}"
 units="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 extension="buddy@buddy.local"
 extensions="${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions"
 
-if [ "${1:-}" = "--remove" ]; then
+say() { printf '%s\n' "$*"; }
+warn() { printf 'warning: %s\n' "$*" >&2; }
+
+json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+port_free() {
+    if command -v ss >/dev/null 2>&1; then
+        ! ss -ltn 2>/dev/null | awk 'NR > 1 { print $4 }' | grep -q ":$1$"
+    elif command -v curl >/dev/null 2>&1; then
+        # Any HTTP response means something is holding the port; a refused connection
+        # means it is free.
+        ! curl -sS --max-time 1 -o /dev/null "http://127.0.0.1:$1/" >/dev/null 2>&1
+    else
+        return 1
+    fi
+}
+
+choose_port() {
+    p=$1
+    while [ "$p" -le "$2" ]; do
+        if port_free "$p"; then
+            printf '%s' "$p"
+            return 0
+        fi
+        p=$((p + 1))
+    done
+    return 1
+}
+
+extract_archive() {
+    case "$1" in
+        *.tar.zst)
+            zstd -dc "$1" | tar -xf - -C "$2"
+            ;;
+        *.tgz)
+            tar -xzf "$1" -C "$2"
+            ;;
+    esac
+}
+
+install_ai_runtime() {
+    umask 077
+    command -v curl >/dev/null 2>&1 || {
+        warn "curl is missing; the local model runtime was not installed"
+        return 0
+    }
+    command -v sha256sum >/dev/null 2>&1 || {
+        warn "sha256sum is missing; the local model runtime was not installed"
+        return 0
+    }
+    case "$(uname -m)" in
+        x86_64) arch=amd64 ;;
+        aarch64 | arm64) arch=arm64 ;;
+        *)
+            warn "unsupported architecture $(uname -m); the local model runtime was not installed"
+            return 0
+            ;;
+    esac
+
+    version="${OLLAMA_VERSION:-0.40.17}"
+    odir="$share/ollama"
+    vdir="$odir/$version"
+    models="$odir/models"
+    downloads="$odir/downloads"
+    # Ollama writes its identity key under $HOME/.ollama. Give it a private home inside
+    # Buddy's directory so ProtectHome=read-only does not make the service crash-loop.
+    runtime_home="$odir/home"
+    mkdir -p "$models" "$downloads" "$runtime_home"
+
+    free_kb=$(df -Pk "$share" 2>/dev/null | awk 'NR == 2 { print $4 }' || true)
+    if [ -n "${free_kb:-}" ] && [ "$free_kb" -lt 4194304 ]; then
+        warn "less than 4 GB free under $share; the local model runtime was not installed"
+        return 0
+    fi
+
+    if [ ! -x "$vdir/bin/ollama" ]; then
+        base="https://github.com/ollama/ollama/releases/download/v$version"
+        if curl -fsS --head --location "$base/ollama-linux-$arch.tar.zst" >/dev/null 2>&1; then
+            asset="ollama-linux-$arch.tar.zst"
+            command -v zstd >/dev/null 2>&1 || {
+                warn "zstd is missing; install it (e.g. pacman -S zstd) and run the installer again"
+                return 0
+            }
+        else
+            asset="ollama-linux-$arch.tgz"
+        fi
+        archive="$downloads/$asset"
+        say "Downloading Ollama $version ($asset) ..."
+        if ! curl -fL --retry 5 --retry-all-errors --retry-delay 2 -C - --progress-bar -o "$archive" "$base/$asset"; then
+            warn "the Ollama download failed; Buddy will live without a local model"
+            return 0
+        fi
+        if ! curl -fsSL --retry 3 -o "$downloads/sha256sum.txt" "$base/sha256sum.txt"; then
+            warn "the Ollama checksum list could not be downloaded"
+            return 0
+        fi
+        expected=$(awk -v f="$asset" '{ name=$2; sub(/^\*/, "", name); sub(/^\.\//, "", name); if (name == f) print $1 }' "$downloads/sha256sum.txt" | head -1)
+        if [ -z "$expected" ]; then
+            warn "no checksum for $asset in sha256sum.txt"
+            return 0
+        fi
+        actual=$(sha256sum "$archive" | awk '{ print $1 }')
+        if [ "$actual" != "$expected" ]; then
+            warn "the Ollama download failed its checksum; the old runtime, if any, is unchanged"
+            rm -f "$archive"
+            return 0
+        fi
+        tmp="$odir/.tmp-$version-$$"
+        rm -rf "$tmp"
+        mkdir -p "$tmp"
+        if ! extract_archive "$archive" "$tmp" || [ ! -x "$tmp/bin/ollama" ]; then
+            warn "the Ollama archive could not be extracted"
+            rm -rf "$tmp"
+            return 0
+        fi
+        rm -rf "$vdir"
+        mv "$tmp" "$vdir"
+        say "Ollama $version is installed under $vdir"
+    else
+        say "Ollama $version is already installed under $vdir"
+        expected=$(sed -n 's/.*"tarball_sha256":"\([^"]*\)".*/\1/p' "$odir/runtime.json" 2>/dev/null | head -1 || true)
+    fi
+
+    if [ "${OLLAMA_ROCM:-0}" = 1 ] && [ ! -f "$vdir/.rocm" ]; then
+        rocm="ollama-linux-$arch-rocm.tar.zst"
+        base="https://github.com/ollama/ollama/releases/download/v$version"
+        say "Downloading the ROCm runtime payload ..."
+        if curl -fL --retry 5 --retry-all-errors --retry-delay 2 -C - --progress-bar -o "$downloads/$rocm" "$base/$rocm" &&
+            curl -fsSL --retry 3 -o "$downloads/sha256sum.txt" "$base/sha256sum.txt"; then
+            rocm_sum=$(awk -v f="$rocm" '{ name=$2; sub(/^\*/, "", name); sub(/^\.\//, "", name); if (name == f) print $1 }' "$downloads/sha256sum.txt" | head -1)
+            if [ -n "$rocm_sum" ] && [ "$(sha256sum "$downloads/$rocm" | awk '{ print $1 }')" = "$rocm_sum" ]; then
+                zstd -dc "$downloads/$rocm" | tar -xf - -C "$vdir"
+                touch "$vdir/.rocm"
+            else
+                warn "the ROCm payload failed its checksum; continuing with the base runtime"
+            fi
+        else
+            warn "the ROCm payload could not be downloaded; continuing with the base runtime"
+        fi
+    fi
+
+    port=""
+    if [ -f "$odir/runtime.json" ]; then
+        port=$(sed -n 's/.*"endpoint":"http:\/\/127\.0\.0\.1:\([0-9][0-9]*\)".*/\1/p' "$odir/runtime.json" | head -1 || true)
+    fi
+    if [ -n "$port" ] && ! port_free "$port"; then
+        # Our own service may still hold the port from a previous install. Any other
+        # occupant is left alone; pick a new port instead.
+        if ! systemctl --user is-active buddy-ollama.service >/dev/null 2>&1; then
+            port=""
+        fi
+    fi
+    if [ -z "$port" ]; then
+        port=$(choose_port 11435 11445 || true)
+    fi
+    if [ -z "$port" ]; then
+        warn "no free loopback port for the local model runtime"
+        return 0
+    fi
+
+    ln -sfn "$version" "$odir/current"
+    sed -e "s|@OLLAMA_BIN@|$vdir/bin/ollama|g" \
+        -e "s|@OLLAMA_HOST@|127.0.0.1:$port|g" \
+        -e "s|@OLLAMA_MODELS@|$models|g" \
+        -e "s|@OLLAMA_DIR@|$odir|g" \
+        -e "s|@OLLAMA_HOME@|$runtime_home|g" \
+        "$repo/dist/buddy-ollama.service.in" > "$units/buddy-ollama.service"
+
+    if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+        systemctl --user daemon-reload
+        systemctl --user enable buddy-ollama.service || warn "the Ollama user service could not be enabled"
+        systemctl --user restart buddy-ollama.service || warn "the Ollama user service could not be started"
+        i=0
+        while [ "$i" -lt 30 ]; do
+            if curl -fsS --max-time 1 "http://127.0.0.1:$port/api/version" >/dev/null 2>&1; then
+                break
+            fi
+            i=$((i + 1))
+            sleep 1
+        done
+        if curl -fsS --max-time 1 "http://127.0.0.1:$port/api/version" >/dev/null 2>&1; then
+            say "The local model runtime is running on 127.0.0.1:$port"
+        else
+            warn "the runtime is installed but is not answering yet; check: systemctl --user status buddy-ollama.service"
+        fi
+    else
+        warn "the systemd user manager is not available; the runtime is installed but not started"
+    fi
+
+    old_model=$(sed -n 's/.*"model":"\([^"]*\)".*/\1/p' "$odir/runtime.json" 2>/dev/null | head -1 || true)
+    old_digest=$(sed -n 's/.*"model_digest":"\([^"]*\)".*/\1/p' "$odir/runtime.json" 2>/dev/null | head -1 || true)
+    model_json=null
+    digest_json=null
+    [ -n "$old_model" ] && model_json="\"$(json_escape "$old_model")\""
+    [ -n "$old_digest" ] && digest_json="\"$(json_escape "$old_digest")\""
+    runtime_tmp="$odir/.runtime.json.$$"
+    printf '{"schema":1,"ollama_version":"%s","tarball_sha256":"%s","endpoint":"http://127.0.0.1:%s","service":"buddy-ollama.service","models_dir":"%s","model":%s,"model_digest":%s,"installed_at":%s}\n' \
+        "$(json_escape "$version")" "$(json_escape "${expected:-}")" "$port" "$(json_escape "$models")" \
+        "$model_json" "$digest_json" "$(date +%s)" > "$runtime_tmp"
+    mv "$runtime_tmp" "$odir/runtime.json"
+}
+
+remove_buddy() {
     systemctl --user disable --now buddy.service 2>/dev/null || true
-    rm -f "$units/buddy.service" "$bin/buddy"
+    systemctl --user disable --now buddy-ollama.service 2>/dev/null || true
+    rm -f "$units/buddy.service" "$units/buddy-ollama.service" "$units/buddy.service.d/data-dir.conf" "$bin/buddy"
+    rmdir "$units/buddy.service.d" 2>/dev/null || true
     rm -rf "$share/renderer" "$share/perception" "$share/tools" "$extensions/$extension"
     gnome-extensions disable "$extension" 2>/dev/null || true
-    systemctl --user daemon-reload
-    echo "Buddy removed. His memory is still in $share (delete it yourself if you really mean it)."
-    exit 0
-fi
+    systemctl --user daemon-reload 2>/dev/null || true
+    echo "Buddy removed. His memory, the managed AI runtime and its models are still in $share."
+}
+
+no_ai=0
+case "${1:-}" in
+    --remove)
+        remove_buddy
+        exit 0
+        ;;
+    --no-ai)
+        no_ai=1
+        ;;
+    "")
+        ;;
+    *)
+        echo "usage: scripts/install.sh [--no-ai|--remove]" >&2
+        exit 2
+        ;;
+esac
 
 command -v godot >/dev/null 2>&1 || command -v godot4 >/dev/null 2>&1 || [ -n "${BUDDY_GODOT:-}" ] ||
     echo "warning: Godot 4 was not found; Buddy will live but not be drawn (install godot, or set BUDDY_GODOT in ~/.config/buddy/env)" >&2
@@ -60,9 +285,31 @@ if command -v gnome-extensions >/dev/null 2>&1; then
     fi
 fi
 install -m 644 "$repo/dist/buddy.service" "$units/buddy.service"
+# If the caller chose a non-default data directory, the service must use the same one;
+# otherwise the daemon and the CLI would look in different places.
+if [ -n "${BUDDY_DATA_DIR:-}" ]; then
+    mkdir -p "$units/buddy.service.d"
+    printf '[Service]\nEnvironment="BUDDY_DATA_DIR=%s"\n' "$share" > "$units/buddy.service.d/data-dir.conf"
+else
+    rm -f "$units/buddy.service.d/data-dir.conf"
+fi
 systemctl --user daemon-reload
 systemctl --user enable --now buddy.service
+
+if [ "$no_ai" -eq 0 ]; then
+    install_ai_runtime
+fi
+
 echo "Buddy is running and will start with your desktop session. Try: buddy status"
+if [ "$no_ai" -eq 0 ]; then
+    if command -v loginctl >/dev/null 2>&1; then
+        if ! loginctl show-user "${USER:-$(id -un)}" 2>/dev/null | grep -q 'Linger=yes'; then
+            echo "To start the local model runtime before login, run: loginctl enable-linger ${USER:-$(id -un)}"
+        fi
+    fi
+    echo "Next: buddy ai setup   # choose and install a model for this machine"
+    echo "Then: buddy ai status"
+fi
 
 # A plain interactive bash does not always have ~/.local/bin on its PATH; say so rather than
 # leave the user with "command not found".

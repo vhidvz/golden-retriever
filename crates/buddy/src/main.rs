@@ -1,8 +1,11 @@
 //! `buddy` — the daemon that keeps Buddy alive, and the command-line remote for it.
 
 mod ai;
+mod ai_catalog;
+mod ai_hardware;
+mod ai_runtime;
+mod ai_setup;
 mod baker;
-mod claude;
 mod client;
 mod daemon;
 mod renderer;
@@ -38,9 +41,12 @@ On the computer (try: buddy say 'find my tax report'):
   buddy folders [add|remove DIR] the folders he may search, read and move files in
   buddy undo                     take back the last change he made
   buddy result                   the full output of the last thing he did
-  buddy providers                which helpers (local model, Claude Code) are available
-  buddy ask-claude 'TASK' [--in DIR] [--edit]
-                                 hand a task to Claude Code (asks first; sends it to Anthropic)
+  buddy providers                which local AI runtime and model are available
+  buddy ai status | doctor       how Buddy's managed local AI runtime is doing
+  buddy ai setup [--yes] [--vision] [--audio] [--model NAME] [--accept-license]
+                                 recommend and install a model for this machine
+  buddy ai model [NAME]          show or change the selected model
+  buddy ai repair | prune        re-pull the selected model / remove unused models
   buddy quiet on|off             no sounds and no asking for attention
   buddy why                      what he is doing, why, and how he feels
   buddy privacy on|off           suspend / resume every perception source
@@ -86,6 +92,12 @@ fn main() -> Result<()> {
         (Some("waiting"), _) => return client::listing("waiting"),
         (Some("skills"), _) => return client::listing("skills"),
         (Some("providers"), _) => return client::providers(),
+        (Some("ai"), Some("status")) => return client::ai_status(),
+        (Some("ai"), Some("doctor")) => return client::ai_doctor(),
+        (Some("ai"), Some("setup")) => return ai_setup::setup(&args[2..]),
+        (Some("ai"), Some("model")) => return ai_setup::model(&args[2..]),
+        (Some("ai"), Some("repair")) => return ai_setup::repair(),
+        (Some("ai"), Some("prune")) => return ai_setup::prune(&args[2..]),
         (Some(which @ ("approve" | "deny")), _) => {
             let id = args[1..].iter().find_map(|a| a.parse::<u64>().ok());
             let lasting = args[1..].iter().any(|a| a == "--always" || a == "--never");
@@ -96,10 +108,6 @@ fn main() -> Result<()> {
         (Some("folders"), None) => ("folders", Value::Null),
         (Some("undo"), _) => ("undo", Value::Null),
         (Some("result"), _) => return client::result(),
-        (Some("ask-claude"), Some(task)) => {
-            let folder = args.iter().position(|a| a == "--in").and_then(|i| args.get(i + 1)).map(|f| client::absolute(f));
-            return client::act("ask_claude", json!({ "task": task, "folder": folder, "edit": args.iter().any(|a| a == "--edit") }));
-        }
         (Some("unlearn"), Some(cue)) => ("unlearn", json!({ "cue": cue })),
         (Some("memories"), _) => return client::memories(),
         (Some("forget"), Some(id)) => ("forget", json!({ "id": id.parse::<i64>().ok() })),

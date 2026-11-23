@@ -17,6 +17,24 @@ pub fn db_path() -> PathBuf {
     data_dir().join("buddy.db")
 }
 
+/// The runtime, models and manifest Buddy installs for itself.
+pub fn ollama_dir() -> PathBuf {
+    data_dir().join("ollama")
+}
+
+pub fn ollama_models_dir() -> PathBuf {
+    ollama_dir().join("models")
+}
+
+pub fn runtime_manifest_path() -> PathBuf {
+    ollama_dir().join("runtime.json")
+}
+
+/// Optional motion data, kept separate from the runtime and never a dependency of the daemon.
+pub fn ai4animation_dir() -> PathBuf {
+    data_dir().join("ai4animation")
+}
+
 /// Control socket. Lives in the per-user runtime dir so only this user can reach it.
 pub fn socket_path() -> PathBuf {
     if let Some(p) = env::var_os("BUDDY_SOCKET") {

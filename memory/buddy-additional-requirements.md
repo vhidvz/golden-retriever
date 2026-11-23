@@ -37,6 +37,8 @@ replace, [[buddy-product-decisions]]. It adds:
 10. **Recommend other models for this hardware**, possibly per capability.
 11. **Ollama and Claude Code are peers.** Choose by task, availability, quota, privacy,
     latency and preference.
+    **Superseded 2026-11-22:** Ollama is the sole AI runtime; Claude Code is removed.
+    See [[self-contained-ai]].
 12. **Priority rule:** finish and verify already-approved work first; these additions come
     after it.
 
@@ -47,8 +49,9 @@ The full text and implementation status are recorded in the repository at
 `docs/decisions.md`.
 
 **Why:** it widens Phases 3-5: perception must feed pattern discovery, skills need a
-workflow recorder and verifier, and the provider layer must treat Ollama and Claude Code
-as peers.
+workflow recorder and verifier, and the provider layer must treat model providers as
+peers. Since 2026-11-22 the only provider is Buddy's managed Ollama; Claude Code is
+removed.
 
 **How to apply:** when planning Phase 3 onward, include pattern recognition, workflow
 learning, the invitation behaviour and the feedback vocabulary. Related:

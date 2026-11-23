@@ -28,6 +28,9 @@ override earlier suggestions (a paid model, an optional spoken voice).
 6. **Non-commercial motion data is optional and separate.** CC BY-NC material (for
    example the AI4Animation dog mocap set) is offered as a separate download; never
    bundled in the MIT repository, never a hard dependency.
+   **Amended 2026-11-22:** it stays optional and separate and is never a hard dependency
+   of the daemon. If a motion feature adopts it, it becomes a required data component of
+   that feature, gated by licence acceptance. See [[self-contained-ai]].
 
 Scope is a realistic, autonomous, trainable, bilingual virtual dog, not a humanoid robot
 and not a voice assistant.
