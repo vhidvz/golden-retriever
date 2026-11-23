@@ -33,7 +33,7 @@ const REPLAY_STEP_TIMEOUT: f64 = 30.0;
 /// How long a manual step waits for the user to perform it and run `workflow continue`.
 const MANUAL_STEP_TIMEOUT: f64 = 900.0;
 
-enum Incoming {
+pub(crate) enum Incoming {
     Connected(u64, UnixStream),
     Message(u64, ClientMsg),
     Malformed(u64, String),
@@ -1374,6 +1374,7 @@ pub fn run(no_renderer: bool) -> Result<()> {
     store.journal(start as i64, "session_start", &json!({ "away_secs": away_secs, "session": life.sessions }))?;
 
     let (tx, rx) = mpsc::channel();
+    crate::kde::serve(tx.clone());
     let seed = SystemTime::now().duration_since(UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64);
     let mut daemon = Daemon {
         store,

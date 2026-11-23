@@ -17,9 +17,11 @@ skeleton, head landmarks and limb proportions are untouched. The Godot self-test
 the adult with coat and eyes. The body change correctly invalidates the pre-drawn sprite
 sets, so the baker will rebuild them while the user is away.
 
-Still open: KDE desktop support and the remaining fur/model/puppy visual craft. This is a
-first increment, not Phase 6 completion. Durable decisions: `docs/decisions.md` "Phase 6
-body refinement"; measurements: `docs/proportions.md`.
+A KDE Plasma sense was added 2026-11-24: a KWin script reports focused application and
+pointer position to a session D-Bus bridge in the daemon. The bridge was tested over the
+real session bus; KDE clicks/overview/titles need a separate KWin effect. Still open:
+remaining fur/model/puppy craft. Durable decisions: `docs/decisions.md` "Phase 6 body
+refinement"; measurements: `docs/proportions.md`.
 
 **Why:** the silhouette and proportions were already measured; the visible gap is craft,
 so do not disturb the skeleton while improving the surface.

@@ -30,7 +30,7 @@ mkdir -p "$stage/usr/bin" "$stage/usr/share/buddy" "$stage/usr/share/application
 install -m 755 "$binary" "$stage/usr/bin/buddy"
 printf '#!/bin/sh\nexec python3 /usr/share/buddy/ui/buddy_ui.py "$@"\n' > "$stage/usr/bin/buddy-ui"
 chmod 755 "$stage/usr/bin/buddy-ui"
-for part in ui perception renderer tools shell-extension; do
+for part in ui perception renderer tools shell-extension kde; do
     cp -r "$repo/$part" "$stage/usr/share/buddy/$part"
     find "$stage/usr/share/buddy/$part" -type d -name __pycache__ -prune -exec rm -rf {} +
 done

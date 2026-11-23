@@ -196,3 +196,10 @@ Create the directory when needed; it is not part of the repository.
   helper selection is implemented by exposing each helper as a model tool; optional
   `bwrap` sandboxing and verification are implemented. Synthetic input is deliberately
   not adopted. See `docs/helpers.md`.
+
+- **KDE sense:** KWin 6 exposes active window and cursor position to scripts but no
+  readable active-window D-Bus method. `crates/buddy/src/kde.rs` serves
+  `local.buddy.Sense` over the session bus; `kde/kwin/buddy` is installed into
+  `~/.local/share/kwin/scripts/buddy-sense` and enabled in `kwinrc` when KDE tools exist.
+  Test the bridge with `gdbus call ... local.buddy.Sense.Focus APP` and `.Pointer X Y`.
+  Normal KWin scripts cannot report clicks; a KWin effect would be a separate slice.

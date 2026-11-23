@@ -158,6 +158,9 @@ Two crates, one long-running process, a replaceable renderer, and an optional na
   model from `renderer/dog/retriever.json` and extends it. `sprites.gd` uses pre-drawn
   pictures when a set matches his age and activity. `voice.gd` plays his sounds.
   `export_poses.gd` records poses for the Blender bake.
+- `kde/kwin/buddy/` — an optional KWin script; it calls the daemon's session D-Bus sense
+  bridge (`crates/buddy/src/kde.rs`) for focused application and pointer position. KDE
+  clicks/overview/titles are not covered without a KWin effect.
 - `shell-extension/` and `perception/` — his senses. The GNOME Shell extension also
   registers the guided-capture shortcut (`Super+Shift+B` by default) from its compiled
   schema, and reports

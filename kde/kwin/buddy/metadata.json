@@ -1,0 +1,13 @@
+{
+  "KPlugin": {
+    "Id": "buddy-sense",
+    "Name": "Buddy desktop sense",
+    "Description": "Reports the active application and pointer position to Buddy. Does not read window contents.",
+    "License": "MIT",
+    "Version": "1.0.0",
+    "EnabledByDefault": false
+  },
+  "KPackageStructure": "KWin/Script",
+  "X-Plasma-API": "javascript",
+  "X-Plasma-MainScript": "code/main.js"
+}

@@ -323,6 +323,36 @@ install_ai_runtime() {
     mv "$runtime_tmp" "$odir/runtime.json"
 }
 
+install_kde_sense() {
+    # KWin 6 has no active-window D-Bus method; a small KWin script calls the daemon's
+    # session-bus bridge instead. This is optional: on GNOME there is nothing to install.
+    if ! command -v kwriteconfig6 >/dev/null 2>&1 && ! command -v kpackagetool6 >/dev/null 2>&1; then
+        return 0
+    fi
+    scripts="${XDG_DATA_HOME:-$HOME/.local/share}/kwin/scripts"
+    rm -rf "$scripts/buddy-sense"
+    mkdir -p "$scripts/buddy-sense"
+    cp -r "$repo/kde/kwin/buddy"/. "$scripts/buddy-sense/"
+    if command -v kwriteconfig6 >/dev/null 2>&1; then
+        kwriteconfig6 --file kwinrc --group Plugins --key buddy-senseEnabled true 2>/dev/null || warn "the KDE sense could not be enabled in kwinrc"
+    fi
+    if command -v qdbus6 >/dev/null 2>&1; then
+        qdbus6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+    fi
+    say "Buddy's KDE desktop sense is installed; focus and pointer are reported."
+}
+
+remove_kde_sense() {
+    scripts="${XDG_DATA_HOME:-$HOME/.local/share}/kwin/scripts"
+    rm -rf "$scripts/buddy-sense"
+    if command -v kwriteconfig6 >/dev/null 2>&1; then
+        kwriteconfig6 --file kwinrc --group Plugins --key buddy-senseEnabled false 2>/dev/null || true
+    fi
+    if command -v qdbus6 >/dev/null 2>&1; then
+        qdbus6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+    fi
+}
+
 install_ui() {
     command -v python3 >/dev/null 2>&1 || { warn "python3 is missing; the control panel was not installed"; return 0; }
     if ! python3 -c 'import gi; gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1")' >/dev/null 2>&1; then
@@ -382,6 +412,7 @@ remove_buddy() {
     rmdir "$units/buddy.service.d" 2>/dev/null || true
     rm -rf "$share/renderer" "$share/perception" "$share/tools" "$share/godot" "$share/ui" "$extensions/$extension"
     uninstall_ui
+    remove_kde_sense
     gnome-extensions disable "$extension" 2>/dev/null || true
     systemctl --user daemon-reload 2>/dev/null || true
     echo "Buddy removed. His memory, the managed AI runtime and its models are still in $share."
@@ -432,6 +463,7 @@ install_godot
 # ordinary user-readable application data.
 umask 022
 install_ui
+install_kde_sense
 
 # The desktop sense is a GNOME Shell extension. On Wayland a newly installed extension
 # is only loaded at the next login, so it is switched on now and starts working then.

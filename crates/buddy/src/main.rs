@@ -9,6 +9,7 @@ mod baker;
 mod client;
 mod daemon;
 mod helpers;
+mod kde;
 mod renderer;
 mod skills;
 mod system;

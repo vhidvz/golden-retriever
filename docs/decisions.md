@@ -308,6 +308,11 @@ implementation. The evidence, options and recommendation are in
   reference check; head and limb landmarks did not move.
 - **The body change invalidates sprite sets by design.** The baker will rebuild the
   pictures while the user is away; the live 3D body and tests keep working meanwhile.
-- **Still open for Phase 6:** KDE desktop support and the remaining fur/model craft
-  (surface detail, coat response, puppy-specific polish). This is a first increment, not
-  a claim that Phase 6 is complete.
+- **KDE Plasma sense added 2026-11-24.** KWin 6 has no readable active-window D-Bus
+  method, so a KWin script reports focused application and pointer position to a session
+  D-Bus bridge in the daemon. The bridge was tested with `gdbus` Focus/Pointer calls.
+  Normal KWin scripts cannot see button events; clicks, overview and titles remain open
+  and are not claimed as KDE support. The installer copies/enables the script only when
+  KDE tools are present.
+- **Still open for Phase 6:** KDE click/overview/title coverage and the remaining
+  fur/model craft (surface detail, coat response, puppy-specific polish).
