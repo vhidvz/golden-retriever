@@ -202,10 +202,10 @@ A plateaus.**
 The first step is not a build. It is a spike with a measurable acceptance test:
 
 1. **Stills.** Render four representative frames — stand, sit, walk and a head
-   close-up — at the real on-screen size and at 800 px, from the upgraded bake.
-   Put them beside CC BY/CC BY-SA photographs of real Goldens in a blind A/B test
-   (each image shown for about two seconds; the viewer says "real" or "render").
-   Record the confusion rate at each size.
+   close-up — at the size he is actually drawn at, and at 800 px as a stress test,
+   from the upgraded bake. Put them beside CC BY/CC BY-SA photographs of real Goldens
+   in a blind A/B test (each image shown for about two seconds; the viewer says "real"
+   or "render"). Record the confusion rate at each size.
 2. **Motion.** Retarget one MANN walk clip to Buddy's skeleton, render it beside the
    procedural walk, and measure foot sliding against ground speed. A real gait with
    sliding feet is worse than a simple gait without.
@@ -219,20 +219,24 @@ The first step is not a build. It is a spike with a measurable acceptance test:
 The same rule as every other phase applies: spike results, a written plan, explicit
 approval.
 
-## The open question
+## The goal and the acceptance size
 
-**At what size must he pass?** The renderer is normally run at the default 420 px
-setting, can be run larger, and an 800 px close-up is the hardest case. Option A is
-realistic at the desktop sizes. At 800 px, only a scan or real footage (option B) is
-likely to be indistinguishable. The owner has not chosen the target yet, and the
-choice changes which option is worth building.
+The goal is the dog himself: his form, anatomy, coat, face and movement must read as a
+real Golden Retriever. Display size is not a product goal — he stays desktop-sized so
+the desktop remains usable, and a life-size Golden is explicitly not wanted. Size only
+sets the technical bar for the blind test: the larger the drawn dog, the more detail
+the bake needs. The renderer is normally run at the default 420 px setting; an 800 px
+close-up is the hardest case. Option A is realistic at the sizes he is actually drawn
+at. At 800 px, only a scan or real footage (option B) is likely to be
+indistinguishable. The acceptance test therefore uses the size he is actually drawn at;
+a later, larger display would need a new test.
 
 ## Decision triggers
 
 - **Choose A** if the target is the desktop size he is actually drawn at and the blind
   test is close to chance.
 - **Choose B (or a hybrid A+B)** if the target is a close-up or if A's blind test fails
-  at the chosen size and a share-alike photo pack is acceptable.
+  at the size he is drawn at and a share-alike photo pack is acceptable.
 - **Revisit C** only with a GPU of 24 GB or more and a commercial or permissive
   template licence; neither exists on this machine today.
 - **Stop and reduce scope** if the upgraded bake cannot finish inside the away-time

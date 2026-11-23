@@ -34,10 +34,11 @@ The durable conclusions:
   Diffusion refinement is an optional experiment, not the backbone.
 
 The first step is a spike with a blind A/B test against real Golden photographs at the
-chosen on-screen size, one MANN walk retarget with a foot-slide measurement, and a
-bake cost/VRAM measurement on CPU and GPU. The target size is still open: the current
-desktop window, a larger window, or an 800 px close-up; option A is realistic at the
-desktop sizes, while a close-up likely needs a scan or real footage.
+size he is actually drawn at, one MANN walk retarget with a foot-slide measurement, and
+a bake cost/VRAM measurement on CPU and GPU. The goal is realistic form, anatomy, coat
+and movement, not a life-size dog: he stays desktop-sized so the desktop remains
+usable. A larger close-up display would raise the bar and likely need a scan or real
+footage (option B).
 
 **Why:** the owner wants the research kept for later implementation without redoing it,
 and the choice changes the Phase 6 body plan.
