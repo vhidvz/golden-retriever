@@ -56,6 +56,111 @@ extract_archive() {
     esac
 }
 
+
+write_buddy_env() {
+    key="$1"
+    value="$2"
+    env_file="$HOME/.config/buddy/env"
+    mkdir -p "$(dirname "$env_file")"
+    touch "$env_file"
+    tmp="$env_file.tmp.$$"
+    grep -v "^${key}=" "$env_file" > "$tmp" 2>/dev/null || true
+    printf '%s="%s"\n' "$key" "$value" >> "$tmp"
+    mv "$tmp" "$env_file"
+    chmod 600 "$env_file"
+}
+
+install_godot() {
+    umask 077
+    if [ -n "${BUDDY_GODOT:-}" ] && [ -x "$BUDDY_GODOT" ]; then
+        write_buddy_env BUDDY_GODOT "$BUDDY_GODOT"
+        say "Using Godot at $BUDDY_GODOT"
+        return 0
+    fi
+    if command -v godot >/dev/null 2>&1; then
+        found=$(command -v godot)
+        write_buddy_env BUDDY_GODOT "$found"
+        say "Using Godot at $found"
+        return 0
+    fi
+    if command -v godot4 >/dev/null 2>&1; then
+        found=$(command -v godot4)
+        write_buddy_env BUDDY_GODOT "$found"
+        say "Using Godot at $found"
+        return 0
+    fi
+    case "$(uname -m)" in
+        x86_64) arch=x86_64 ;;
+        aarch64 | arm64) arch=arm64 ;;
+        *)
+            warn "unsupported architecture $(uname -m); Godot was not installed and Buddy will not be drawn"
+            return 0
+            ;;
+    esac
+    command -v curl >/dev/null 2>&1 || {
+        warn "curl is missing; Godot was not installed and Buddy will not be drawn"
+        return 0
+    }
+    command -v unzip >/dev/null 2>&1 || {
+        warn "unzip is missing; Godot was not installed and Buddy will not be drawn"
+        return 0
+    }
+    command -v sha512sum >/dev/null 2>&1 || {
+        warn "sha512sum is missing; Godot was not installed and Buddy will not be drawn"
+        return 0
+    }
+
+    version="${GODOT_VERSION:-4.7.2}"
+    asset="Godot_v${version}-stable_linux.${arch}.zip"
+    base="https://github.com/godotengine/godot/releases/download/${version}-stable"
+    odir="$share/godot"
+    downloads="$odir/downloads"
+    dest="$odir/$version"
+    godot_bin="$dest/Godot_v${version}-stable_linux.${arch}"
+    archive="$downloads/$asset"
+    if [ -x "$godot_bin" ]; then
+        write_buddy_env BUDDY_GODOT "$godot_bin"
+        say "Godot $version is already installed at $godot_bin"
+        return 0
+    fi
+    mkdir -p "$downloads" "$dest"
+    say "Downloading Godot $version ..."
+    if ! curl -fL --retry 5 --retry-all-errors --retry-delay 2 -C - --progress-bar -o "$archive" "$base/$asset"; then
+        warn "the Godot download failed; Buddy will live without being drawn"
+        return 0
+    fi
+    if ! curl -fsSL --retry 3 -o "$downloads/SHA512-SUMS.txt" "$base/SHA512-SUMS.txt"; then
+        warn "the Godot checksum list could not be downloaded"
+        return 0
+    fi
+    expected=$(awk -v f="$asset" '{ name=$2; sub(/^\*/, "", name); sub(/^\.\//, "", name); if (name == f) print $1 }' "$downloads/SHA512-SUMS.txt" | head -1)
+    if [ -z "$expected" ]; then
+        warn "no checksum for $asset in SHA512-SUMS.txt"
+        return 0
+    fi
+    actual=$(sha512sum "$archive" | awk '{ print $1 }')
+    if [ "$actual" != "$expected" ]; then
+        warn "the Godot download failed its checksum; Buddy will not be drawn"
+        rm -f "$archive"
+        return 0
+    fi
+    if ! unzip -q -o "$archive" -d "$dest"; then
+        warn "the Godot archive could not be extracted; Buddy will not be drawn"
+        return 0
+    fi
+    if [ ! -f "$godot_bin" ]; then
+        warn "the Godot binary was not found after extraction; Buddy will not be drawn"
+        return 0
+    fi
+    chmod +x "$godot_bin"
+    if ! "$godot_bin" --version >/dev/null 2>&1; then
+        warn "Godot was downloaded but does not run; Buddy will not be drawn"
+        return 0
+    fi
+    write_buddy_env BUDDY_GODOT "$godot_bin"
+    say "Godot $version is installed at $godot_bin"
+}
+
 install_ai_runtime() {
     umask 077
     command -v curl >/dev/null 2>&1 || {
@@ -223,7 +328,7 @@ remove_buddy() {
     systemctl --user disable --now buddy-ollama.service 2>/dev/null || true
     rm -f "$units/buddy.service" "$units/buddy-ollama.service" "$units/buddy.service.d/data-dir.conf" "$bin/buddy"
     rmdir "$units/buddy.service.d" 2>/dev/null || true
-    rm -rf "$share/renderer" "$share/perception" "$share/tools" "$extensions/$extension"
+    rm -rf "$share/renderer" "$share/perception" "$share/tools" "$share/godot" "$extensions/$extension"
     gnome-extensions disable "$extension" 2>/dev/null || true
     systemctl --user daemon-reload 2>/dev/null || true
     echo "Buddy removed. His memory, the managed AI runtime and its models are still in $share."
@@ -247,7 +352,7 @@ case "${1:-}" in
 esac
 
 command -v godot >/dev/null 2>&1 || command -v godot4 >/dev/null 2>&1 || [ -n "${BUDDY_GODOT:-}" ] ||
-    echo "warning: Godot 4 was not found; Buddy will live but not be drawn (install godot, or set BUDDY_GODOT in ~/.config/buddy/env)" >&2
+    echo "note: Godot was not found on PATH; the installer will use the managed copy under $share/godot or download Godot 4.7.2" >&2
 command -v blender >/dev/null 2>&1 || [ -n "${BUDDY_BLENDER:-}" ] ||
     echo "note: Blender was not found; Buddy will be drawn live only, without the pictures with a real coat (install blender to have them)" >&2
 
@@ -267,6 +372,9 @@ cp "$repo/tools/bake_sprites.py" "$share/tools/"
 rm -rf "$share/perception"
 mkdir "$share/perception"
 cp "$repo"/perception/*.py "$share/perception/"
+
+# The renderer needs Godot; if it is not already available, install a pinned copy.
+install_godot
 
 # The desktop sense is a GNOME Shell extension. On Wayland a newly installed extension
 # is only loaded at the next login, so it is switched on now and starts working then.

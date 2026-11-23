@@ -15,6 +15,26 @@ pub fn is_cloud_model(name: &str) -> bool {
     name.contains(":cloud") || name.ends_with("-cloud")
 }
 
+/// The capability names from an Ollama `/api/show` reply.
+pub fn parse_capabilities(reply: &Value) -> Vec<String> {
+    reply["capabilities"].as_array().into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect()
+}
+
+/// What an installed model says it can do: completion, vision, audio, tools, thinking.
+pub fn capabilities(model: &str) -> Result<Vec<String>> {
+    let reply: Value = agent(Duration::from_secs(10))
+        .post(&url("/api/show"))
+        .send_json(json!({ "model": model }))
+        .with_context(|| format!("Ollama could not describe '{model}'"))?
+        .body_mut()
+        .read_json()?;
+    Ok(parse_capabilities(&reply))
+}
+
+pub fn supports(model: &str, capability: &str) -> Result<bool> {
+    Ok(capabilities(model)?.iter().any(|c| c == capability))
+}
+
 /// The endpoint of Buddy's managed runtime, or `BUDDY_OLLAMA_URL` when set.
 pub fn endpoint() -> String {
     crate::ai_runtime::Runtime::endpoint()
@@ -183,6 +203,9 @@ pub fn transcribe(model: &str, wav: &[u8]) -> Result<String> {
     if is_cloud_model(model) {
         bail!("cloud models are not used: Buddy's recording stays on this machine");
     }
+    if !supports(model, "audio")? {
+        bail!("the model '{model}' has no audio input; choose one that does");
+    }
     let body = json!({
         "model": model, "temperature": 0, "reasoning_effort": "none", "max_tokens": 120,
         "messages": [{ "role": "user", "content": [
@@ -200,6 +223,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn capabilities_are_read_from_the_show_reply() {
+        let reply = json!({ "capabilities": ["completion", "vision", "audio", "tools", "thinking"] });
+        assert_eq!(parse_capabilities(&reply), vec!["completion", "vision", "audio", "tools", "thinking"]);
+        assert!(parse_capabilities(&json!({})).is_empty());
+    }
+
+    #[test]
     fn cloud_models_are_not_local() {
         assert!(is_cloud_model("deepseek-v4.1-flash:1017-cloud"));
         assert!(is_cloud_model("kimi-k3.1-pro:cloud"));
@@ -214,6 +244,9 @@ pub fn ask_about_image(model: &str, image: &[u8], question: &str, schema: Value)
     let installed = models()?;
     if !installed.iter().any(|m| m == model) {
         bail!("the model '{model}' is not installed in Ollama (installed: {})", installed.join(", "));
+    }
+    if !supports(model, "vision")? {
+        bail!("the model '{model}' has no vision; choose one that does");
     }
     let body = json!({
         "model": model, "stream": false, "think": false, "format": schema, "keep_alive": KEEP_ALIVE, "options": { "temperature": 0, "num_predict": 160, "num_ctx": NUM_CTX },

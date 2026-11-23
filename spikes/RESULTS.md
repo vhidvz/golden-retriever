@@ -181,5 +181,5 @@ application without synthetic input. The probe is in `spikes/workflow-a11y/`.
 
 Consequence: application-level workflow recording and verified replay are the first
 milestone; inside-application steps use guided capture and accessible actions, not
-keystrokes or coordinates. The detailed plan is
-`docs/superpowers/plans/2026-11-23-workflow-accessibility.md`.
+keystrokes or coordinates. The durable design is recorded in `docs/decisions.md` and
+`docs/development.md`.

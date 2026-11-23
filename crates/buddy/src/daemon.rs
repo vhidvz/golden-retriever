@@ -532,7 +532,7 @@ impl Daemon {
                 return;
             }
             self.noted("microphone", at);
-            let (model, tx) = (self.sim.settings.language_model.clone(), self.tx.clone());
+            let (model, tx) = (self.sim.settings.audio_model.clone(), self.tx.clone());
             thread::spawn(move || {
                 let outcome =
                     fs::read(&path).map_err(anyhow::Error::from).and_then(|wav| crate::ai::transcribe(&model, &wav)).map_err(|e| format!("{e:#}"));
@@ -775,11 +775,12 @@ impl Daemon {
                     Some("size_px") => Command::SetSize(number()?),
                     Some("adult_days") => Command::SetAdultDays(number()?),
                     Some("stay_in_fullscreen") => Command::StayInFullscreen(matches!(value, "on" | "true" | "yes")),
-                    Some("vision_model" | "language_model") if crate::ai::is_cloud_model(value) => {
+                    Some("vision_model" | "language_model" | "audio_model") if crate::ai::is_cloud_model(value) => {
                         bail!("cloud models are not used: Buddy runs a local model")
                     }
                     Some("vision_model") => Command::VisionModel(value.to_string()),
                     Some("language_model") => Command::LanguageModel(value.to_string()),
+                    Some("audio_model") => Command::AudioModel(value.to_string()),
                     Some("pictures") => {
                         if !matches!(value, "away" | "always" | "off") {
                             bail!("pictures can be: away (draw only while you are away), always, off");
@@ -788,7 +789,9 @@ impl Daemon {
                         self.persist(at)?;
                         return Ok(Value::Null);
                     }
-                    other => bail!("unknown setting {other:?} (name, size_px, adult_days, stay_in_fullscreen, vision_model, language_model, pictures)"),
+                    other => bail!(
+                        "unknown setting {other:?} (name, size_px, adult_days, stay_in_fullscreen, vision_model, language_model, audio_model, pictures)"
+                    ),
                 }
             }
             other => bail!("unknown command '{other}'"),

@@ -184,8 +184,14 @@ fn remember(name: &str, digest: Option<&str>) -> Result<bool> {
     // version and model store the daemon and the installer wrote.
     let mut runtime = if path.exists() { crate::ai_runtime::Runtime::load_from(&path)? } else { crate::ai_runtime::Runtime::default() };
     runtime.ollama_version = crate::ai::version().unwrap_or(runtime.ollama_version);
+    let capabilities = crate::ai::capabilities(name).unwrap_or_default();
     let language_ok = crate::client::request("set", json!({ "key": "language_model", "value": name })).is_ok();
-    let vision_ok = language_ok && crate::client::request("set", json!({ "key": "vision_model", "value": name })).is_ok();
+    let vision_ok = language_ok
+        && capabilities.iter().any(|capability| capability == "vision")
+        && crate::client::request("set", json!({ "key": "vision_model", "value": name })).is_ok();
+    let audio_ok = language_ok
+        && capabilities.iter().any(|capability| capability == "audio")
+        && crate::client::request("set", json!({ "key": "audio_model", "value": name })).is_ok();
     if language_ok {
         runtime.model = Some(name.to_string());
         runtime.model_digest = digest.map(str::to_string);
@@ -194,8 +200,11 @@ fn remember(name: &str, digest: Option<&str>) -> Result<bool> {
         println!("Start Buddy, then run: buddy ai model {name}");
     }
     runtime.save_to(&path)?;
-    if language_ok && !vision_ok {
+    if language_ok && capabilities.iter().any(|capability| capability == "vision") && !vision_ok {
         println!("The language model was set, but the vision model could not be updated.");
+    }
+    if language_ok && capabilities.iter().any(|capability| capability == "audio") && !audio_ok {
+        println!("The language model was set, but the audio model could not be updated.");
     }
     Ok(language_ok)
 }
@@ -240,7 +249,11 @@ pub fn setup(args: &[String]) -> Result<()> {
     pull(&chosen.name)?;
     let digest = crate::ai::digest(&chosen.name).ok();
     if remember(&chosen.name, digest.as_deref())? {
-        println!("Selected {}.", chosen.name);
+        if let Ok(capabilities) = crate::ai::capabilities(&chosen.name) {
+            println!("Selected {}. Supports: {}", chosen.name, capabilities.join(", "));
+        } else {
+            println!("Selected {}.", chosen.name);
+        }
     }
     Ok(())
 }

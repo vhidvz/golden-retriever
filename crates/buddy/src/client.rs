@@ -337,8 +337,11 @@ pub fn ai_status() -> Result<()> {
             println!("  endpoint:  {endpoint}");
             println!("  service:   {}", runtime.service);
             println!("  models:    {}", runtime.models_dir.display());
-            if let Some(model) = runtime.model {
+            if let Some(model) = &runtime.model {
                 println!("  selected:  {model}");
+                if let Ok(capabilities) = crate::ai::capabilities(model) {
+                    println!("  supports:  {}", capabilities.join(", "));
+                }
             }
         }
         Err(why) if manifest.exists() => {
@@ -518,6 +521,29 @@ pub fn workflow_delete(key: &str) -> Result<()> {
     Ok(())
 }
 
+/// Turn the microphone on only when the selected audio model can actually hear.
+pub fn voice(on: bool) -> Result<()> {
+    if !on {
+        request("sense", serde_json::json!({ "source": "microphone", "on": false }))?;
+        println!("Microphone off.");
+        return Ok(());
+    }
+    let providers = request("providers", Value::Null)?;
+    let local = &providers["local"];
+    if local["available"] != true {
+        bail!("the local model runtime is not available: {}", local["why"].as_str().unwrap_or("?"));
+    }
+    let model = local["understands_audio_with"].as_str().unwrap_or("?");
+    let capabilities: Vec<&str> = local["capabilities"]["audio"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+    if !capabilities.iter().any(|capability| *capability == "audio") {
+        bail!("the audio model '{model}' has no audio input; choose one with: buddy ai model NAME");
+    }
+    request("sense", serde_json::json!({ "source": "microphone", "on": true }))?;
+    println!("Listening through {model}. Say his name, or speak to him within twenty seconds of his name.");
+    println!("(If privacy mode is on, nothing is heard. Turn it off with: buddy privacy off)");
+    Ok(())
+}
+
 pub fn providers() -> Result<()> {
     let p = request_within("providers", Value::Null, Duration::from_secs(20))?;
     let local = &p["local"];
@@ -530,10 +556,17 @@ pub fn providers() -> Result<()> {
         }
         println!("  runtime: {} at {}", local["version"].as_str().unwrap_or("unknown version"), local["endpoint"].as_str().unwrap_or("?"));
         println!(
-            "  language: {}    images: {}",
+            "  language: {}    images: {}    audio: {}",
             local["understands_language_with"].as_str().unwrap_or("?"),
-            local["looks_at_images_with"].as_str().unwrap_or("?")
+            local["looks_at_images_with"].as_str().unwrap_or("?"),
+            local["understands_audio_with"].as_str().unwrap_or("?")
         );
+        for (label, key) in [("language", "language"), ("images", "vision"), ("audio", "audio")] {
+            let capabilities: Vec<&str> = local["capabilities"][key].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+            if !capabilities.is_empty() {
+                println!("  {label} supports: {}", capabilities.join(", "));
+            }
+        }
     } else {
         println!("Local models (Ollama): not available at {} — {}", local["endpoint"].as_str().unwrap_or("?"), local["why"].as_str().unwrap_or("?"));
     }

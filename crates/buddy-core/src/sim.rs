@@ -65,6 +65,7 @@ pub enum Command {
     StayInFullscreen(bool),
     VisionModel(String),
     LanguageModel(String),
+    AudioModel(String),
 }
 
 /// Something worth remembering; the daemon writes these to the journal.
@@ -912,6 +913,7 @@ impl Sim {
             Command::StayInFullscreen(on) => self.settings.stay_in_fullscreen = on,
             Command::VisionModel(model) => self.settings.vision_model = model,
             Command::LanguageModel(model) => self.settings.language_model = model,
+            Command::AudioModel(model) => self.settings.audio_model = model,
             Command::Rename(name) => {
                 self.identity.name = name;
                 self.out.push(journal("setting", json!({ "name": self.identity.name })));

@@ -25,9 +25,9 @@ Toolchain checked on 2026-11-22:
 - rustc and cargo 1.97.1, Python 3.14.7.
 - Blender 5.2.2 LTS at `/usr/bin/blender` (installed with pacman).
 - GNOME Shell 50.5.
-- Godot is **not** on `PATH` here: no `godot`, no `godot4`, no Flatpak. The project needs
-  Godot 4.6 or newer (the project file targets 4.7). When it is available, point
-  `BUDDY_GODOT` at the binary or `BUDDY_RENDERER_DIR` at the project. The daemon is
+- Godot is managed by the installer: a pinned 4.7.2 build lives under
+  `$BUDDY_DATA_DIR/godot/4.7.2`, and `BUDDY_GODOT` is written to `~/.config/buddy/env`.
+  A system `godot`/`godot4` or an explicit `BUDDY_GODOT` takes precedence. The daemon is
   designed to live without a renderer, so a missing Godot is not a reason to fake one.
 
 Before writing a substitute for an asset or a piece of tooling, check what is installed
@@ -59,9 +59,12 @@ Create the directory when needed; it is not part of the repository.
 - **Use installed tools.** Blender, Python, GNOME Shell and Ollama are present on the
   development machine. Prefer them over new dependencies, especially for anything the
   project must keep free and redistributable.
-- **Do not commit or push unless asked.** New phases and large persistent changes were
-  staged behind spike results, a written plan and explicit approval. Keep that habit.
-  This repository uses the owner's own commit messages and history; do not rewrite them.
+- **Commit finished tasks and merge them; never push unasked.** Work on a branch. When
+  a task the owner asked for is finished and verified, commit it and merge the branch
+  into `main` (fast-forward where possible); push only when explicitly asked. Do not
+  leave finished work on a side branch. New phases are still staged behind spike
+  results, a written plan and explicit approval. This repository uses the owner's own
+  commit messages and history; do not rewrite them.
 - **Local first.** Never make Buddy's life depend on Ollama or the network. The model
   provider must fail on its own and be reported in plain words.
 - **He is a dog.** No text-to-speech, no human voice, no chatbot persona. Invitations,
@@ -76,10 +79,19 @@ Create the directory when needed; it is not part of the repository.
   repository copy is authoritative.
 - **No paid assets or services.** CC BY-NC material is offered as a separate optional
   download, never bundled. See `docs/decisions.md`.
+- **Tracked documents never cite untracked scratch.** Do not point a git-tracked file at
+  `.superpowers/`, `~/.cache/...`, a session workspace, an absolute home path, or another
+  temporary artifact as a source or as the only home of a fact. Copy the durable summary
+  into a tracked document and cite that instead. Runtime/product paths and the designated
+  scratch directory as an instruction are allowed, but never as evidence.
+- **A plan is process, not a project artifact.** Do not copy a task-by-task plan or
+  session ledger into the repository. Extract its durable decisions, interfaces,
+  constraints and evidence into the existing docs, spikes or memory, then delete the
+  plan copy. A future session should not need a separate plans tree.
 
 ## Testing and runtime traps
 
-- `cargo test` currently runs 96 tests in under 30 seconds. Unit tests sit beside their
+- `cargo test` currently runs 97 tests in under 30 seconds. Unit tests sit beside their
   modules; the daemon lifecycle test is `crates/buddy/tests/lifecycle.rs`.
 - **Wall-clock time:** tests must not depend on the hour. The lifecycle sandbox sets
   `BUDDY_HOUR=12` because a sleeping dog answers differently; a test that passes at noon
@@ -97,8 +109,11 @@ Create the directory when needed; it is not part of the repository.
   writable runtime directory. `BUDDY_TRACE_SENSES=1` makes the daemon log what it hears.
 - **Workflows:** `buddy workflow record NAME`, `stop`, `replay`, `workflows`. Replay
   opens each application and waits for a real focus event before advancing; no keys,
-  clicks or coordinates are sent. See `docs/superpowers/plans/2026-11-23-workflow-recording.md`
-  and the accessibility research in `spikes/workflow-a11y/`.
+  clicks or coordinates are sent. Inside-application steps are designed as AT-SPI guided
+  capture (semantic locator, accessible action, event/state verification); the
+  accessibility sense is off by default and text entry, password fields, terminals and
+  shells are refused. Evidence: `spikes/workflow-a11y/RESULTS.md`; the durable decisions
+  are in `docs/decisions.md`. No separate plan file is kept as a project artifact.
 - **Ollama:** `scripts/install.sh` installs a pinned runtime under
   `$BUDDY_DATA_DIR/ollama/<version>` and starts `buddy-ollama.service` on
   `127.0.0.1:11435` with its own model store. A system Ollama on 11434 is left untouched.

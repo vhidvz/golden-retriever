@@ -53,6 +53,7 @@ On the computer (try: buddy say 'find my tax report'):
                                  recommend and install a model for this machine
   buddy ai model [NAME]          show or change the selected model
   buddy ai repair | prune        re-pull the selected model / remove unused models
+  buddy voice on|off             listen through the selected audio model / stop listening
   buddy quiet on|off             no sounds and no asking for attention
   buddy why                      what he is doing, why, and how he feels
   buddy privacy on|off           suspend / resume every perception source
@@ -60,7 +61,7 @@ On the computer (try: buddy say 'find my tax report'):
   buddy look [--file IMAGE]      have him look at the screen once (or at an image) and say what he makes of it
   buddy sense SOURCE on|off      system | desktop | window_titles | screen | camera | microphone
   buddy set KEY VALUE            name | size_px (adult height) | adult_days (growth timeline) |
-                                 stay_in_fullscreen (on/off) | vision_model | language_model |
+                                 stay_in_fullscreen (on/off) | vision_model | language_model | audio_model |
                                  pictures (away: draw his pictures only while you are away,
                                  the default; always; off)
   buddy snapshot [FILE.png]      save exactly what his window shows right now (nothing else on
@@ -124,6 +125,7 @@ fn main() -> Result<()> {
         (Some("unlearn"), Some(cue)) => ("unlearn", json!({ "cue": cue })),
         (Some("memories"), _) => return client::memories(),
         (Some("forget"), Some(id)) => ("forget", json!({ "id": id.parse::<i64>().ok() })),
+        (Some("voice"), Some(v @ ("on" | "off"))) => return client::voice(v == "on"),
         (Some("quiet"), Some(v @ ("on" | "off"))) => ("quiet", json!({ "on": v == "on" })),
         (Some("sleep"), _) => ("sleep", Value::Null),
         (Some("wake"), _) => ("wake", Value::Null),

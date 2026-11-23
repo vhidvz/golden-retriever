@@ -47,6 +47,8 @@ pub struct Settings {
     pub vision_model: String,
     /// The local model used to understand what is said when his own vocabulary is not enough.
     pub language_model: String,
+    /// The local model used to hear speech and sound.
+    pub audio_model: String,
     /// Hours his night is shifted later, for a user who works late.
     pub night_shift_hours: f64,
     /// When his pictures with a real coat may be drawn: "away" (only while the user is
@@ -67,6 +69,7 @@ impl Default for Settings {
             stay_in_fullscreen: false,
             vision_model: "gemma4:e4b".into(),
             language_model: "gemma4:e4b".into(),
+            audio_model: "gemma4:e4b".into(),
             night_shift_hours: 0.0,
             pictures: "away".into(),
         }

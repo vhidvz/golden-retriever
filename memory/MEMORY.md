@@ -4,4 +4,6 @@
 - [Blender is installed, use it](blender-is-installed-use-it.md) — Blender 5.2.2 headless builds Buddy's body; check installed tools before writing a substitute
 - [Where work files live](work-files-location.md) — /tmp is wiped between sessions; renders, bakes and helpers go in ~/.cache/buddy-spikes/
 - [Self-contained AI runtime (implemented)](self-contained-ai.md) — managed Ollama as sole runtime, Claude Code removed, AI4Animation spike done; decision record and plan in docs/
-- [Workflow recording (implemented, uncommitted)](workflow-recording.md) — app-level routines record and replay with focus verification; inside-app accessible actions researched and planned
+- [Workflow recording (implemented)](workflow-recording.md) — app-level routines record and replay with focus verification; inside-app accessible actions researched, design in docs/decisions.md
+- [Tracked docs never cite untracked scratch; plans are not artifacts](tracked-docs-no-untracked-refs.md) — durable knowledge must live in git; extract plan knowledge, delete the plan copy
+- [Merge completed tasks into main](merge-completed-tasks-into-main.md) — commit finished requested work and fast-forward it to main; push only when asked

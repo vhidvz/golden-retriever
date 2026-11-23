@@ -9,3 +9,6 @@ __pycache__/
 
 # Personal Claude Code settings
 .claude/settings.local.json
+
+# Superpowers scratch workspaces (plans are process, not project artifacts)
+.superpowers/

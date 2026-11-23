@@ -27,8 +27,9 @@ sent, so it can crash, be hidden or be replaced without him noticing.
 
 ## Run it
 
-Requirements: Rust, Godot 4.6 or newer on `PATH` (or `BUDDY_GODOT`), an X11 or
-XWayland display. Developed on Manjaro with GNOME 50.
+Requirements: Rust and an X11 or XWayland display. The installer downloads a pinned
+Godot 4.7.2 under `~/.local/share/buddy/godot` unless a suitable `godot`/`godot4` is on
+`PATH` or `BUDDY_GODOT` is set. Developed on Manjaro with GNOME 50.
 
 ```sh
 cargo test                      # brain and daemon tests
@@ -371,7 +372,8 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
   came to the front. He does not yet record or replay what you do inside applications,
   and has no way to press keys or click for you.
 - Suspend is handled by time accounting only; there is no lock or sleep signal yet.
-- The renderer needs Godot installed; it is not yet exported as a standalone binary.
+- The renderer needs Godot; the installer provides a pinned copy, but the renderer is
+  not yet exported as a standalone binary.
 
 ## Roadmap
 

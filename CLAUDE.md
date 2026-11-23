@@ -33,7 +33,7 @@ The invariants that matter most:
 
 ```sh
 cargo build --release
-cargo test                                    # 96 tests, under 30 s on the dev machine
+cargo test                                    # 97 tests, under 30 s on the dev machine
 cargo test -p buddy-core <test_name>          # one unit test
 cargo test -p buddy --test lifecycle          # daemon persistence/lifecycle integration test
 cargo fmt --check                             # rustfmt.toml: max_width 150 (currently reports pre-existing diffs)
@@ -69,10 +69,11 @@ godot --headless --path renderer -s res://export_poses.gd -- \
       --growth 0.02 --size 420 --out poses.json [--only stand,walk]
 ```
 
-Godot is not currently on `PATH` in this environment (`godot`, `godot4` and the Flatpak
-are absent). Check before assuming it is available; set `BUDDY_GODOT` or
-`BUDDY_RENDERER_DIR` when it is installed elsewhere. Do not fake a render or substitute
-a different renderer: the daemon is designed to keep living without one.
+The installer downloads a pinned Godot 4.7.2 under `$BUDDY_DATA_DIR/godot` and writes
+`BUDDY_GODOT` into `~/.config/buddy/env`; a system `godot`/`godot4` or an explicit
+`BUDDY_GODOT` takes precedence. `BUDDY_RENDERER_DIR` points at a renderer project when it
+is not next to the binary. Do not fake a render or substitute a different renderer: the
+daemon is designed to keep living without one.
 
 ### Body and pre-drawn pictures (Blender)
 
@@ -161,8 +162,23 @@ contract, so adding a field there means updating both the daemon and the Godot s
 - **Scratch outside `/tmp`.** `/tmp` is tmpfs and is wiped between sessions. Keep
   renders, bakes and helper scripts under `~/.cache/buddy-spikes/` (`work/`, `realism/`,
   `reference/`).
-- **Do not commit or push unless asked.** New phases and large persistent changes were
-  staged behind spikes, a written plan and explicit approval; keep that habit.
+- **Commit finished tasks and merge them; never push unasked.** Work on a branch. When
+  a task the owner asked for is finished and verified, commit it and merge the branch
+  into `main` (fast-forward where possible); push only when explicitly asked. Do not
+  leave finished work on a side branch. New phases are still staged behind spikes, a
+  written plan and explicit approval.
+- **Tracked documents never cite untracked scratch.** A file in git must not point at
+  `.superpowers/`, `~/.cache/...`, a session workspace, an absolute home path, or another
+  temporary artifact as a source or as the only home of durable knowledge. Copy the
+  durable summary into a tracked file and cite that. Product/runtime paths and the
+  designated scratch directory as a working instruction are allowed, but never as
+  evidence.
+- **A plan is process, not a project artifact.** Do not copy a task-by-task plan,
+  session ledger or plugin workspace into the repository. When a plan produced durable
+  knowledge, move the decisions, interfaces, constraints and evidence into the existing
+  artifacts (`README.md`, `docs/decisions.md`, `docs/development.md`,
+  `spikes/*/RESULTS.md`, `memory/`) and delete the plan copy. Do not create a parallel
+  `docs/plans/`, `docs/superpowers/` or similar tree.
 
 Full detail: `docs/decisions.md` and `docs/development.md`. The versioned session memory
 lives in `memory/`; start at `memory/MEMORY.md`.

@@ -269,13 +269,28 @@ impl Daemon {
             "providers" => {
                 let endpoint = crate::ai::endpoint();
                 let version = crate::ai::version().ok();
-                Ok(json!({
-                    "local": match crate::ai::models() {
-                        Ok(models) => json!({ "available": true, "endpoint": endpoint, "version": version, "models": models, "understands_language_with": self.sim.settings.language_model, "looks_at_images_with": self.sim.settings.vision_model }),
-                        Err(why) => json!({ "available": false, "endpoint": endpoint, "version": version, "why": format!("{why:#}") }),
-                    },
-                    "order": "his own vocabulary first, then the local model",
-                }))
+                let language = self.sim.settings.language_model.clone();
+                let vision = self.sim.settings.vision_model.clone();
+                let audio = self.sim.settings.audio_model.clone();
+                let caps = |model: &str| crate::ai::capabilities(model).unwrap_or_default();
+                let local = match crate::ai::models() {
+                    Ok(models) => json!({
+                        "available": true,
+                        "endpoint": endpoint,
+                        "version": version,
+                        "models": models,
+                        "understands_language_with": language,
+                        "looks_at_images_with": vision,
+                        "understands_audio_with": audio,
+                        "capabilities": {
+                            "language": caps(&language),
+                            "vision": caps(&vision),
+                            "audio": caps(&audio),
+                        },
+                    }),
+                    Err(why) => json!({ "available": false, "endpoint": endpoint, "version": version, "why": format!("{why:#}") }),
+                };
+                Ok(json!({ "local": local, "order": "his own vocabulary first, then the local model" }))
             }
             _ => return None,
         })
