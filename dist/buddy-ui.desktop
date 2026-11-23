@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Buddy
+GenericName=Desktop Dog
+Comment=Talk to Buddy, see how he is, and configure his senses, skills and local AI.
+Exec=@BUDDY_UI@
+TryExec=@BUDDY_UI@
+Icon=buddy
+Terminal=false
+Categories=Utility;
+Keywords=dog;buddy;assistant;ollama;workflow;senses;
+StartupNotify=true
+StartupWMClass=buddy-ui

@@ -84,6 +84,9 @@ Create the directory when needed; it is not part of the repository.
   temporary artifact as a source or as the only home of a fact. Copy the durable summary
   into a tracked document and cite that instead. Runtime/product paths and the designated
   scratch directory as an instruction are allowed, but never as evidence.
+- **The control panel is a client, never a second brain.** `ui/buddy_ui.py` speaks the
+  same newline-delimited JSON socket as `crates/buddy/src/client.rs`; it stores no state
+  and never opens the database. Any behaviour it exposes must exist in the daemon first.
 - **A plan is process, not a project artifact.** Do not copy a task-by-task plan or
   session ledger into the repository. Extract its durable decisions, interfaces,
   constraints and evidence into the existing docs, spikes or memory, then delete the
@@ -131,6 +134,17 @@ Create the directory when needed; it is not part of the repository.
   when the project has measurements.
 - **Claude Code:** removed on 2026-11-22. The historical spike remains under
   `spikes/claude-code/` for the record; it is not part of Buddy's runtime.
+- **Control panel:** `ui/buddy_ui.py` is a GTK4/libadwaita client installed as
+  `buddy-ui`, with `dist/buddy-ui.desktop` and `ui/buddy.svg` for the application list.
+  It needs Python 3, PyGObject, GTK 4 and libadwaita; the daemon and CLI do not. Check it
+  with `python3 -m py_compile ui/buddy_ui.py`, `desktop-file-validate
+  dist/buddy-ui.desktop`, and a launch under X11 (`GDK_BACKEND=x11 BUDDY_UI_PAGE=home
+  python3 ui/buddy_ui.py`). `BUDDY_UI_PAGE` selects a page for support checks; `BUDDY_SOCKET`
+  pointing at a missing socket exercises the offline state. The panel is one client of
+  the same socket as the CLI; it cannot change state except by asking the daemon. The
+  installer copies it to `$BUDDY_DATA_DIR/ui`, installs the launcher in `~/.local/bin`,
+  the desktop file in the user applications directory, and SVG/PNG icons in hicolor.
+  `buddy snapshot` still saves only Buddy's window, not the control panel or the desktop.
 - **Screenshots:** `buddy snapshot` saves only Buddy's window, not the desktop. Use it for
   drawing bugs; do not capture the user's screen for diagnosis.
 

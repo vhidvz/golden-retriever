@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#24483a"/>
+      <stop offset="1" stop-color="#0e1a15"/>
+    </linearGradient>
+    <linearGradient id="fur" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f7d28a"/>
+      <stop offset="1" stop-color="#d18a34"/>
+    </linearGradient>
+    <linearGradient id="muzzle" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fde9bd"/>
+      <stop offset="1" stop-color="#efc57c"/>
+    </linearGradient>
+    <linearGradient id="ear" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c98538"/>
+      <stop offset="1" stop-color="#a96322"/>
+    </linearGradient>
+  </defs>
+  <rect x="14" y="14" width="484" height="484" rx="116" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="196" fill="#35604c" opacity=".34"/>
+  <g transform="translate(256 262) scale(1.07) translate(-256 -262)">
+    <path d="M160 170c-42 10-70 70-64 146 5 62 38 92 66 78 26-14 30-62 26-108-4-50-8-98-28-116Z" fill="url(#ear)"/>
+    <path d="M352 170c42 10 70 70 64 146-5 62-38 92-66 78-26-14-30-62-26-108 4-50 8-98 28-116Z" fill="url(#ear)"/>
+    <path d="M152 206c-18 30-20 88-8 126 7 22 21 20 27 0 6-28 2-80-10-106-4-10-6-14-9-20Z" fill="#8d4f1a" opacity=".45"/>
+    <path d="M360 206c18 30 20 88 8 126-7 22-21 20-27 0-6-28-2-80 10-106 4-10 6-14 9-20Z" fill="#8d4f1a" opacity=".45"/>
+    <path d="M256 122c86 0 134 60 130 148-4 88-58 134-130 134S130 358 126 270c4-88 44-148 130-148Z" fill="url(#fur)"/>
+    <ellipse cx="256" cy="324" rx="98" ry="74" fill="url(#muzzle)"/>
+    <ellipse cx="204" cy="250" rx="19" ry="23" fill="#2a1b11"/>
+    <ellipse cx="308" cy="250" rx="19" ry="23" fill="#2a1b11"/>
+    <circle cx="211" cy="242" r="6.5" fill="#fff9ea"/>
+    <circle cx="315" cy="242" r="6.5" fill="#fff9ea"/>
+    <path d="M226 296q30-18 60 0 9 14-30 25-39-11-30-25Z" fill="#2a1b11"/>
+    <path d="M256 321v15M256 336q-21 16-37 2M256 336q21 16 37 2" stroke="#2a1b11" stroke-width="8" stroke-linecap="round" fill="none"/>
+    <path d="M239 346c0 16 7 24 17 24s17-8 17-24c-10-5-24-5-34 0Z" fill="#e88488"/>
+    <path d="M248 354v8M264 354v8" stroke="#c96570" stroke-width="3" stroke-linecap="round"/>
+    <path d="M180 210q26-16 50-4M282 206q24-12 50 4" stroke="#b9752b" stroke-width="11" stroke-linecap="round" fill="none"/>
+    <path d="M168 366q88 48 176 0" stroke="#2b6d65" stroke-width="18" fill="none" stroke-linecap="round"/>
+    <circle cx="256" cy="410" r="17" fill="#e2a84e"/>
+    <circle cx="256" cy="410" r="7" fill="#fbe6b8"/>
+  </g>
+</svg>

@@ -323,12 +323,65 @@ install_ai_runtime() {
     mv "$runtime_tmp" "$odir/runtime.json"
 }
 
+install_ui() {
+    command -v python3 >/dev/null 2>&1 || { warn "python3 is missing; the control panel was not installed"; return 0; }
+    if ! python3 -c 'import gi; gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1")' >/dev/null 2>&1; then
+        warn "the control panel needs python-gobject, GTK 4 and libadwaita; it may not start"
+    fi
+    rm -rf "$share/ui"
+    mkdir -p "$share/ui"
+    cp "$repo"/ui/buddy_ui.py "$repo"/ui/buddy.css "$repo"/ui/buddy.svg "$share/ui/"
+    chmod 644 "$share"/ui/buddy_ui.py "$share"/ui/buddy.css "$share"/ui/buddy.svg
+    printf '#!/bin/sh\nexec python3 "%s/ui/buddy_ui.py" "$@"\n' "$share" > "$bin/buddy-ui"
+    chmod 755 "$bin/buddy-ui"
+
+    icons="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor"
+    mkdir -p "$icons/scalable/apps"
+    cp "$repo/ui/buddy.svg" "$icons/scalable/apps/buddy.svg"
+    chmod 644 "$icons/scalable/apps/buddy.svg"
+    if command -v rsvg-convert >/dev/null 2>&1; then
+        for size in 16 24 32 48 64 128 256 512; do
+            mkdir -p "$icons/${size}x${size}/apps"
+            rsvg-convert -w "$size" -h "$size" "$repo/ui/buddy.svg" -o "$icons/${size}x${size}/apps/buddy.png" 2>/dev/null || true
+        done
+    fi
+    if command -v gtk4-update-icon-cache >/dev/null 2>&1; then
+        gtk4-update-icon-cache -f -t "$icons" >/dev/null 2>&1 || true
+    elif command -v gtk-update-icon-cache >/dev/null 2>&1; then
+        gtk-update-icon-cache -f -t "$icons" >/dev/null 2>&1 || true
+    fi
+
+    applications="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+    mkdir -p "$applications"
+    sed "s|@BUDDY_UI@|$bin/buddy-ui|g" "$repo/dist/buddy-ui.desktop" > "$applications/buddy.desktop"
+    chmod 644 "$applications/buddy.desktop"
+    command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$applications" >/dev/null 2>&1 || true
+    command -v desktop-file-validate >/dev/null 2>&1 && desktop-file-validate "$applications/buddy.desktop" >/dev/null 2>&1 || true
+}
+
+uninstall_ui() {
+    applications="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+    icons="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor"
+    rm -f "$bin/buddy-ui" "$applications/buddy.desktop" "$icons/scalable/apps/buddy.svg"
+    for size in 16 24 32 48 64 128 256 512; do
+        rm -f "$icons/${size}x${size}/apps/buddy.png"
+    done
+    rm -rf "$share/ui"
+    if command -v gtk4-update-icon-cache >/dev/null 2>&1; then
+        gtk4-update-icon-cache -f -t "$icons" >/dev/null 2>&1 || true
+    elif command -v gtk-update-icon-cache >/dev/null 2>&1; then
+        gtk-update-icon-cache -f -t "$icons" >/dev/null 2>&1 || true
+    fi
+    command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$applications" >/dev/null 2>&1 || true
+}
+
 remove_buddy() {
     systemctl --user disable --now buddy.service 2>/dev/null || true
     systemctl --user disable --now buddy-ollama.service 2>/dev/null || true
     rm -f "$units/buddy.service" "$units/buddy-ollama.service" "$units/buddy.service.d/data-dir.conf" "$bin/buddy"
     rmdir "$units/buddy.service.d" 2>/dev/null || true
-    rm -rf "$share/renderer" "$share/perception" "$share/tools" "$share/godot" "$extensions/$extension"
+    rm -rf "$share/renderer" "$share/perception" "$share/tools" "$share/godot" "$share/ui" "$extensions/$extension"
+    uninstall_ui
     gnome-extensions disable "$extension" 2>/dev/null || true
     systemctl --user daemon-reload 2>/dev/null || true
     echo "Buddy removed. His memory, the managed AI runtime and its models are still in $share."
@@ -375,6 +428,10 @@ cp "$repo"/perception/*.py "$share/perception/"
 
 # The renderer needs Godot; if it is not already available, install a pinned copy.
 install_godot
+# install_godot uses a private umask for the managed runtime; everything after it is
+# ordinary user-readable application data.
+umask 022
+install_ui
 
 # The desktop sense is a GNOME Shell extension. On Wayland a newly installed extension
 # is only loaded at the next login, so it is switched on now and starts working then.
@@ -414,6 +471,7 @@ if [ "$no_ai" -eq 0 ]; then
 fi
 
 echo "Buddy is running and will start with your desktop session. Try: buddy status"
+echo "Buddy's control panel is in your application list as Buddy, or run: buddy-ui"
 if [ "$no_ai" -eq 0 ]; then
     if command -v loginctl >/dev/null 2>&1; then
         if ! loginctl show-user "${USER:-$(id -un)}" 2>/dev/null | grep -q 'Linger=yes'; then

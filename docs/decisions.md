@@ -128,3 +128,30 @@ The measurements behind the design, including the `gemma4:e4b` evaluation, are i
   additional requirement 11 (Ollama becomes the sole AI runtime; Claude Code is
   removed). Phases 0–3 are implemented and Phase 4 is a completed research spike; no
   commit has been made. Status and deferred items are in the plan.
+
+## Control panel (approved 2026-11-23)
+
+- **A native control panel ships with the daemon.** A GTK4/libadwaita application,
+  launched as **Buddy** from the application list or as `buddy-ui`, gives one place to
+  see his state and to configure him without memorising the CLI. Its layout is
+  status-first: a sidebar, a live home page with needs and waiting requests, a model
+  picker with capability badges, and settings grouped by what they affect. The
+  inspiration is LM Studio's clear sidebar-and-dashboard arrangement, not its code.
+- **The daemon remains the single decision-maker.** The panel is a socket client like
+  the CLI. It stores no simulation state, never opens the database, and sends every
+  change through the same commands. Closing it does not stop Buddy; if it cannot reach
+  the daemon it shows an offline state and a retry rather than inventing one.
+- **It covers the whole surface, with long network operations left to the CLI.** Home,
+  Talk, Train (words, memories, praise), Senses and privacy, Local AI (models, voice,
+  capabilities, doctor), Skills and folders, Workflows (record, guided capture, replay,
+  delete), Journal and export, and Settings are in the window. `buddy ai setup`,
+  `repair` and `prune` are shown as copyable terminal commands because they are long,
+  network-facing operations; `doctor` and model choices are interactive.
+- **It is optional and free.** The panel uses the system Python, PyGObject, GTK 4 and
+  libadwaita; no new paid service, web runtime or bundled asset is added. The daemon,
+  CLI and renderer keep working when the panel's stack is absent. The installer warns
+  when the panel's dependencies are missing.
+- **Desktop identity is part of the deliverable.** `ui/buddy.svg` is the application
+  icon (a golden retriever face in the project's forest-and-amber palette); the
+  installer renders the hicolor sizes, installs `buddy.desktop`, and refreshes the
+  icon cache. The window class is `buddy-ui` so the launcher groups correctly.

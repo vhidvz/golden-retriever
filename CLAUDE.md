@@ -42,6 +42,8 @@ cargo run -- daemon --no-renderer             # headless (no Godot window)
 cargo run -- status                           # CLI client against a running daemon
 scripts/install.sh                            # install for this user and start with the session
 scripts/install.sh --remove                   # stop and remove (keeps ~/.local/share/buddy)
+buddy-ui                                      # optional GTK4/libadwaita control panel
+python3 -m py_compile ui/buddy_ui.py          # check the panel
 ```
 
 `cargo fmt --check` currently reports pre-existing formatting differences on this
@@ -115,7 +117,7 @@ spikes/claude-code/run.sh         # historical: the Claude Code boundary was rem
 
 ## Architecture
 
-Two crates, one long-running process, and a replaceable renderer.
+Two crates, one long-running process, a replaceable renderer, and an optional native control panel.
 
 - `crates/buddy-core` — the brain. Pure simulation: `Sim` advances `Mind` (identity,
   life, needs, mood, personality, training, habits, senses); `behavior` scores his
@@ -135,6 +137,10 @@ Two crates, one long-running process, and a replaceable renderer.
   implement the first-run hardware assessment and model choice. Claude Code was removed.
   `baker.rs` runs the offline sprite bake only while the user is away. `system.rs` polls
   idle time, lock and load.
+- `ui/` — the optional GTK4/libadwaita control panel (`buddy-ui`). It is a socket client
+  like the CLI: it stores no state, never touches the database, and its actions go through
+  the daemon. `ui/buddy.svg` is the installed application icon; `dist/buddy-ui.desktop`
+  is the launcher. `scripts/install.sh` installs the launcher, icons and desktop entry.
 - `renderer/` — the Godot overlay. `main.gd` connects to the socket and draws the state
   it is sent. `dog.gd` is the older procedural stand-in; `retriever.gd` loads the skinned
   model from `renderer/dog/retriever.json` and extends it. `sprites.gd` uses pre-drawn
@@ -149,9 +155,10 @@ Two crates, one long-running process, and a replaceable renderer.
 - Data: `~/.local/share/buddy/buddy.db` (SQLite; migrations are the `MIGRATIONS` array in
   `store.rs`; a daily backup sits beside it), `.../sprites/`, and `.../notes.md`.
 
-The daemon is the single decision-maker. The renderer, CLI and sense providers are
-clients; any of them can die without stopping his life. `proto::StateMsg` is the renderer
-contract, so adding a field there means updating both the daemon and the Godot side.
+The daemon is the single decision-maker. The renderer, CLI, control panel and sense
+providers are clients; any of them can die without stopping his life. `proto::StateMsg`
+is the renderer contract, so adding a field there means updating both the daemon and the
+Godot side.
 
 ## Working agreements from the project owner
 
@@ -201,5 +208,7 @@ lives in `memory/`; start at `memory/MEMORY.md`.
 - Renderer and body: `renderer/main.gd`, `retriever.gd`, `sprites.gd`,
   `renderer/dog/retriever.json`, `tools/build_dog.py`, `tools/bake_sprites.py`.
 - Senses: `shell-extension/`, `perception/`, `crates/buddy/src/system.rs`.
+- Control panel and desktop identity: `ui/buddy_ui.py`, `ui/buddy.css`, `ui/buddy.svg`,
+  `dist/buddy-ui.desktop`, `scripts/install.sh`.
 - Evidence and limits: `spikes/RESULTS.md`, `docs/proportions.md`, README "Known gaps".
 - Project memory and standing decisions: `memory/MEMORY.md`, `docs/decisions.md`.
