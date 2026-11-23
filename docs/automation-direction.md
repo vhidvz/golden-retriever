@@ -192,3 +192,15 @@ preconditions, verification, an immediate stop and audit.
 - HiddenLayer, indirect prompt injection of computer use:
   <https://www.hiddenlayer.com/research/indirect-prompt-injection-of-claude-computer-use>
 - UI-TARS-1.5-7B: <https://huggingface.co/ByteDance-Seed/UI-TARS-1.5-7B>
+
+## Implemented: Stage 1 helper registry (2026-11-23)
+
+The first safe slice is live. Helpers are owner-written JSON manifests in
+`$BUDDY_DATA_DIR/helpers`; `crates/buddy/src/helpers.rs` validates argv arrays (never
+shell strings), declared placeholders, an approved cwd and a timeout. `buddy helpers`,
+`buddy helper dir|show|dry-run|run` expose them. `run_helper` is a sensitive skill and
+every execution waits for a yes; dry-run executes nothing. See `docs/helpers.md`.
+
+Not implemented: model-driven helper selection, a true sandbox and synthetic input. The
+model tool list deliberately omits `run_helper` until a helper catalogue can be attached
+to the request, and Stage 2 still requires the portal/consent spike.

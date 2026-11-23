@@ -44,7 +44,7 @@ pub struct Skill {
     pub arguments: &'static [&'static str],
 }
 
-pub const SKILLS: [Skill; 8] = [
+pub const SKILLS: [Skill; 9] = [
     Skill { name: "find_files", what: "Find files by name in the folders he may use.", risk: Risk::Looks, arguments: &["query"] },
     Skill { name: "read_file", what: "Read a text file in the folders he may use.", risk: Risk::Looks, arguments: &["path"] },
     Skill { name: "open_app", what: "Open an installed application.", risk: Risk::Changes, arguments: &["name"] },
@@ -53,6 +53,12 @@ pub const SKILLS: [Skill; 8] = [
     Skill { name: "move_file", what: "Move or rename a file within the folders he may use.", risk: Risk::Changes, arguments: &["from", "to"] },
     Skill { name: "run_command", what: "Run a shell command.", risk: Risk::Sensitive, arguments: &["command"] },
     Skill { name: "replay_workflow", what: "Replay a saved workflow and check each step.", risk: Risk::Changes, arguments: &["workflow", "id"] },
+    Skill {
+        name: "run_helper",
+        what: "Run a named helper script the owner registered. It always asks first.",
+        risk: Risk::Sensitive,
+        arguments: &["helper", "args"],
+    },
 ];
 
 pub fn skill(name: &str) -> Option<&'static Skill> {
@@ -134,6 +140,7 @@ pub fn describe(name: &str, args: &Value) -> String {
         "move_file" => format!("move {} to {}", arg("from"), arg("to")),
         "run_command" => format!("run the command: {}", arg("command")),
         "replay_workflow" => format!("replay the workflow \u{201c}{}\u{201d}", arg("workflow")),
+        "run_helper" => format!("run the helper \u{201c}{}\u{201d}", arg("helper")),
         other => format!("do '{other}'"),
     }
 }
@@ -195,6 +202,7 @@ pub fn run(name: &str, args: &Value, permissions: &Permissions, notes: &Path) ->
             })
         }
         "run_command" => run_command(text(args, "command")?),
+        "run_helper" => bail!("helper execution is handled by the daemon"),
         other => bail!("he has no skill called '{other}'"),
     }
 }
@@ -381,6 +389,8 @@ pub fn as_tools() -> Value {
     Value::Array(
         SKILLS
             .iter()
+            // The model gets helper tools only after a helper catalogue is attached.
+            .filter(|s| s.name != "run_helper")
             .map(|s| {
                 let properties: serde_json::Map<String, Value> = s.arguments.iter().map(|a| (a.to_string(), json!({ "type": "string" }))).collect();
                 json!({ "type": "function", "function": { "name": s.name, "description": s.what,
@@ -448,7 +458,7 @@ mod tests {
 
     #[test]
     fn the_skill_list_is_the_eight_local_skills() {
-        assert_eq!(SKILLS.len(), 8);
+        assert_eq!(SKILLS.len(), 9);
         assert!(skill("ask_claude").is_none(), "Claude Code was removed; it is not a skill");
         assert!(skill("run_command").is_some());
         assert!(skill("replay_workflow").is_some());

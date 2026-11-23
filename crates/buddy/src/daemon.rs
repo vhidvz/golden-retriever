@@ -4,6 +4,7 @@
 mod assist;
 
 use crate::baker::Baker;
+use crate::helpers;
 use crate::renderer::Renderer;
 use crate::skills::{Permissions, Undo};
 use anyhow::{Context, Result, anyhow, bail};
@@ -1133,6 +1134,17 @@ impl Daemon {
                 return self.workflow_type_step(text);
             }
             "workflow_manual_step" => return self.workflow_manual_step(args),
+            "helpers" => return helpers::load_all(&helpers::dir()).map(|list| serde_json::to_value(list).unwrap_or(Value::Null)),
+            "helper" => {
+                let name = args["name"].as_str().context("helper needs a name")?;
+                return serde_json::to_value(helpers::find(&helpers::dir(), name)?).context("could not describe the helper");
+            }
+            "helper_dry_run" => {
+                let name = args["helper"].as_str().context("helper_dry_run needs a helper")?;
+                let helper = helpers::find(&helpers::dir(), name)?;
+                let values = assist::helper_values(args);
+                return helpers::dry_run(&helper, &values, &self.permissions);
+            }
             "workflow_delete" => {
                 let id = if let Some(id) = args["id"].as_u64() {
                     id
@@ -1317,6 +1329,7 @@ impl Daemon {
                     self.answer(id, args["id"].as_u64(), name == "approve", args["lasting"] == true, at)
                 }
                 ClientMsg::Command { name, args } if name == "replay_workflow" => self.propose(id, "replay_workflow", args, None, "you", at),
+                ClientMsg::Command { name, args } if name == "helper_run" => self.propose(id, "run_helper", args, None, "you", at),
                 ClientMsg::Command { name, args: _ } if name == "workflow_continue" => self.continue_replay(id, at),
                 ClientMsg::Command { name, args } if name == "say" => self.said(id, args["text"].as_str().unwrap_or_default(), at),
                 ClientMsg::Command { name, args } => {

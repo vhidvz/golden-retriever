@@ -670,6 +670,67 @@ pub fn workflow_manual_step(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+fn helper_args(args: &[String]) -> Result<Value> {
+    let mut values = serde_json::Map::new();
+    let mut index = 0;
+    while index < args.len() {
+        if args[index] == "--arg" {
+            let pair = args.get(index + 1).context("--arg needs NAME=VALUE")?;
+            let (name, value) = pair.split_once('=').with_context(|| format!("--arg expects NAME=VALUE, not {pair:?}"))?;
+            if name.is_empty() {
+                bail!("--arg needs a name before '='");
+            }
+            values.insert(name.to_string(), Value::String(value.to_string()));
+            index += 2;
+        } else {
+            bail!("unexpected helper argument {:?}; use --arg NAME=VALUE", args[index]);
+        }
+    }
+    Ok(Value::Object(values))
+}
+
+pub fn helpers() -> Result<()> {
+    let list = request("helpers", Value::Null)?;
+    let rows = list.as_array().cloned().unwrap_or_default();
+    if rows.is_empty() {
+        println!("No helpers yet. Put JSON manifests in: {}", buddy_core::paths::data_dir().join("helpers").display());
+        return Ok(());
+    }
+    for helper in rows {
+        let arguments: Vec<&str> = helper["arguments"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+        println!(
+            "{:<24} {:<10} {:<10} {}",
+            helper["name"].as_str().unwrap_or("?"),
+            helper["risk"].as_str().unwrap_or("changes"),
+            if arguments.is_empty() { "-".to_string() } else { arguments.join(",") },
+            helper["description"].as_str().unwrap_or("")
+        );
+    }
+    Ok(())
+}
+
+pub fn helper_show(name: &str) -> Result<()> {
+    println!("{}", serde_json::to_string_pretty(&request("helper", serde_json::json!({ "name": name }))?)?);
+    Ok(())
+}
+
+pub fn helper_dir() -> Result<()> {
+    println!("{}", buddy_core::paths::data_dir().join("helpers").display());
+    Ok(())
+}
+
+pub fn helper_dry_run(name: &str, args: &[String]) -> Result<()> {
+    let data = request("helper_dry_run", serde_json::json!({ "helper": name, "args": helper_args(args)? }))?;
+    println!("Would run: {}", data["command"].as_str().unwrap_or("?"));
+    println!("in:        {}", data["cwd"].as_str().unwrap_or("?"));
+    println!("risk:      {}", data["risk"].as_str().unwrap_or("changes"));
+    Ok(())
+}
+
+pub fn helper_run(name: &str, args: &[String]) -> Result<()> {
+    act("helper_run", serde_json::json!({ "helper": name, "args": helper_args(args)? }))
+}
+
 pub fn workflow_abort() -> Result<()> {
     let data = request("workflow_abort", Value::Null)?;
     println!("Stopped the replay.");

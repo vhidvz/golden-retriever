@@ -8,6 +8,7 @@ mod ai_setup;
 mod baker;
 mod client;
 mod daemon;
+mod helpers;
 mod renderer;
 mod skills;
 mod system;
@@ -41,6 +42,8 @@ On the computer (try: buddy say 'find my tax report'):
   buddy approve [N] [--always]   yes (the latest, or number N); --always: no need to ask again
   buddy deny [N] [--never]       no; --never: and do not offer or ask that again
   buddy skills                   what he can do and whether he asks first
+  buddy helpers                  list the named helper scripts the owner registered
+  buddy helper dir|show|dry-run|run NAME [--arg NAME=VALUE]
   buddy workflows                the application routines he has recorded
   buddy workflow record NAME     record the applications you work through, then stop
   buddy workflow capture NAME    record accessible actions inside applications
@@ -111,6 +114,11 @@ fn main() -> Result<()> {
         (Some("knows"), _) => return client::knows(),
         (Some("waiting"), _) => return client::listing("waiting"),
         (Some("skills"), _) => return client::listing("skills"),
+        (Some("helpers"), _) => return client::helpers(),
+        (Some("helper"), Some("dir")) => return client::helper_dir(),
+        (Some("helper"), Some("show")) if arg(2).is_some() => return client::helper_show(arg(2).unwrap()),
+        (Some("helper"), Some("dry-run")) if arg(2).is_some() => return client::helper_dry_run(arg(2).unwrap(), &args[3..]),
+        (Some("helper"), Some("run")) if arg(2).is_some() => return client::helper_run(arg(2).unwrap(), &args[3..]),
         (Some("workflows"), _) => return client::workflows(),
         (Some("workflow"), Some("record")) => return client::workflow_record("start", arg(2)),
         (Some("workflow"), Some("capture")) => return client::workflow_capture("start", arg(2)),

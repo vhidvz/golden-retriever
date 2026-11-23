@@ -33,7 +33,7 @@ The invariants that matter most:
 
 ```sh
 cargo build --release
-cargo test                                    # 107 tests, under 30 s on the dev machine
+cargo test                                    # 110 tests, under 30 s on the dev machine
 cargo test -p buddy-core <test_name>          # one unit test
 cargo test -p buddy --test lifecycle          # daemon persistence/lifecycle integration test
 cargo fmt --check                             # rustfmt.toml: max_width 150 (currently reports pre-existing diffs)
@@ -45,6 +45,7 @@ scripts/install.sh --remove                   # stop and remove (keeps ~/.local/
 buddy-ui                                      # optional GTK4/libadwaita control panel
 python3 -m py_compile ui/buddy_ui.py          # check the panel
 buddy version | update check | update tools   # versions; network only on request
+buddy helpers | helper dry-run|run NAME       # owner-registered argv helpers; runs ask
 scripts/package.sh tar|deb|rpm|arch|appimage  # release artifacts
 buddy name "پشمک"                              # choose the name he answers to
 buddy call                                    # call him by that name
@@ -134,7 +135,9 @@ Two crates, one long-running process, a replaceable renderer, and an optional na
 - `crates/buddy` — the daemon and CLI. `daemon.rs` owns `Sim`, ticks at 50 ms while he
   moves and 250 ms at rest, saves every 30 s, and serves one newline-delimited JSON Unix
   socket. `client.rs` is the CLI half. `renderer.rs` supervises Godot and restarts it
-  with backoff. `skills.rs` is the only code that touches files or processes.
+  with backoff. `skills.rs` is the only code that touches files or processes; `helpers.rs`
+  loads owner-registered argv-only helper manifests and enforces cwd/timeout, with every
+  run gated by the sensitive `run_helper` skill.
   `daemon.rs` also tracks the application in front and advances permissioned workflow
   replays; inside applications it uses `perception/a11y_focus.py`, `a11y_act.py` and
   `a11y_text.py` through the off-by-default `accessibility` sense. It can replay a
@@ -211,6 +214,7 @@ lives in `memory/`; start at `memory/MEMORY.md`.
 - Daemon, CLI, protocol: `crates/buddy/src/daemon.rs`, `client.rs`,
   `crates/buddy-core/src/proto.rs`.
 - Skills, permissions, offers: `crates/buddy/src/skills.rs`, `daemon/assist.rs`.
+- Named helpers: `crates/buddy/src/helpers.rs`, `buddy helper` commands, `docs/helpers.md`.
 - Workflow recording and replay: `crates/buddy-core/src/workflow.rs`, `daemon.rs`,
   `buddy workflow` commands; inside-app capture uses `perception/a11y_focus.py`,
   `a11y_act.py` and `a11y_text.py` behind the `accessibility` sense. Manual steps cover

@@ -94,7 +94,7 @@ Create the directory when needed; it is not part of the repository.
 
 ## Testing and runtime traps
 
-- `cargo test` currently runs 107 tests in under 30 seconds. Unit tests sit beside their
+- `cargo test` currently runs 110 tests in under 30 seconds. Unit tests sit beside their
   modules; the daemon lifecycle test is `crates/buddy/tests/lifecycle.rs`.
 - **Wall-clock time:** tests must not depend on the hour. The lifecycle sandbox sets
   `BUDDY_HOUR=12` because a sleeping dog answers differently; a test that passes at noon
@@ -189,3 +189,8 @@ Create the directory when needed; it is not part of the repository.
   is not built yet because the daemon is Unix-specific. `buddy version`,
   `buddy update check` and `buddy update tools` are network-only-on-request checks; no
   updater or installer runs automatically.
+
+- **Helpers:** manifests live in `$BUDDY_DATA_DIR/helpers/*.json`; `crates/buddy/src/helpers.rs`
+  resolves argv arrays, placeholders, approved cwd and timeouts. `run_helper` is a
+  sensitive skill and always asks. `buddy helper dry-run` executes nothing. Model-driven
+  helper selection and synthetic input are not implemented. See `docs/helpers.md`.

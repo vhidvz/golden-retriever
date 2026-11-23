@@ -10,8 +10,9 @@
 - [Control panel (implemented)](control-panel.md) — native GTK4/libadwaita Buddy window, icon and desktop launcher; socket client covering status, training, senses, AI, skills, workflows, journal and settings
 - [Automation direction (researched, not decided)](automation-direction.md) — helpers first, synthetic input later as a consent-gated fallback; what `gemma4:e4b` can and cannot drive
 - [Body realism direction (researched, not decided)](realism-direction.md) — offline sprite bake upgrade first; 3DGS/neural not viable on 2-4 GB VRAM; MANN motion is optional and separate; target size open
-- [Phase 5 completion](phase5-completion.md) — text entry, mixed workflows, assisted no-tree steps and abort/continue are implemented; 107 Rust tests
+- [Phase 5 completion](phase5-completion.md) — text entry, mixed workflows, assisted no-tree steps and abort/continue are implemented; 110 Rust tests
 - [Name recognition](name-recognition.md) — configured name is user data; typed/voice name recognition, first-call greeting, later recall, persisted name_calls
 - [Camera one-shot vision](camera-look.md) — buddy look --camera sends one explicit webcam frame to local vision, deletes it; continuous camera sense remains presence-only
 - [Release direction (Phase 9, Linux foundation implemented)](release-direction.md) — GitHub Actions artifacts for DEB/RPM/Arch/AppImage/Windows after a port; opt-in Buddy/tool update checks; Windows/signing open
 - [Context direction (Phase 10, pointer/click foundation)](context-direction.md) — clicks by app/coarse region implemented; semantic text, screen glances and warmth remain; not a keylogger
+- [Helper registry (Phase 7 Stage 1)](helper-registry.md) — owner-registered argv-only helpers with dry-run, timeout, approved cwd and always-ask execution; model selection/synthetic input remain

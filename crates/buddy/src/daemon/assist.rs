@@ -7,6 +7,7 @@ use crate::skills::{self, Policy, Risk, Undo};
 use anyhow::{Context, Result, bail};
 use buddy_core::{Answer, Heard, ServerMsg, paths};
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::thread;
 
@@ -26,6 +27,19 @@ pub(super) struct Waiting {
 
 fn notes() -> PathBuf {
     paths::data_dir().join("notes.md")
+}
+
+/// Turn the JSON `args` object (or a JSON string) into helper values. Values are
+/// strings and are passed as separate argv entries, never through a shell.
+pub(super) fn helper_values(args: &Value) -> BTreeMap<String, String> {
+    let source = match &args["args"] {
+        Value::String(text) => serde_json::from_str(text).ok(),
+        other => Some(other.clone()),
+    };
+    source
+        .and_then(|value| value.as_object().cloned())
+        .map(|object| object.into_iter().filter_map(|(key, value)| value.as_str().map(|text| (key, text.to_string()))).collect())
+        .unwrap_or_default()
 }
 
 fn reply(ok: bool, data: Value, error: Option<String>) -> ServerMsg {
@@ -79,6 +93,21 @@ impl Daemon {
 
     /// Runs a skill on a thread of its own; the outcome comes back as `Incoming::Did`.
     pub(super) fn carry_out(&mut self, requester: u64, skill: &str, args: Value, habit: Option<String>, at: f64) {
+        if skill == "run_helper" {
+            let helper_name = args["helper"].as_str().unwrap_or_default().to_string();
+            let values = helper_values(&args);
+            let permissions = self.permissions.clone();
+            let tx = self.tx.clone();
+            let args_for_reply = args.clone();
+            thread::spawn(move || {
+                let outcome = crate::helpers::find(&crate::helpers::dir(), &helper_name)
+                    .and_then(|helper| crate::helpers::run(&helper, &values, &permissions))
+                    .map(|(summary, detail)| (summary, detail, None))
+                    .map_err(|error| format!("{error:#}"));
+                let _ = tx.send(Incoming::Did { requester, skill: "run_helper".into(), args: args_for_reply, habit: None, outcome });
+            });
+            return;
+        }
         if skill == "replay_workflow" {
             self.start_replay(requester, args, at);
             return;
