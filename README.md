@@ -473,12 +473,12 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
    apps without an accessibility tree are implemented. Name recognition and the
    control panel are part of this phase as well.
 6. Refinement: fur and model quality, the puppy shape, KDE.
-7. Automation beyond accessible actions — Stage 1 helper registry and model selection
-   implemented 2026-11-24. The owner can register named argv-only helper scripts; the
-   local model sees one tool per helper with its declared arguments, and every selected
-   helper is converted to the always-ask `run_helper` skill. No shell or coordinate input
-   is involved. Richer sandboxing and consent-gated synthetic input remain. See
-   [`docs/helpers.md`](docs/helpers.md) and `docs/automation-direction.md`.
+7. Automation beyond accessible actions — **done on the helper path** (2026-11-24).
+   The owner can register named argv-only helper scripts; the local model sees one tool
+   per helper with its declared arguments; helper runs support an optional bubblewrap
+   sandbox, timeout, approved cwd and verification, and always ask first. Synthetic
+   mouse/keyboard input was deliberately not adopted after the portal/security research.
+   See [`docs/helpers.md`](docs/helpers.md) and `docs/automation-direction.md`.
 8. Photoreal body and motion — researched 2026-11-23, not yet approved. The
    recommendation is to keep the offline sprite bake and raise its body, coat, light
    and motion quality, with real dog mocap as an optional separate download.

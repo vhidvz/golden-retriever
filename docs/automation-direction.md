@@ -202,6 +202,7 @@ shell strings), declared placeholders, an approved cwd and a timeout. `buddy hel
 every execution waits for a yes; dry-run executes nothing. See `docs/helpers.md`.
 
 Implemented on 2026-11-24: each helper is exposed to the model as a distinct tool with
-its declared arguments. A selected helper becomes the sensitive `run_helper` skill and
-still requires a yes. Not implemented: a true sandbox and synthetic input; Stage 2 still
-requires the portal/consent spike.
+its declared arguments; a selected helper becomes the sensitive `run_helper` skill and
+still requires a yes. Optional `bwrap` sandboxing and a post-run `verify` argv are
+available. **Phase 7 adopts option B only**; synthetic input (option A/C) is not adopted
+because of the portal consent/lifecycle risks and the absence of a blocking need.

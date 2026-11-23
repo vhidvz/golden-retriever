@@ -220,7 +220,7 @@ implementation. The evidence, options and recommendation are in
   call gets a bright greeting, later calls are a recall to the middle of the screen;
   `Life.name_calls` preserves familiarity across restarts and is shown in `status` and
   the panel. No user name is hard-coded into `lexicon.json`.
-- **Verification.** The suite is 111 Rust tests; the GUI smoke path and an isolated
+- **Verification.** The suite is 112 Rust tests; the GUI smoke path and an isolated
   daemon test exercised text replay, mixed text+manual replay, two consecutive manual
   steps, and the name/call commands.
 
@@ -291,6 +291,10 @@ implementation. The evidence, options and recommendation are in
   through the sensitive `run_helper` skill; no shell or model-generated command runs.
 - **Model selection implemented 2026-11-24.** The local model receives one tool per
   helper with its declared arguments; a selected helper becomes the always-ask
-  `run_helper` skill. A real sandbox and synthetic input remain deferred; synthetic
-  input still needs the consent/portal spike. See `docs/helpers.md` and
-  `docs/automation-direction.md`.
+  `run_helper` skill. Optional `bwrap` sandboxing and a post-run `verify` argv are
+  implemented.
+- **Phase 7 is complete on option B.** Named helpers are the adopted automation path.
+  Synthetic mouse/keyboard input (options A/C) is not adopted: it needs a heavy portal
+  consent, can reach password dialogs and terminals, and GNOME 50 has input-grab
+  lifecycle risks. This is a deliberate decision, not deferred work. See `docs/helpers.md`
+  and `docs/automation-direction.md`.

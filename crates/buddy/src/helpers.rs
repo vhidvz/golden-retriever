@@ -45,6 +45,12 @@ pub struct Helper {
     pub risk: String,
     #[serde(default)]
     pub dry_run: Option<Vec<String>>,
+    /// Run under bubblewrap with no network and only the helper/cwd/approved folders.
+    #[serde(default)]
+    pub sandbox: bool,
+    /// An optional argv that must succeed after the helper command.
+    #[serde(default)]
+    pub verify: Option<Vec<String>>,
     #[serde(skip)]
     pub source: PathBuf,
 }
@@ -103,14 +109,31 @@ fn validate(helper: &Helper, source_dir: &Path) -> Result<()> {
     if unique.len() != helper.arguments.len() || helper.arguments.iter().any(|arg| !valid_name(arg)) {
         bail!("helper '{}' has duplicate or invalid argument names", helper.name);
     }
-    for word in helper.command.iter().chain(helper.dry_run.iter().flatten()).chain(helper.cwd.iter()) {
+    for word in helper
+        .command
+        .iter()
+        .chain(helper.dry_run.iter().flatten())
+        .chain(helper.verify.iter().flatten())
+        .chain(helper.cwd.iter())
+    {
         for name in placeholders(word) {
             if !helper.arguments.contains(&name) {
                 bail!("helper '{}' uses undeclared argument '{{{name}}}'", helper.name);
             }
         }
     }
+    for raw in helper.command.iter().chain(helper.verify.iter().flatten()) {
+        if raw.trim().is_empty() {
+            bail!("helper '{}' has an empty command argument", helper.name);
+        }
+    }
     let _ = resolve_program(source_dir, &helper.command[0])?;
+    if let Some(verify) = &helper.verify {
+        if verify.is_empty() {
+            bail!("helper '{}' has an empty verify command", helper.name);
+        }
+        let _ = resolve_program(source_dir, &verify[0])?;
+    }
     Ok(())
 }
 
@@ -169,14 +192,18 @@ fn display(argv: &[String]) -> String {
     argv.iter().map(|arg| format!("{arg:?}")).collect::<Vec<_>>().join(" ")
 }
 
-fn command_for(helper: &Helper, values: &BTreeMap<String, String>, dry: bool, permissions: &Permissions) -> Result<(PathBuf, Vec<String>, PathBuf)> {
+fn argv_for(
+    helper: &Helper,
+    raw: &[String],
+    values: &BTreeMap<String, String>,
+    permissions: &Permissions,
+) -> Result<(PathBuf, Vec<String>, PathBuf)> {
     values_for(helper, values)?;
-    let source = helper.source.parent().unwrap_or(Path::new("."));
-    let program = resolve_program(source, &helper.command[0])?;
-    let raw = if dry { helper.dry_run.as_ref().unwrap_or(&helper.command) } else { &helper.command };
     if raw.is_empty() {
         bail!("helper '{}' has an empty command", helper.name);
     }
+    let source = helper.source.parent().unwrap_or(Path::new("."));
+    let program = resolve_program(source, &raw[0])?;
     let mut argv: Vec<String> = raw.iter().map(|word| substitute(word, values)).collect();
     argv[0] = program.to_string_lossy().into_owned();
     let cwd = match &helper.cwd {
@@ -195,28 +222,68 @@ fn command_for(helper: &Helper, values: &BTreeMap<String, String>, dry: bool, pe
     Ok((program, argv, cwd))
 }
 
-pub fn dry_run(helper: &Helper, values: &BTreeMap<String, String>, permissions: &Permissions) -> Result<Value> {
-    let (_program, argv, cwd) = command_for(helper, values, true, permissions)?;
-    Ok(serde_json::json!({
-        "helper": helper.name,
-        "command": display(&argv),
-        "cwd": cwd,
-        "risk": helper.risk,
-        "description": helper.description,
-    }))
+fn sandboxed(program: &Path, argv: &[String], cwd: &Path, helper_source: &Path, permissions: &Permissions) -> Result<Command> {
+    let bwrap = which("bwrap").context("this helper asks for a sandbox, but bubblewrap (bwrap) is not installed")?;
+    let mut command = Command::new(bwrap);
+    for arg in [
+        "--die-with-parent",
+        "--new-session",
+        "--unshare-all",
+        "--proc", "/proc",
+        "--dev", "/dev",
+        "--tmpfs", "/tmp",
+    ] {
+        command.arg(arg);
+    }
+    for path in ["/usr", "/bin", "/lib", "/lib64", "/etc"] {
+        if Path::new(path).exists() {
+            command.args(["--ro-bind", path, path]);
+        }
+    }
+    let source = helper_source;
+    command.args(["--ro-bind", &source.to_string_lossy(), &source.to_string_lossy()]);
+    if cwd != source {
+        command.args(["--bind", &cwd.to_string_lossy(), &cwd.to_string_lossy()]);
+    } else {
+        command.args(["--bind", &cwd.to_string_lossy(), &cwd.to_string_lossy()]);
+    }
+    for folder in permissions.folders.iter().filter_map(|f| f.canonicalize().ok()) {
+        if folder != cwd && folder != source && !cwd.starts_with(&folder) {
+            command.args(["--ro-bind", &folder.to_string_lossy(), &folder.to_string_lossy()]);
+        }
+    }
+    command
+        .args(["--chdir", &cwd.to_string_lossy()])
+        .args(["--clearenv", "--setenv", "PATH", "/usr/bin:/bin", "--setenv", "HOME", "/tmp", "--setenv", "TMPDIR", "/tmp"])
+        .arg("--")
+        .arg(program)
+        .args(&argv[1..]);
+    Ok(command)
 }
 
-pub fn run(helper: &Helper, values: &BTreeMap<String, String>, permissions: &Permissions) -> Result<(String, String)> {
-    let (program, argv, cwd) = command_for(helper, values, false, permissions)?;
+fn which(name: &str) -> Option<PathBuf> {
+    std::env::var_os("PATH").and_then(|paths| {
+        std::env::split_paths(&paths).map(|dir| dir.join(name)).find(|candidate| candidate.is_file())
+    })
+}
+
+fn execute(helper: &Helper, raw: &[String], values: &BTreeMap<String, String>, permissions: &Permissions, label: &str) -> Result<String> {
+    let (program, argv, cwd) = argv_for(helper, raw, values, permissions)?;
+    let source = helper.source.parent().unwrap_or(Path::new("."));
+    let mut command = if helper.sandbox {
+        sandboxed(&program, &argv, &cwd, source, permissions)?
+    } else {
+        let mut command = Command::new(&program);
+        command.args(&argv[1..]).current_dir(&cwd);
+        command
+    };
     let started = Instant::now();
-    let mut child = Command::new(&program)
-        .args(&argv[1..])
-        .current_dir(&cwd)
+    let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .with_context(|| format!("could not start helper '{}'", helper.name))?;
+        .with_context(|| format!("could not start helper '{}' ({label})", helper.name))?;
     loop {
         if child.try_wait()?.is_some() {
             break;
@@ -224,7 +291,7 @@ pub fn run(helper: &Helper, values: &BTreeMap<String, String>, permissions: &Per
         if started.elapsed() > Duration::from_secs(helper.timeout_secs) {
             let _ = child.kill();
             let _ = child.wait();
-            bail!("helper '{}' was still running after {} s and was stopped", helper.name, helper.timeout_secs);
+            bail!("helper '{}' {label} was still running after {} s and was stopped", helper.name, helper.timeout_secs);
         }
         std::thread::sleep(Duration::from_millis(50));
     }
@@ -236,7 +303,35 @@ pub fn run(helper: &Helper, values: &BTreeMap<String, String>, permissions: &Per
         detail.push_str("\n… (cut short)");
     }
     if !output.status.success() {
-        bail!("helper '{}' failed ({}): {}", helper.name, output.status, detail.trim());
+        bail!("helper '{}' {label} failed ({}): {}", helper.name, output.status, detail.trim());
+    }
+    Ok(detail)
+}
+
+pub fn dry_run(helper: &Helper, values: &BTreeMap<String, String>, permissions: &Permissions) -> Result<Value> {
+    let raw = helper.dry_run.as_ref().unwrap_or(&helper.command);
+    let (_program, argv, cwd) = argv_for(helper, raw, values, permissions)?;
+    Ok(serde_json::json!({
+        "helper": helper.name,
+        "command": display(&argv),
+        "cwd": cwd,
+        "risk": helper.risk,
+        "sandbox": helper.sandbox,
+        "verify": helper.verify,
+        "description": helper.description,
+    }))
+}
+
+pub fn run(helper: &Helper, values: &BTreeMap<String, String>, permissions: &Permissions) -> Result<(String, String)> {
+    let mut detail = execute(helper, &helper.command, values, permissions, "command")?;
+    if let Some(verify) = &helper.verify {
+        let verify_detail = execute(helper, verify, values, permissions, "verification")?;
+        if !verify_detail.trim().is_empty() {
+            if !detail.is_empty() {
+                detail.push('\n');
+            }
+            detail.push_str(verify_detail.trim());
+        }
     }
     Ok((format!("helper '{}' ran", helper.name), detail))
 }
@@ -263,6 +358,8 @@ mod tests {
             timeout_secs: 5,
             risk: "looks".into(),
             dry_run: None,
+            sandbox: false,
+            verify: None,
             source: PathBuf::new(),
         }
     }
@@ -291,6 +388,26 @@ mod tests {
         bad.arguments = vec!["missing".into()];
         bad.command = vec!["/bin/echo".into(), "{missing}".into()];
         assert!(validate(&bad, &dir).is_ok());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn sandbox_and_verify_run_without_a_shell() {
+        if which("bwrap").is_none() {
+            return;
+        }
+        let dir = sandbox("sandbox");
+        let marker = dir.join("made.txt");
+        let mut helper = manifest("make", vec!["/bin/touch", "{path}"]);
+        helper.arguments = vec!["path".into()];
+        helper.sandbox = true;
+        helper.verify = Some(vec!["/usr/bin/test".into(), "-f".into(), "{path}".into()]);
+        helper.source = dir.join("helper.json");
+        let mut values = BTreeMap::new();
+        values.insert("path".into(), marker.to_string_lossy().into_owned());
+        let (summary, _) = run(&helper, &values, &Permissions::default()).unwrap();
+        assert_eq!(summary, "helper 'make' ran");
+        assert!(marker.exists());
         let _ = fs::remove_dir_all(dir);
     }
 

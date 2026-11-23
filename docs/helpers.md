@@ -1,8 +1,8 @@
 # Named helper scripts (Phase 7, Stage 1)
 
-**Status:** implemented 2026-11-23 as the safe first slice of Phase 7. Helpers are
-owner-registered scripts. Synthetic input and model-driven helper selection are not part
-of this slice.
+**Status:** Phase 7 is implemented on the helper path (2026-11-24): registry, model
+selection, optional bubblewrap sandbox, verification and always-ask execution. Synthetic
+input was deliberately not adopted.
 
 ## Where they live
 
@@ -37,6 +37,12 @@ manifest and owns the script.
 - `risk` is informational (`looks`, `changes`, `sensitive`); execution is gated by the
   sensitive `run_helper` skill, so **every helper run asks first**.
 - `dry_run` is optional. Without it, the dry run prints the real command.
+- `sandbox` (default `false`) runs the helper under `bwrap` with no network, only the
+  helper folder, cwd and approved folders visible, and a cleared environment. Enable it
+  for helpers that do not need the rest of your home. If `bwrap` is absent, the run fails
+  rather than silently running unsandboxed.
+- `verify` is optional argv run after the command; it must exit 0 or the helper is
+  reported as failed. Both commands use the same no-shell argv rules.
 
 ## Commands
 
@@ -51,6 +57,14 @@ buddy result                          # full captured output
 
 Output is captured and trimmed to 4000 characters; the journal records the helper name
 and outcome, not the full output. A helper has no automatic undo.
+
+## Completion decision
+
+Phase 7 adopts **B — named helper scripts** from the automation research. It does not
+adopt synthetic mouse/keyboard input: the GNOME 50 portal path is high-risk, can reach
+password dialogs and terminals, and has known input-grab bugs; the helper path covers
+the concrete file/command needs without that permission. This is a product decision, not
+an unimplemented feature.
 
 ## Security boundary
 

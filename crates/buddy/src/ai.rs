@@ -273,6 +273,8 @@ mod tests {
             timeout_secs: 10,
             risk: "changes".into(),
             dry_run: None,
+            sandbox: false,
+            verify: None,
             source: std::path::PathBuf::new(),
         };
         let tool = helper_tool(0, &helper);

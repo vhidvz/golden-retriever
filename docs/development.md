@@ -94,7 +94,7 @@ Create the directory when needed; it is not part of the repository.
 
 ## Testing and runtime traps
 
-- `cargo test` currently runs 111 tests in under 30 seconds. Unit tests sit beside their
+- `cargo test` currently runs 112 tests in under 30 seconds. Unit tests sit beside their
   modules; the daemon lifecycle test is `crates/buddy/tests/lifecycle.rs`.
 - **Wall-clock time:** tests must not depend on the hour. The lifecycle sandbox sets
   `BUDDY_HOUR=12` because a sleeping dog answers differently; a test that passes at noon
@@ -193,5 +193,6 @@ Create the directory when needed; it is not part of the repository.
 - **Helpers:** manifests live in `$BUDDY_DATA_DIR/helpers/*.json`; `crates/buddy/src/helpers.rs`
   resolves argv arrays, placeholders, approved cwd and timeouts. `run_helper` is a
   sensitive skill and always asks. `buddy helper dry-run` executes nothing. Model-driven
-  helper selection is implemented by exposing each helper as a model tool; synthetic
-  input is not implemented. See `docs/helpers.md`.
+  helper selection is implemented by exposing each helper as a model tool; optional
+  `bwrap` sandboxing and verification are implemented. Synthetic input is deliberately
+  not adopted. See `docs/helpers.md`.

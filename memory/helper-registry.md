@@ -17,7 +17,10 @@ Implemented 2026-11-23 as the first safe slice of Phase 7.
   records the name/outcome, not the full output.
 - Model-driven selection is implemented: each helper is exposed as a `helper_N` model
   tool with its declared arguments; a selected helper becomes the always-ask `run_helper`
-  skill. Not implemented: a true sandbox and synthetic input.
+  skill. Optional `bwrap` sandboxing (no network, cleared env, restricted binds) and a
+  post-run `verify` argv are implemented.
+- Phase 7 is complete on the helper path. Synthetic input was deliberately not adopted
+  because of portal consent/lifecycle and password/terminal risks.
 - Tests cover rendering, dry-run, no-shell argument handling, validation and missing args.
   Phase 7’s remaining work is a separate slice. See `docs/helpers.md` and
   `docs/automation-direction.md`.
