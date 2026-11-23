@@ -8,7 +8,7 @@ use crate::renderer::Renderer;
 use crate::skills::{Permissions, Undo};
 use anyhow::{Context, Result, anyhow, bail};
 use buddy_core::language::{self, TRICKS};
-use buddy_core::workflow::{ReplayEvent, ReplayState};
+use buddy_core::workflow::{ReplayEvent, ReplayState, WorkflowStep, Workflows};
 use buddy_core::{Body, ClientMsg, Command, Heard, Identity, Life, Mind, Output, ServerMsg, Settings, Sim, StateMsg, Stimulus, Store, paths};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -51,6 +51,13 @@ enum Incoming {
     Planned {
         requester: u64,
         outcome: Result<Option<(String, Value)>, String>,
+    },
+    /// An inside-application action workflow has finished.
+    ActionReplay {
+        requester: u64,
+        workflow_id: u64,
+        args: Value,
+        outcome: Result<String, String>,
     },
     /// A skill has finished.
     Did {
@@ -237,6 +244,33 @@ fn listen() -> Result<UnixListener> {
     }
     let _ = fs::remove_file(&path); // stale socket from an unclean exit
     UnixListener::bind(&path).with_context(|| format!("binding {}", path.display()))
+}
+
+fn run_action_steps(steps: &[WorkflowStep]) -> Result<String, String> {
+    let script = perception_helper("a11y_act.py").ok_or("perception/a11y_act.py is not installed")?;
+    for (number, step) in steps.iter().enumerate() {
+        let WorkflowStep::Activate { app, frame, role, name } = step else {
+            return Err("this workflow mixes step kinds that are not supported yet".into());
+        };
+        let output = std::process::Command::new("python3")
+            .arg(&script)
+            .args(["--app", app, "--frame", frame, "--role", role, "--name", name])
+            .output()
+            .map_err(|error| format!("step {} could not start: {error}", number + 1))?;
+        let text = String::from_utf8_lossy(&output.stdout);
+        let reply: Value =
+            serde_json::from_str(text.trim()).map_err(|error| format!("step {} sent no valid answer ({error}): {}", number + 1, text.trim()))?;
+        if reply["ok"] != true || reply["verified"] != true {
+            return Err(format!(
+                "step {} ({} '{}') failed: {}",
+                number + 1,
+                role,
+                name,
+                reply["why"].as_str().unwrap_or("no semantic change was verified")
+            ));
+        }
+    }
+    Ok(format!("replayed {} accessible step(s)", steps.len()))
 }
 
 fn accept_loop(listener: UnixListener, tx: Sender<Incoming>) {
@@ -468,6 +502,37 @@ impl Daemon {
         if args["workflow"].as_str().is_none() {
             args["workflow"] = json!(workflow.name);
         }
+        if Workflows::has_actions(&workflow) {
+            if workflow.steps.iter().any(|step| matches!(step, WorkflowStep::OpenApp { .. })) {
+                let _ = self.send(
+                    requester,
+                    &ServerMsg::Reply {
+                        ok: false,
+                        data: Value::Null,
+                        error: Some("workflows mixing application and inside-application steps are not supported yet".into()),
+                    },
+                );
+                return;
+            }
+            if self.sim.settings.privacy_mode || !self.sim.settings.senses.accessibility {
+                let _ = self.send(
+                    requester,
+                    &ServerMsg::Reply {
+                        ok: false,
+                        data: Value::Null,
+                        error: Some("turn on the accessibility sense first: buddy sense accessibility on".into()),
+                    },
+                );
+                return;
+            }
+            let steps = workflow.steps.clone();
+            let (workflow_id, args, tx) = (workflow.id, args.clone(), self.tx.clone());
+            thread::spawn(move || {
+                let outcome = run_action_steps(&steps);
+                let _ = tx.send(Incoming::ActionReplay { requester, workflow_id, args, outcome });
+            });
+            return;
+        }
         let state = ReplayState::new(workflow.apps.clone(), at);
         self.replay = Some(Replay { requester, workflow_id: workflow.id, args, state });
         if self.current_app.as_deref() == self.replay.as_ref().and_then(|replay| replay.state.expected()) {
@@ -520,6 +585,22 @@ impl Daemon {
         let Some(replay) = self.replay.take() else { return };
         let _ = self.sim.workflow_outcome(replay.workflow_id, false, at);
         self.did(replay.requester, "replay_workflow", &replay.args, None, Err(why), at);
+    }
+
+    fn workflow_capture_step(&mut self) -> Result<Value> {
+        if self.sim.settings.privacy_mode || !self.sim.settings.senses.accessibility {
+            bail!("turn on the accessibility sense first: buddy sense accessibility on");
+        }
+        let script = perception_helper("a11y_focus.py").context("perception/a11y_focus.py is not installed")?;
+        let output = std::process::Command::new("python3").arg(&script).output().context("the accessibility helper could not start")?;
+        let text = String::from_utf8_lossy(&output.stdout);
+        let reply: Value = serde_json::from_str(text.trim()).with_context(|| format!("the accessibility helper said: {}", text.trim()))?;
+        if reply["ok"] != true {
+            bail!("{}", reply["why"].as_str().unwrap_or("the focused control could not be read"));
+        }
+        let step: WorkflowStep = serde_json::from_value(reply["step"].clone()).context("the accessibility helper sent an invalid step")?;
+        self.sim.capture_action_step(step.clone())?;
+        Ok(json!({ "captured": step, "steps": self.sim.action_recording_len() }))
     }
 
     fn perceive(&mut self, provider: &str, kind: &str, data: &Value, at: f64) {
@@ -589,6 +670,7 @@ impl Daemon {
             "screen" => "what is drawn on the screen, looked at locally",
             "camera" => "whether someone is in front of the camera",
             "microphone" => "sounds and speech",
+            "accessibility" => "the focused control's accessibility information, for guided workflow capture",
             _ => "",
         };
         let list: Vec<Value> = buddy_core::perception::SOURCES
@@ -739,7 +821,11 @@ impl Daemon {
                         return Ok(json!({ "recording": name }));
                     }
                     "stop" => {
-                        let workflow = self.sim.stop_workflow_recording(at)?;
+                        let workflow = if self.sim.action_recording_len() > 0 {
+                            self.sim.stop_action_recording(at)?
+                        } else {
+                            self.sim.stop_workflow_recording(at)?
+                        };
                         self.persist(at)?;
                         let _ = self.store.journal(
                             at as i64,
@@ -749,7 +835,7 @@ impl Daemon {
                         return Ok(json!(workflow));
                     }
                     "cancel" => {
-                        let cancelled = self.sim.cancel_workflow_recording();
+                        let cancelled = self.sim.cancel_workflow_recording() | self.sim.cancel_action_recording();
                         if cancelled {
                             let _ = self.store.journal(at as i64, "workflow_cancelled", &Value::Null);
                         }
@@ -758,8 +844,46 @@ impl Daemon {
                     other => bail!("workflow_record action is start, stop or cancel, not {other:?}"),
                 }
             }
+            "workflow_capture" => {
+                let action = args["action"].as_str().context("workflow_capture needs an action")?;
+                match action {
+                    "start" => {
+                        if self.sim.settings.privacy_mode || !self.sim.settings.senses.accessibility {
+                            bail!("turn on the accessibility sense first: buddy sense accessibility on");
+                        }
+                        let name = args["name"].as_str().context("workflow_capture start needs a name")?;
+                        self.sim.start_action_recording(name.to_string(), at)?;
+                        let _ = self.store.journal(at as i64, "workflow_capture", &json!({ "name": name }));
+                        return Ok(json!({ "capturing": name }));
+                    }
+                    "stop" => {
+                        let workflow = self.sim.stop_action_recording(at)?;
+                        self.persist(at)?;
+                        let _ = self.store.journal(
+                            at as i64,
+                            "workflow_recorded",
+                            &json!({ "id": workflow.id, "name": workflow.name, "steps": workflow.steps }),
+                        );
+                        return Ok(json!(workflow));
+                    }
+                    "cancel" => return Ok(json!({ "cancelled": self.sim.cancel_action_recording() })),
+                    other => bail!("workflow_capture action is start, stop or cancel, not {other:?}"),
+                }
+            }
+            "workflow_capture_step" => return self.workflow_capture_step(),
             "workflow_delete" => {
-                let id = args["id"].as_u64().context("workflow_delete needs an id")?;
+                let id = if let Some(id) = args["id"].as_u64() {
+                    id
+                } else if let Some(name) = args["name"].as_str() {
+                    self.sim
+                        .workflows()
+                        .iter()
+                        .find(|workflow| workflow.name.eq_ignore_ascii_case(name))
+                        .map(|workflow| workflow.id)
+                        .context("no such workflow")?
+                } else {
+                    bail!("workflow_delete needs an id or a name")
+                };
                 let deleted = self.sim.delete_workflow(id);
                 if deleted {
                     self.persist(at)?;
@@ -856,6 +980,12 @@ impl Daemon {
                     self.send(requester, &ServerMsg::Reply { ok: false, data: Value::Null, error: Some(why) });
                 }
             },
+            Incoming::ActionReplay { requester, workflow_id, args, outcome } => {
+                let ok = outcome.is_ok();
+                self.sim.workflow_outcome(workflow_id, ok, at);
+                let result = outcome.map(|summary| (summary, String::new(), None));
+                self.did(requester, "replay_workflow", &args, None, result, at);
+            }
             Incoming::Did { requester, skill, args, habit, outcome } => self.did(requester, &skill, &args, habit, outcome, at),
             Incoming::Unavailable { source, why } => {
                 if let Some(helper) = self.helpers.iter_mut().find(|h| h.source == source) {

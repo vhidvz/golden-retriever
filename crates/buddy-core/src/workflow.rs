@@ -8,14 +8,25 @@ use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 
 const MIN_DWELL_SECS: f64 = 2.0;
-const MIN_STEPS: usize = 2;
 const MAX_STEPS: usize = 8;
+const MIN_APP_STEPS: usize = 2;
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum WorkflowStep {
+    OpenApp { app: String },
+    Activate { app: String, frame: String, role: String, name: String },
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Workflow {
     pub id: u64,
     pub name: String,
+    /// Application-level steps, kept for display and for workflows recorded before steps existed.
     pub apps: Vec<String>,
+    /// The typed steps, including accessible actions inside applications.
+    #[serde(default)]
+    pub steps: Vec<WorkflowStep>,
     pub created_at: f64,
     #[serde(default)]
     pub last_run: Option<f64>,
@@ -40,27 +51,51 @@ pub struct Workflows {
 
 impl Workflows {
     pub fn record(&mut self, name: &str, apps: &[String], now: f64) -> Result<Workflow> {
+        let apps: Vec<String> = apps.iter().map(|app| app.trim().to_string()).filter(|app| !app.is_empty()).collect();
+        if apps.len() < MIN_APP_STEPS {
+            bail!("a workflow needs at least {MIN_APP_STEPS} application steps");
+        }
+        let steps: Vec<WorkflowStep> = apps.into_iter().map(|app| WorkflowStep::OpenApp { app }).collect();
+        self.record_steps(name, steps, now)
+    }
+
+    pub fn record_steps(&mut self, name: &str, steps: Vec<WorkflowStep>, now: f64) -> Result<Workflow> {
         let name = name.trim();
         if name.is_empty() {
             bail!("a workflow needs a name");
         }
-        let mut clean: Vec<String> = Vec::new();
-        for app in apps.iter().map(|app| app.trim()).filter(|app| !app.is_empty()) {
-            if clean.last().map(String::as_str) != Some(app) {
-                clean.push(app.to_string());
+        let mut clean: Vec<WorkflowStep> = Vec::new();
+        for step in steps {
+            match &step {
+                WorkflowStep::OpenApp { app } if app.trim().is_empty() => continue,
+                WorkflowStep::Activate { app, frame, role, name }
+                    if app.trim().is_empty() || frame.trim().is_empty() || role.trim().is_empty() || name.trim().is_empty() =>
+                {
+                    continue;
+                }
+                WorkflowStep::OpenApp { app } if clean.last() == Some(&WorkflowStep::OpenApp { app: app.clone() }) => continue,
+                _ => clean.push(step),
             }
         }
-        if clean.len() < MIN_STEPS {
-            bail!("a workflow needs at least {MIN_STEPS} application steps");
+        if clean.is_empty() {
+            bail!("a workflow needs at least one step");
         }
         if clean.len() > MAX_STEPS {
-            bail!("a workflow can have at most {MAX_STEPS} application steps");
+            bail!("a workflow can have at most {MAX_STEPS} steps");
         }
+        let apps: Vec<String> = clean
+            .iter()
+            .filter_map(|step| match step {
+                WorkflowStep::OpenApp { app } => Some(app.trim().to_string()),
+                _ => None,
+            })
+            .collect();
         self.next_id += 1;
         let workflow = Workflow {
             id: self.next_id,
             name: name.to_string(),
-            apps: clean,
+            apps,
+            steps: clean,
             created_at: now,
             last_run: None,
             runs: 0,
@@ -95,6 +130,10 @@ impl Workflows {
         self.items.len() != before
     }
 
+    pub fn has_actions(workflow: &Workflow) -> bool {
+        workflow.steps.iter().any(|step| matches!(step, WorkflowStep::Activate { .. }))
+    }
+
     pub fn outcome(&mut self, id: u64, ok: bool, now: f64) {
         if let Some(workflow) = self.get_mut(id) {
             workflow.runs += 1;
@@ -105,6 +144,33 @@ impl Workflows {
                 workflow.failures += 1;
             }
         }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ActionRecording {
+    pub name: String,
+    pub started_at: f64,
+    steps: Vec<WorkflowStep>,
+}
+
+impl ActionRecording {
+    pub fn new(name: String, started_at: f64) -> Self {
+        Self { name, started_at, steps: Vec::new() }
+    }
+
+    pub fn push(&mut self, step: WorkflowStep) {
+        if self.steps.len() < MAX_STEPS {
+            self.steps.push(step);
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.steps.len()
+    }
+
+    pub fn finish(self) -> Vec<WorkflowStep> {
+        self.steps
     }
 }
 
@@ -208,6 +274,21 @@ mod tests {
         let saved = workflows.record("x", &["a".into(), "b".into()], 0.0).unwrap();
         assert_eq!(saved.id, 1);
         assert_eq!(workflows.list().len(), 1);
+    }
+
+    #[test]
+    fn an_action_workflow_can_have_one_step() {
+        let mut workflows = Workflows::default();
+        let step = WorkflowStep::Activate {
+            app: "local.buddy.A11yProbe".into(),
+            frame: "Buddy A11y Probe".into(),
+            role: "button".into(),
+            name: "Press me".into(),
+        };
+        let saved = workflows.record_steps("press", vec![step.clone()], 0.0).unwrap();
+        assert_eq!(saved.steps, vec![step]);
+        assert!(Workflows::has_actions(&saved));
+        assert_eq!(saved.apps.len(), 0);
     }
 
     #[test]

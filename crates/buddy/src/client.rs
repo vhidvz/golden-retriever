@@ -457,11 +457,13 @@ fn human_bytes(bytes: u64) -> String {
 /// One line for a stored workflow: id, name, steps and the record.
 pub fn workflow_line(value: &Value) -> String {
     let apps: Vec<&str> = value["apps"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+    let steps = value["steps"].as_array().map_or(0, Vec::len);
+    let what = if apps.is_empty() && steps > 0 { format!("{steps} inside-app step(s)") } else { apps.join(" > ") };
     format!(
         "{}  {}  {}  ({} runs, {} ok, {} failed)",
         value["id"].as_u64().unwrap_or(0),
         value["name"].as_str().unwrap_or("?"),
-        apps.join(" > "),
+        what,
         value["runs"].as_u64().unwrap_or(0),
         value["successes"].as_u64().unwrap_or(0),
         value["failures"].as_u64().unwrap_or(0)
@@ -508,6 +510,38 @@ pub fn workflow_record(action: &str, name: Option<&str>) -> Result<()> {
         "cancel" => println!("Recording cancelled."),
         _ => println!("{}", serde_json::to_string_pretty(&data)?),
     }
+    Ok(())
+}
+
+pub fn workflow_capture(action: &str, name: Option<&str>) -> Result<()> {
+    let args = match action {
+        "start" => serde_json::json!({ "action": "start", "name": name.unwrap_or_default() }),
+        other => serde_json::json!({ "action": other }),
+    };
+    let data = request("workflow_capture", args)?;
+    match action {
+        "start" => {
+            println!("Capturing inside-application steps. Focus a button or menu item, then:");
+            println!("  buddy workflow capture-step");
+            println!("Stop with: buddy workflow stop");
+        }
+        "stop" => println!("Saved: {}", workflow_line(&data)),
+        "cancel" => println!("Capture cancelled."),
+        _ => println!("{}", serde_json::to_string_pretty(&data)?),
+    }
+    Ok(())
+}
+
+pub fn workflow_capture_step() -> Result<()> {
+    let data = request("workflow_capture_step", Value::Null)?;
+    let step = &data["captured"];
+    println!(
+        "Captured: {} '{}' in {} ({} steps)",
+        step["role"].as_str().unwrap_or("?"),
+        step["name"].as_str().unwrap_or("?"),
+        step["frame"].as_str().unwrap_or("?"),
+        data["steps"].as_u64().unwrap_or(0)
+    );
     Ok(())
 }
 

@@ -21,15 +21,17 @@ pub struct Senses {
     pub screen: bool,
     pub camera: bool,
     pub microphone: bool,
+    /// The semantic accessibility tree, used only by guided workflow capture.
+    pub accessibility: bool,
 }
 
 impl Default for Senses {
     fn default() -> Self {
-        Self { system: true, desktop: true, window_titles: false, screen: false, camera: false, microphone: false }
+        Self { system: true, desktop: true, window_titles: false, screen: false, camera: false, microphone: false, accessibility: false }
     }
 }
 
-pub const SOURCES: [&str; 6] = ["system", "desktop", "window_titles", "screen", "camera", "microphone"];
+pub const SOURCES: [&str; 7] = ["system", "desktop", "window_titles", "screen", "camera", "microphone", "accessibility"];
 
 impl Senses {
     pub fn get(&self, source: &str) -> Option<bool> {
@@ -40,6 +42,7 @@ impl Senses {
             "screen" => self.screen,
             "camera" => self.camera,
             "microphone" => self.microphone,
+            "accessibility" => self.accessibility,
             _ => return None,
         })
     }
@@ -52,6 +55,7 @@ impl Senses {
             "screen" => &mut self.screen,
             "camera" => &mut self.camera,
             "microphone" => &mut self.microphone,
+            "accessibility" => &mut self.accessibility,
             _ => return false,
         };
         *slot = on;
@@ -149,5 +153,14 @@ mod tests {
         assert_eq!(seen[3], Some(Stimulus::Sound { level: 1.0 }), "levels are clamped");
         assert_eq!(Stimulus::parse("something_new", &json!({})), None);
         assert_eq!(Stimulus::parse("focus", &json!({})), None, "a malformed message is dropped, not guessed at");
+    }
+
+    #[test]
+    fn accessibility_is_off_by_default_and_has_its_own_switch() {
+        let mut senses = Senses::default();
+        assert!(!senses.accessibility);
+        assert!(senses.set("accessibility", true));
+        assert!(senses.accessibility);
+        assert!(SOURCES.contains(&"accessibility"));
     }
 }

@@ -179,7 +179,8 @@ application without synthetic input. The probe is in `spikes/workflow-a11y/`.
 - `xdotool` cannot see native Wayland windows; `ydotool`/`wtype` are absent. Synthetic
   input is technically possible via `/dev/uinput` but is not the chosen path.
 
-Consequence: application-level workflow recording and verified replay are the first
-milestone; inside-application steps use guided capture and accessible actions, not
-keystrokes or coordinates. The durable design is recorded in `docs/decisions.md` and
-`docs/development.md`.
+The first inside-application slice was then verified end to end: with the `accessibility`
+sense on, `workflow capture press`, `capture-step` and `stop` saved one button step; replay
+invoked its accessible `click`, observed the label's name change, and recorded
+`1 runs, 1 ok`. No keys, coordinates or clipboard data were used. The durable design is
+recorded in `docs/decisions.md` and `docs/development.md`.

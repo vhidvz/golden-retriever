@@ -91,7 +91,7 @@ Create the directory when needed; it is not part of the repository.
 
 ## Testing and runtime traps
 
-- `cargo test` currently runs 97 tests in under 30 seconds. Unit tests sit beside their
+- `cargo test` currently runs 100 tests in under 30 seconds. Unit tests sit beside their
   modules; the daemon lifecycle test is `crates/buddy/tests/lifecycle.rs`.
 - **Wall-clock time:** tests must not depend on the hour. The lifecycle sandbox sets
   `BUDDY_HOUR=12` because a sleeping dog answers differently; a test that passes at noon
@@ -107,13 +107,16 @@ Create the directory when needed; it is not part of the repository.
 - **Desktop sense test:** `tests/shell-sense/run.sh` starts an isolated headless GNOME
   Shell in its own D-Bus session. It needs `gnome-shell`, `dbus-run-session` and a
   writable runtime directory. `BUDDY_TRACE_SENSES=1` makes the daemon log what it hears.
-- **Workflows:** `buddy workflow record NAME`, `stop`, `replay`, `workflows`. Replay
-  opens each application and waits for a real focus event before advancing; no keys,
-  clicks or coordinates are sent. Inside-application steps are designed as AT-SPI guided
-  capture (semantic locator, accessible action, event/state verification); the
-  accessibility sense is off by default and text entry, password fields, terminals and
-  shells are refused. Evidence: `spikes/workflow-a11y/RESULTS.md`; the durable decisions
-  are in `docs/decisions.md`. No separate plan file is kept as a project artifact.
+- **Workflows:** `buddy workflow record NAME`, `stop`, `replay`, `workflows` for
+  application-level routines. Inside applications, turn on the `accessibility` sense,
+  run `buddy workflow capture NAME`, focus a control, run `buddy workflow capture-step`
+  for each action, then `buddy workflow stop` and `buddy workflow replay NAME`. Replay
+  locates the control by app/frame/role/name, invokes its accessible action, and waits
+  for a semantic event; it sends no keys, coordinates or clipboard data. Text entry,
+  password fields, terminals, shells and apps without an accessibility tree are refused;
+  mixed app-plus-inside workflows are rejected for now. Evidence:
+  `spikes/workflow-a11y/RESULTS.md`; durable decisions are in `docs/decisions.md`. No
+  separate plan file is kept as a project artifact.
 - **Ollama:** `scripts/install.sh` installs a pinned runtime under
   `$BUDDY_DATA_DIR/ollama/<version>` and starts `buddy-ollama.service` on
   `127.0.0.1:11435` with its own model store. A system Ollama on 11434 is left untouched.

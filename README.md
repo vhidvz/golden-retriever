@@ -55,8 +55,10 @@ buddy waiting | approve | deny      # what he wants a yes for, and your answer
 buddy skills                        # what he can do, and whether he asks first
 buddy workflows                     # the application routines he has recorded
 buddy workflow record NAME          # record the applications you work through, then stop
+buddy workflow capture NAME         # record accessible actions inside applications
+buddy workflow capture-step         # capture the focused button/menu item
 buddy workflow stop | cancel
-buddy workflow replay NAME|ID       # replay it, checking each application came to the front
+buddy workflow replay NAME|ID       # replay it, checking each step worked
 buddy folders add ~/Documents       # where he may search, read and move files
 buddy undo | result                 # take back his last change; see his last output
 buddy providers                     # is the local model there?
@@ -67,7 +69,7 @@ buddy ai doctor | repair            # diagnose the runtime / re-pull the selecte
 buddy quiet on|off      # no sounds and no asking for attention
 buddy privacy on|off    # suspends every sense at once
 buddy senses            # what he may perceive, and what is actually reporting
-buddy sense screen on   # switch one sense: system, desktop, window_titles, screen, camera, microphone
+buddy sense screen on   # switch one sense: system, desktop, window_titles, screen, camera, microphone, accessibility
 buddy look              # have him look at the screen once and say what he makes of it
 buddy set adult_days 30 # re-time growth without resetting him
 buddy journal | export  # what happened; everything he knows, as JSON
@@ -118,9 +120,11 @@ it that is restored automatically if the database is ever damaged.
 | `screen` | off | A one-line description of what is on screen, when asked to look | One frame through the desktop portal, described by a local model |
 | `camera` | off | Whether someone is there | Movement in a 64×48 greyscale picture; no frame is kept |
 | `microphone` | off | That there was a sound, and how loud | Loudness only; nothing is recorded |
+| `accessibility` | off | The focused control's app, frame, role and accessible name, only while capturing a workflow | AT-SPI on demand; no text, keys or coordinates |
 
 A sense that is off is not consulted at all: the extension is told to send
-nothing, and the camera and microphone helpers are not running. Privacy mode
+nothing, the camera and microphone helpers are not running, and the accessibility
+helpers are only started for a capture or replay step. Privacy mode
 does the same for all of them at once. `buddy senses` shows what is allowed and
 what has actually reported; the journal records when each sense first became
 active and each look at the screen. A look keeps only its one-line summary, in
@@ -368,9 +372,11 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
 - Speech has been tested with a recording only; there is no wake word, so with the
   microphone on every stretch of speech goes through the local model.
 - "Fetch" is not among his tricks yet, because there is no ball.
-- He records and replays application-level routines, checking that each application
-  came to the front. He does not yet record or replay what you do inside applications,
-  and has no way to press keys or click for you.
+- He records and replays application-level routines and, with the accessibility sense
+  on, focused accessible actions inside applications. He does not yet type text, use
+  password fields or terminals, or replay apps without an accessibility tree; mixed
+  app-plus-inside-app workflows are rejected for now. He still has no way to press
+  arbitrary keys or click coordinates for you.
 - Suspend is handled by time accounting only; there is no lock or sleep signal yet.
 - The renderer needs Godot; the installer provides a pinned copy, but the renderer is
   not yet exported as a standalone binary.
@@ -382,5 +388,6 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
 3. Perception — done.
 4. Language and training — done.
 5. Skills and helpers — this phase. Application-level workflow recording and
-   verified replay are done; recording actions inside applications is next.
+   verified replay are done, and focused accessible actions inside applications can
+   be captured and replayed. Text entry and apps without an accessibility tree remain.
 6. Refinement: fur and model quality, the puppy shape, KDE.

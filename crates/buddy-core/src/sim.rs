@@ -12,7 +12,7 @@ use crate::personality::{Personality, drift};
 use crate::proto::StateMsg;
 use crate::rng::Rng;
 use crate::training::{Response, Training};
-use crate::workflow::{Recording, Workflow, Workflows};
+use crate::workflow::{ActionRecording, Recording, Workflow, WorkflowStep, Workflows};
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -236,6 +236,7 @@ pub struct Sim {
     patterns: Patterns,
     workflows: Workflows,
     recording: Option<Recording>,
+    action_recording: Option<ActionRecording>,
     user_away: bool,
     away_since: f64,
     busy: f64,
@@ -303,6 +304,7 @@ impl Sim {
             patterns: mind.patterns,
             workflows: mind.workflows,
             recording: None,
+            action_recording: None,
             user_away: false,
             away_since: 0.0,
             busy: 0.0,
@@ -326,7 +328,7 @@ impl Sim {
 
     /// Start recording the applications the user works through.
     pub fn start_workflow_recording(&mut self, name: String, now: f64) -> Result<()> {
-        if self.recording.is_some() {
+        if self.recording.is_some() || self.action_recording.is_some() {
             bail!("a workflow is already being recorded");
         }
         let name = name.trim();
@@ -347,6 +349,43 @@ impl Sim {
 
     pub fn cancel_workflow_recording(&mut self) -> bool {
         self.recording.take().is_some()
+    }
+
+    /// Start recording inside-application accessible actions.
+    pub fn start_action_recording(&mut self, name: String, now: f64) -> Result<()> {
+        if self.recording.is_some() || self.action_recording.is_some() {
+            bail!("a workflow is already being recorded");
+        }
+        let name = name.trim();
+        if name.is_empty() {
+            bail!("a workflow needs a name");
+        }
+        self.action_recording = Some(ActionRecording::new(name.to_string(), now));
+        Ok(())
+    }
+
+    pub fn capture_action_step(&mut self, step: WorkflowStep) -> Result<()> {
+        let recording = self.action_recording.as_mut().ok_or_else(|| anyhow::anyhow!("no inside-app workflow is being recorded"))?;
+        recording.push(step);
+        Ok(())
+    }
+
+    pub fn action_recording_len(&self) -> usize {
+        self.action_recording.as_ref().map_or(0, ActionRecording::len)
+    }
+
+    pub fn stop_action_recording(&mut self, now: f64) -> Result<Workflow> {
+        let recording = self.action_recording.take().ok_or_else(|| anyhow::anyhow!("no inside-app workflow is being recorded"))?;
+        let name = recording.name.clone();
+        let steps = recording.finish();
+        if steps.is_empty() {
+            bail!("no accessible steps were captured");
+        }
+        self.workflows.record_steps(&name, steps, now)
+    }
+
+    pub fn cancel_action_recording(&mut self) -> bool {
+        self.action_recording.take().is_some()
     }
 
     pub fn workflows(&self) -> &[Workflow] {
@@ -1684,5 +1723,21 @@ mod tests {
         let restored = Sim::new(s.identity.clone(), s.life.clone(), s.settings.clone(), s.body(), mind, 42);
         assert_eq!(restored.workflows().len(), 1);
         assert_eq!(restored.workflows()[0].apps, vec!["terminal", "editor"]);
+    }
+
+    #[test]
+    fn an_inside_app_recording_captures_one_action() {
+        let mut s = sim(0);
+        s.start_action_recording("press".into(), 0.0).unwrap();
+        s.capture_action_step(WorkflowStep::Activate {
+            app: "local.buddy.A11yProbe".into(),
+            frame: "Buddy A11y Probe".into(),
+            role: "button".into(),
+            name: "Press me".into(),
+        })
+        .unwrap();
+        let workflow = s.stop_action_recording(1.0).unwrap();
+        assert_eq!(workflow.steps.len(), 1);
+        assert!(Workflows::has_actions(&workflow));
     }
 }

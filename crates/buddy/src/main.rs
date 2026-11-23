@@ -39,6 +39,8 @@ On the computer (try: buddy say 'find my tax report'):
   buddy skills                   what he can do and whether he asks first
   buddy workflows                the application routines he has recorded
   buddy workflow record NAME     record the applications you work through, then stop
+  buddy workflow capture NAME    record accessible actions inside applications
+  buddy workflow capture-step    capture the focused button/menu item
   buddy workflow stop | cancel
   buddy workflow show NAME|ID    one routine and how it has gone
   buddy workflow replay NAME|ID  replay it, checking each application came to the front
@@ -100,6 +102,8 @@ fn main() -> Result<()> {
         (Some("skills"), _) => return client::listing("skills"),
         (Some("workflows"), _) => return client::workflows(),
         (Some("workflow"), Some("record")) => return client::workflow_record("start", arg(2)),
+        (Some("workflow"), Some("capture")) => return client::workflow_capture("start", arg(2)),
+        (Some("workflow"), Some("capture-step")) => return client::workflow_capture_step(),
         (Some("workflow"), Some("stop")) => return client::workflow_record("stop", None),
         (Some("workflow"), Some("cancel")) => return client::workflow_record("cancel", None),
         (Some("workflow"), Some("show")) if arg(2).is_some() => return client::workflow_show(arg(2).unwrap()),

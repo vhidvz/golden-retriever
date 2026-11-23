@@ -103,14 +103,17 @@ animation and personality layer.
 - Application-level workflow recording and verified replay live in
   `crates/buddy-core/src/workflow.rs`, `crates/buddy/src/daemon.rs` and the `buddy
   workflow` commands; they were implemented in commit `2853733`.
-- The inside-application design is **AT-SPI guided capture**: the user marks the focused
-  control; replay locates it by app, frame title, role and accessible name, invokes its
-  accessible action and verifies a semantic event or state change. It never uses mouse
-  coordinates, synthetic keys or the clipboard, and refuses text entry, password fields,
-  terminals and shells. The `accessibility` sense is off by default and privacy mode
-  suspends it. Evidence: `spikes/workflow-a11y/RESULTS.md`.
-- Still open: implementing inside-application steps, toys and fetch, and the remaining
-  gaps listed in README "Known gaps".
+- Inside-application actions are implemented for focused controls that have an
+  accessible action: `buddy sense accessibility on`, `buddy workflow capture NAME`,
+  `buddy workflow capture-step`, then `buddy workflow replay NAME|ID`. Replay locates
+  the control by app, frame title, role and accessible name, invokes its accessible
+  action and verifies a semantic event. It never uses mouse coordinates, synthetic keys
+  or the clipboard, and refuses text entry, password fields, terminals and shells.
+  Mixed application-plus-inside-application workflows are rejected for now. The
+  `accessibility` sense is off by default and privacy mode suspends it. Evidence:
+  `spikes/workflow-a11y/RESULTS.md`.
+- Still open: text entry, applications without an accessibility tree, mixed workflows,
+  toys and fetch, and the remaining gaps listed in README "Known gaps".
 
 The measurements behind the design, including the `gemma4:e4b` evaluation, are in
 `spikes/RESULTS.md`.
