@@ -422,3 +422,8 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
    helper and its arguments, and consent-gated synthetic input only later as a replay
    fallback for applications without an accessibility tree. See
    `docs/automation-direction.md`.
+8. Photoreal body and motion — researched 2026-11-23, not yet approved. The
+   recommendation is to keep the offline sprite bake and raise its body, coat, light
+   and motion quality, with real dog mocap as an optional separate download.
+   Splat-based neural avatars need 24-48 GB of VRAM and non-commercial models, so they
+   are not a path on this machine. See `docs/realism-direction.md`.

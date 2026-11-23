@@ -170,3 +170,24 @@ three options and the recommendation are in `docs/automation-direction.md`.
 - No option is approved. The existing preference for accessibility APIs and structured
   tools over coordinate replay still stands (additional requirement 2), and any
   implementation still needs a spike, a written plan and explicit approval.
+
+## Body realism (researched 2026-11-23; not decided)
+
+The owner asked for the research on making Buddy pass for a real Golden Retriever, in
+image and in motion, to be kept as part of the completion roadmap for later
+implementation. The evidence, options and recommendation are in
+`docs/realism-direction.md`.
+
+- Keep the offline sprite bake as the runtime architecture: the expensive work happens
+  while the user is away, and showing the pictures costs almost nothing. The open work
+  is the body, the coat, the light and the motion, not the renderer design.
+- 3D Gaussian Splatting and neural animal avatars are research-grade: they need
+  24-48 GB of VRAM to train, their template dependencies (BITE, D-SMAL) are
+  non-commercial, and the Godot splat viewers need Forward+/compute rather than the
+  `gl_compatibility` renderer. They are not a Buddy path on 2-4 GB of VRAM.
+- The only real dog motion found is the AI4Animation/MANN set, CC BY-NC. It stays
+  optional and separate under decision 6 and is never a hard dependency of the daemon.
+- No open, photoreal, rigged Golden Retriever asset was found. The closest is a CC BY
+  model that is rigged but low-detail and unanimated.
+- No option is approved. Any implementation needs the usual spike, written plan and
+  explicit approval. The target on-screen size for "indistinguishable" is still open.
