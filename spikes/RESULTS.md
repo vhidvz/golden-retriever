@@ -139,8 +139,12 @@ which adds up to 2.3% of his waking time.
 - `buddy ai setup --yes` was exercised against a mock `/api/pull` stream on the same
   endpoint: it detected the machine, chose `gemma4:e4b`, parsed progress, verified the
   digest, wrote `runtime.json`, and selected the model through a running daemon.
-- The 1.44 GiB official Ollama tarball download was **not** run end-to-end; the installer
-  is syntax-checked and its layout and checksum parsing are verified separately.
+- On 2026-11-23 the official 1.44 GiB Ollama 0.40.17 tarball was downloaded, its
+  SHA-256 verified, extracted and installed as `buddy-ollama.service`; the runtime
+  answered `/api/version` on 127.0.0.1:11435.
+- `buddy ai setup --yes` then installed `gemma4:e4b` (6.6 GB), selected it for language
+  and vision, recorded its digest and answered a tiny local chat ("ready"). `ollama ps`
+  reported the model on the GPU; the system Ollama on 11434 stayed untouched.
 - Only `gemma4:e4b` has project measurements. The other catalogue entries are marked
   unevaluated.
 
@@ -159,3 +163,23 @@ which adds up to 2.3% of his waking time.
 - With a habit seeded (Terminal, then code, then Calculator), bringing Terminal and
   then code to the front made him invite within seconds; "تو این کار کمکم نکن"
   ended it and marked the habit never to be offered again.
+
+## Workflow accessibility (2026-11-23)
+
+The Phase 5 workflow work needed to know whether Buddy can see and act inside another
+application without synthetic input. The probe is in `spikes/workflow-a11y/`.
+
+- AT-SPI bus and `Atspi 2.0` Python bindings are present; a GTK4 probe exposed a full
+  tree even with `toolkit-accessibility=false`.
+- A button's accessible `do_action(0)` worked and changed a label from `ready` to
+  `pressed`; editable text could be set and produced `object:text-changed` events.
+- A programmatic button action emitted no dedicated action/pressed event; only the
+  label's accessible-name change arrived. Raw event recording is not reliable.
+- Some apps expose no accessible tree (Telegram Desktop had zero children).
+- `xdotool` cannot see native Wayland windows; `ydotool`/`wtype` are absent. Synthetic
+  input is technically possible via `/dev/uinput` but is not the chosen path.
+
+Consequence: application-level workflow recording and verified replay are the first
+milestone; inside-application steps use guided capture and accessible actions, not
+keystrokes or coordinates. The detailed plan is
+`docs/superpowers/plans/2026-11-23-workflow-accessibility.md`.

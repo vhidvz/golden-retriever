@@ -115,7 +115,7 @@ configuration, CLI, tests or documentation.
 - `cargo test` passes.
 - `cargo fmt --check` shows no new diffs (the toolchain already reports pre-existing
   differences; do not reformat unrelated files).
-- `buddy skills` lists seven skills.
+- `buddy skills` listed seven skills at that point; the later workflow replay skill makes eight.
 - `buddy providers` has no Claude line.
 - A request that previously routed to `ask_claude` now produces a clean "no skill fits"
   or local-model result; no panic, no dangling command.
@@ -170,7 +170,7 @@ dedicated port and model store, without touching a system Ollama.
       occupant.
 - [x] Implement download: `curl` or Rust HTTP with `--retry`, resume, progress, SHA-256
       verification against the release `sha256sum.txt`; extract to a temporary directory
-      and rename atomically. The 1.44 GiB download itself was not run end-to-end.
+      and rename atomically. The 1.44 GiB download was run end-to-end on 2026-11-23.
 - [x] Render the systemd user unit with the actual data dir, not a hard-coded
       `~/.local/share/buddy`; respect `XDG_DATA_HOME`.
 - [x] `systemctl --user daemon-reload`, `enable --now`, health check; if 11434 is in use,
@@ -192,8 +192,8 @@ dedicated port and model store, without touching a system Ollama.
 
 **Verification.**
 
-- The installer and rendered unit are inspected; there is no `--dry-run`, and the real
-  install (including the 1.44 GiB download) was not run in this phase.
+- The installer and rendered unit are inspected; there is no `--dry-run`. The real
+  install, including the 1.44 GiB download, was run end-to-end on 2026-11-23.
 - `systemd-analyze verify` accepts the rendered unit.
 - Managed service is active on 11435; `curl 127.0.0.1:11435/api/version` answers.
 - The system Ollama on 11434 is still active and its models are unchanged.
@@ -218,8 +218,9 @@ on 127.0.0.1:11435 with a separate model store; the system Ollama on 11434 staye
 untouched. `buddy ai status` and `buddy ai doctor` were verified against that runtime.
 The installer is syntax-checked and its unit is accepted by `systemd-analyze verify`; a
 transient user unit with the unit's `ProtectHome=read-only` and a private `HOME` under
-the runtime directory answered `/api/version`. The 1.44 GiB download was not run
-end-to-end. The 30-second health loop, bounded restart request, `buddy ai update` and
+the runtime directory answered `/api/version`. On 2026-11-23 the real 1.44 GiB download,
+SHA-256 check, extraction and user-service install were run end-to-end; the managed
+runtime answered `/api/version` as 0.40.17. The 30-second health loop, bounded restart request, `buddy ai update` and
 `/api/ps` placement remain deferred.
 
 ### Phase 3 — Hardware-aware model selection
@@ -278,8 +279,8 @@ lets the user choose, pulls and verifies it, and persists the choice.
 **Verification.**
 
 - Scoring fixtures for 8 GB RAM / no GPU, 16 GB RAM / 6 GB VRAM, 31 GB RAM / 4 GB VRAM.
-- On the current machine, `gemma4:e4b` is recommended with CPU placement; the system
-  Ollama is not used.
+- On the current machine, `gemma4:e4b` is recommended; `ollama ps` reported it on the
+  GPU during a real chat, and the system Ollama was not used.
 - On an 8 GB profile, a small model is recommended and the reason is explained.
 - The user can override the recommendation; the choice survives a daemon restart and a
   reboot.
@@ -298,8 +299,9 @@ Settings are versioned with the existing store.
 interactive/`--yes` setup, pull stream, digest verification, manifest and settings
 persistence, `ai model`, `ai repair` and `ai prune` are in place. On the current machine
 the default recommendation is `gemma4:e4b`; a synthetic 8 GB profile chooses a small
-model. `buddy ai setup --yes` was exercised against a mock pull stream, and model
-selection was persisted through a running daemon. Only `gemma4:e4b` is project-verified;
+model. `buddy ai setup --yes` was exercised against a mock pull stream and then against the
+real runtime: `gemma4:e4b` (6.6 GB) was installed, selected for language and vision,
+recorded with its digest, and answered a tiny local chat request. Only `gemma4:e4b` is project-verified;
 a review pass added disk and available-RAM fit checks, cloud-model guards, daemon-aware
 pruning and corrupt-manifest reporting.
 AMD/Vulkan detection, the per-request keep-alive policy, `/api/ps` placement and a fresh

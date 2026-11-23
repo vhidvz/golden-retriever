@@ -52,6 +52,10 @@ buddy memories          # what he was told to remember; `buddy forget N` removes
 buddy say "find my tax report"      # ask for something on the computer
 buddy waiting | approve | deny      # what he wants a yes for, and your answer
 buddy skills                        # what he can do, and whether he asks first
+buddy workflows                     # the application routines he has recorded
+buddy workflow record NAME          # record the applications you work through, then stop
+buddy workflow stop | cancel
+buddy workflow replay NAME|ID       # replay it, checking each application came to the front
 buddy folders add ~/Documents       # where he may search, read and move files
 buddy undo | result                 # take back his last change; see his last output
 buddy providers                     # is the local model there?
@@ -175,7 +179,7 @@ microphone, and not yet in Persian.
 
 ## Doing things on the computer
 
-He never acts on the computer except through seven skills, each a small piece
+He never acts on the computer except through eight skills, each a small piece
 of local code with its own limits:
 
 | Skill | What it does | By default |
@@ -183,6 +187,7 @@ of local code with its own limits:
 | `find_files`, `read_file` | Look in the folders he was given | Allowed |
 | `open_app`, `open_file`, `make_note`, `move_file` | Small or reversible changes | Asks first |
 | `run_command` | Runs a shell command | Always asks, unless that exact command was approved for good |
+| `replay_workflow` | Replays a saved application routine and checks each step | Asks first |
 
 **How a request is worked out.** "Open X", "find X", "note X" and their Persian
 forms are placed by his own vocabulary, with no model. Anything else goes to
@@ -362,9 +367,9 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
 - Speech has been tested with a recording only; there is no wake word, so with the
   microphone on every stretch of speech goes through the local model.
 - "Fetch" is not among his tricks yet, because there is no ball.
-- His offers cover one thing so far: bringing up the application that usually comes
-  next. He does not yet record or replay what you do inside applications, and has
-  no way to press keys or click for you.
+- He records and replays application-level routines, checking that each application
+  came to the front. He does not yet record or replay what you do inside applications,
+  and has no way to press keys or click for you.
 - Suspend is handled by time accounting only; there is no lock or sleep signal yet.
 - The renderer needs Godot installed; it is not yet exported as a standalone binary.
 
@@ -374,6 +379,6 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
 2. Autonomous life — done.
 3. Perception — done.
 4. Language and training — done.
-5. Skills and helpers — this phase. Still to come within it: recording and
-   replaying workflows inside applications, with checks that each step worked.
+5. Skills and helpers — this phase. Application-level workflow recording and
+   verified replay are done; recording actions inside applications is next.
 6. Refinement: fur and model quality, the puppy shape, KDE.

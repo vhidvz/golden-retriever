@@ -37,6 +37,12 @@ On the computer (try: buddy say 'find my tax report'):
   buddy approve [N] [--always]   yes (the latest, or number N); --always: no need to ask again
   buddy deny [N] [--never]       no; --never: and do not offer or ask that again
   buddy skills                   what he can do and whether he asks first
+  buddy workflows                the application routines he has recorded
+  buddy workflow record NAME     record the applications you work through, then stop
+  buddy workflow stop | cancel
+  buddy workflow show NAME|ID    one routine and how it has gone
+  buddy workflow replay NAME|ID  replay it, checking each application came to the front
+  buddy workflow delete NAME|ID
   buddy skill NAME ask|allow|deny
   buddy folders [add|remove DIR] the folders he may search, read and move files in
   buddy undo                     take back the last change he made
@@ -91,6 +97,13 @@ fn main() -> Result<()> {
         (Some("knows"), _) => return client::knows(),
         (Some("waiting"), _) => return client::listing("waiting"),
         (Some("skills"), _) => return client::listing("skills"),
+        (Some("workflows"), _) => return client::workflows(),
+        (Some("workflow"), Some("record")) => return client::workflow_record("start", arg(2)),
+        (Some("workflow"), Some("stop")) => return client::workflow_record("stop", None),
+        (Some("workflow"), Some("cancel")) => return client::workflow_record("cancel", None),
+        (Some("workflow"), Some("show")) if arg(2).is_some() => return client::workflow_show(arg(2).unwrap()),
+        (Some("workflow"), Some("replay")) if arg(2).is_some() => return client::act("replay_workflow", json!({ "workflow": arg(2).unwrap() })),
+        (Some("workflow"), Some("delete")) if arg(2).is_some() => return client::workflow_delete(arg(2).unwrap()),
         (Some("providers"), _) => return client::providers(),
         (Some("ai"), Some("status")) => return client::ai_status(),
         (Some("ai"), Some("doctor")) => return client::ai_doctor(),

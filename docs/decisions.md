@@ -100,8 +100,12 @@ animation and personality layer.
   permission gate live in `crates/buddy/src/daemon/assist.rs`.
 - Ollama is the local provider in `crates/buddy/src/ai.rs`. Claude Code was removed in
   Phase 1 of the approved self-contained-AI plan on 2026-11-22.
-- Still open: recording and replaying workflows inside applications with per-step
-  verification, toys and fetch, and the remaining gaps listed in README "Known gaps".
+- Application-level workflow recording and verified replay live in
+  `crates/buddy-core/src/workflow.rs`, `crates/buddy/src/daemon.rs` and the `buddy
+  workflow` commands. Recording actions inside applications is the next stage; the
+  accessibility research is in `spikes/workflow-a11y/`.
+- Still open: inside-application workflow steps, toys and fetch, and the remaining gaps
+  listed in README "Known gaps".
 
 The measurements behind the design, including the `gemma4:e4b` evaluation, are in
 `spikes/RESULTS.md`.

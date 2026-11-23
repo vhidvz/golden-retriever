@@ -12,6 +12,8 @@ use crate::personality::{Personality, drift};
 use crate::proto::StateMsg;
 use crate::rng::Rng;
 use crate::training::{Response, Training};
+use crate::workflow::{Recording, Workflow, Workflows};
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::VecDeque;
@@ -139,6 +141,8 @@ pub struct Mind {
     pub water_out: bool,
     /// Recurring sequences of applications he has noticed.
     pub patterns: Patterns,
+    /// Application routines recorded explicitly by the user.
+    pub workflows: Workflows,
     /// What words mean to him.
     pub training: Training,
 }
@@ -229,6 +233,8 @@ pub struct Sim {
 
     // What his senses currently tell him.
     patterns: Patterns,
+    workflows: Workflows,
+    recording: Option<Recording>,
     user_away: bool,
     away_since: f64,
     busy: f64,
@@ -294,6 +300,8 @@ impl Sim {
             loud_sounds: VecDeque::new(),
             last_glance: 0.0,
             patterns: mind.patterns,
+            workflows: mind.workflows,
+            recording: None,
             user_away: false,
             away_since: 0.0,
             busy: 0.0,
@@ -315,6 +323,47 @@ impl Sim {
         }
     }
 
+    /// Start recording the applications the user works through.
+    pub fn start_workflow_recording(&mut self, name: String, now: f64) -> Result<()> {
+        if self.recording.is_some() {
+            bail!("a workflow is already being recorded");
+        }
+        let name = name.trim();
+        if name.is_empty() {
+            bail!("a workflow needs a name");
+        }
+        self.recording = Some(Recording::new(name.to_string(), now));
+        Ok(())
+    }
+
+    /// Stop recording and save the routine. Fewer than two applications is an error.
+    pub fn stop_workflow_recording(&mut self, now: f64) -> Result<Workflow> {
+        let recording = self.recording.take().ok_or_else(|| anyhow::anyhow!("no workflow is being recorded"))?;
+        let name = recording.name.clone();
+        let apps = recording.finish(now);
+        self.workflows.record(&name, &apps, now)
+    }
+
+    pub fn cancel_workflow_recording(&mut self) -> bool {
+        self.recording.take().is_some()
+    }
+
+    pub fn workflows(&self) -> &[Workflow] {
+        self.workflows.list()
+    }
+
+    pub fn workflow_mut(&mut self, id: u64) -> Option<&mut Workflow> {
+        self.workflows.get_mut(id)
+    }
+
+    pub fn delete_workflow(&mut self, id: u64) -> bool {
+        self.workflows.remove(id)
+    }
+
+    pub fn workflow_outcome(&mut self, id: u64, ok: bool, now: f64) {
+        self.workflows.outcome(id, ok, now);
+    }
+
     pub fn mind(&self) -> Mind {
         Mind {
             personality: Some(self.personality.clone()),
@@ -324,6 +373,7 @@ impl Sim {
             food_out: self.food_out,
             water_out: self.water_out,
             patterns: self.patterns.clone(),
+            workflows: self.workflows.clone(),
             training: self.training.clone(),
         }
     }
@@ -1175,6 +1225,9 @@ impl Sim {
             Stimulus::Fullscreen(on) => self.fullscreen = on,
             Stimulus::Overview(on) => self.overview = on,
             Stimulus::Focus { app } => {
+                if let Some(recording) = self.recording.as_mut() {
+                    recording.observe(&app, now);
+                }
                 if let Some(habit) = self.patterns.focus(&app, now) {
                     // He has worked out something about how you work; for now he just perks up at it.
                     self.mood.lift(0.05, 0.1);
@@ -1303,6 +1356,7 @@ impl Sim {
             "you": { "away": self.user_away, "busy": (self.busy * 100.0).round() / 100.0 },
             "last_look_at_the_screen": self.glimpse.as_ref().filter(|(at, _)| now - at < 600.0).map(|(_, what)| what),
             "habits_noticed": self.patterns.habits(),
+            "workflows": self.workflows.list(),
             "doing_as_asked": self.performing,
         })
     }
@@ -1604,5 +1658,29 @@ mod tests {
         }
         let spot = s.habits.favourite().expect("a preference has formed");
         assert!((spot - 0.2).abs() < 0.06);
+    }
+
+    #[test]
+    fn focus_events_are_recorded_while_a_recording_is_active() {
+        let mut s = sim(0);
+        s.start_workflow_recording("morning".into(), 0.0).unwrap();
+        s.sense(Stimulus::Focus { app: "terminal".into() }, 0.0);
+        s.sense(Stimulus::Focus { app: "editor".into() }, 30.0);
+        let workflow = s.stop_workflow_recording(40.0).unwrap();
+        assert_eq!(workflow.apps, vec!["terminal", "editor"]);
+        assert_eq!(s.workflows().len(), 1);
+    }
+
+    #[test]
+    fn a_recorded_workflow_survives_a_restart() {
+        let mut s = sim(0);
+        s.start_workflow_recording("morning".into(), 0.0).unwrap();
+        s.sense(Stimulus::Focus { app: "terminal".into() }, 0.0);
+        s.sense(Stimulus::Focus { app: "editor".into() }, 30.0);
+        s.stop_workflow_recording(40.0).unwrap();
+        let mind = s.mind();
+        let restored = Sim::new(s.identity.clone(), s.life.clone(), s.settings.clone(), s.body(), mind, 42);
+        assert_eq!(restored.workflows().len(), 1);
+        assert_eq!(restored.workflows()[0].apps, vec!["terminal", "editor"]);
     }
 }

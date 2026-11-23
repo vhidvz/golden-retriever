@@ -19,7 +19,7 @@ per-request keep-alive policy, `/api/ps` placement, and the retarget/render part
 AI4Animation spike.
 
 The main decisions: Claude Code removal is complete (`claude.rs`, the `ask_claude` skill,
-the CLI command, provider status and tests are gone; seven skills remain); the managed
+the CLI command, provider status and tests are gone; seven skills remained, and a later workflow replay skill makes eight); the managed
 runtime is a pinned user-local Ollama on port 11435 with its own model store; AI failure
 never blocks Buddy's life; AI4Animation has no consumer in the current code and stays
 optional/separate (CC BY-NC 4.0), which amends decision 6 and supersedes additional

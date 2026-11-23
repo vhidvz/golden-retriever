@@ -33,7 +33,7 @@ The invariants that matter most:
 
 ```sh
 cargo build --release
-cargo test                                    # 88 tests, under 30 s on the dev machine
+cargo test                                    # 96 tests, under 30 s on the dev machine
 cargo test -p buddy-core <test_name>          # one unit test
 cargo test -p buddy --test lifecycle          # daemon persistence/lifecycle integration test
 cargo fmt --check                             # rustfmt.toml: max_width 150 (currently reports pre-existing diffs)
@@ -118,15 +118,17 @@ Two crates, one long-running process, and a replaceable renderer.
 
 - `crates/buddy-core` — the brain. Pure simulation: `Sim` advances `Mind` (identity,
   life, needs, mood, personality, training, habits, senses); `behavior` scores his
-  repertoire and samples one; `store` persists named JSON documents, the journal and
-  behaviour records in SQLite; `proto` defines the wire messages. No graphics, no
+  repertoire and samples one; `workflow` records application routines and checks replay
+  steps; `store` persists named JSON documents, the journal and behaviour records in
+  SQLite; `proto` defines the wire messages. No graphics, no
   network, no language model, no filesystem beyond SQLite.
 - `crates/buddy` — the daemon and CLI. `daemon.rs` owns `Sim`, ticks at 50 ms while he
   moves and 250 ms at rest, saves every 30 s, and serves one newline-delimited JSON Unix
   socket. `client.rs` is the CLI half. `renderer.rs` supervises Godot and restarts it
   with backoff. `skills.rs` is the only code that touches files or processes.
-  `daemon/assist.rs` resolves requests, gates them on permission, and handles his own
-  offers. `ai.rs` is the Ollama client; `ai_runtime.rs` owns the managed runtime
+  `daemon.rs` also tracks the application in front and advances a permissioned workflow
+  replay; `daemon/assist.rs` resolves requests, gates them on permission, and handles his
+  own offers. `ai.rs` is the Ollama client; `ai_runtime.rs` owns the managed runtime
   manifest, endpoint and port checks; `ai_hardware.rs`, `ai_catalog.rs` and `ai_setup.rs`
   implement the first-run hardware assessment and model choice. Claude Code was removed.
   `baker.rs` runs the offline sprite bake only while the user is away. `system.rs` polls
@@ -172,6 +174,8 @@ lives in `memory/`; start at `memory/MEMORY.md`.
 - Daemon, CLI, protocol: `crates/buddy/src/daemon.rs`, `client.rs`,
   `crates/buddy-core/src/proto.rs`.
 - Skills, permissions, offers: `crates/buddy/src/skills.rs`, `daemon/assist.rs`.
+- Workflow recording and replay: `crates/buddy-core/src/workflow.rs`, `daemon.rs`,
+  `buddy workflow` commands; accessibility research in `spikes/workflow-a11y/`.
 - Optional provider: `crates/buddy/src/ai.rs` (Ollama), managed by `ai_runtime.rs` on
   `127.0.0.1:11435` with its own model store; first-run choice in `ai_setup.rs`.
 - Renderer and body: `renderer/main.gd`, `retriever.gd`, `sprites.gd`,

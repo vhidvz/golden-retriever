@@ -451,6 +451,73 @@ fn human_bytes(bytes: u64) -> String {
     format!("{value:.1} {}", UNITS[unit])
 }
 
+/// One line for a stored workflow: id, name, steps and the record.
+pub fn workflow_line(value: &Value) -> String {
+    let apps: Vec<&str> = value["apps"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+    format!(
+        "{}  {}  {}  ({} runs, {} ok, {} failed)",
+        value["id"].as_u64().unwrap_or(0),
+        value["name"].as_str().unwrap_or("?"),
+        apps.join(" > "),
+        value["runs"].as_u64().unwrap_or(0),
+        value["successes"].as_u64().unwrap_or(0),
+        value["failures"].as_u64().unwrap_or(0)
+    )
+}
+
+fn workflow_key(key: &str) -> Value {
+    match key.parse::<u64>() {
+        Ok(id) => serde_json::json!({ "id": id }),
+        Err(_) => serde_json::json!({ "name": key }),
+    }
+}
+
+pub fn workflows() -> Result<()> {
+    let data = request("workflows", Value::Null)?;
+    let workflows = data["workflows"].as_array().cloned().unwrap_or_default();
+    if workflows.is_empty() {
+        println!("No workflows yet. Record one with: buddy workflow record NAME");
+    }
+    for workflow in workflows {
+        println!("{}", workflow_line(&workflow));
+    }
+    Ok(())
+}
+
+pub fn workflow_show(key: &str) -> Result<()> {
+    let workflow = request("workflow", workflow_key(key))?;
+    println!("{}", serde_json::to_string_pretty(&workflow)?);
+    Ok(())
+}
+
+pub fn workflow_record(action: &str, name: Option<&str>) -> Result<()> {
+    let args = match action {
+        "start" => serde_json::json!({ "action": "start", "name": name.unwrap_or_default() }),
+        other => serde_json::json!({ "action": other }),
+    };
+    let data = request("workflow_record", args)?;
+    match action {
+        "start" => println!(
+            "Recording workflow \u{201c}{}\u{201d}. Switch applications, then: buddy workflow stop",
+            data["recording"].as_str().unwrap_or(name.unwrap_or("?"))
+        ),
+        "stop" => println!("Saved: {}", workflow_line(&data)),
+        "cancel" => println!("Recording cancelled."),
+        _ => println!("{}", serde_json::to_string_pretty(&data)?),
+    }
+    Ok(())
+}
+
+pub fn workflow_delete(key: &str) -> Result<()> {
+    let data = request("workflow_delete", workflow_key(key))?;
+    if data["deleted"] == true {
+        println!("Workflow deleted.");
+    } else {
+        println!("No such workflow.");
+    }
+    Ok(())
+}
+
 pub fn providers() -> Result<()> {
     let p = request_within("providers", Value::Null, Duration::from_secs(20))?;
     let local = &p["local"];
@@ -473,4 +540,18 @@ pub fn providers() -> Result<()> {
     println!("Order: {}.", p["order"].as_str().unwrap_or("?"));
     println!("Without it, he still lives, obeys the words he knows, and does what his own vocabulary can work out.");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_workflow_line_names_the_steps_and_the_record() {
+        let value = serde_json::json!({
+            "id": 1, "name": "morning", "apps": ["terminal", "editor"],
+            "runs": 2, "successes": 1, "failures": 1
+        });
+        assert_eq!(workflow_line(&value), "1  morning  terminal > editor  (2 runs, 1 ok, 1 failed)");
+    }
 }

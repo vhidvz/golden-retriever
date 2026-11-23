@@ -19,6 +19,7 @@ pub mod sim;
 pub mod simulate;
 pub mod store;
 pub mod training;
+pub mod workflow;
 
 pub use behavior::Record;
 pub use language::Heard;

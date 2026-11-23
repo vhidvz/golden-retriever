@@ -79,7 +79,7 @@ Create the directory when needed; it is not part of the repository.
 
 ## Testing and runtime traps
 
-- `cargo test` currently runs 88 tests in under 30 seconds. Unit tests sit beside their
+- `cargo test` currently runs 96 tests in under 30 seconds. Unit tests sit beside their
   modules; the daemon lifecycle test is `crates/buddy/tests/lifecycle.rs`.
 - **Wall-clock time:** tests must not depend on the hour. The lifecycle sandbox sets
   `BUDDY_HOUR=12` because a sleeping dog answers differently; a test that passes at noon
@@ -95,6 +95,10 @@ Create the directory when needed; it is not part of the repository.
 - **Desktop sense test:** `tests/shell-sense/run.sh` starts an isolated headless GNOME
   Shell in its own D-Bus session. It needs `gnome-shell`, `dbus-run-session` and a
   writable runtime directory. `BUDDY_TRACE_SENSES=1` makes the daemon log what it hears.
+- **Workflows:** `buddy workflow record NAME`, `stop`, `replay`, `workflows`. Replay
+  opens each application and waits for a real focus event before advancing; no keys,
+  clicks or coordinates are sent. See `docs/superpowers/plans/2026-11-23-workflow-recording.md`
+  and the accessibility research in `spikes/workflow-a11y/`.
 - **Ollama:** `scripts/install.sh` installs a pinned runtime under
   `$BUDDY_DATA_DIR/ollama/<version>` and starts `buddy-ollama.service` on
   `127.0.0.1:11435` with its own model store. A system Ollama on 11434 is left untouched.
@@ -117,6 +121,11 @@ Create the directory when needed; it is not part of the repository.
   measurements.
 - `spikes/ai4animation/` — the MANN dog BVH research spike. It is licence-gated and is
   not part of the runtime or the installer.
+- Verified on 2026-11-23: the real Ollama 0.40.17 install on 11435 and `gemma4:e4b`
+  (6.6 GB) are active; the system Ollama on 11434 was left untouched.
+- `spikes/workflow-a11y/` — the AT-SPI accessibility spike for inside-application
+  workflows. The GTK4 probe and event/action probes are run manually; they are not part
+  of the installer or the test suite.
 - `docs/proportions.md` — how Buddy's body was measured against breed standards,
   photographs and skeletal studies, and what changed as a result.
 - `README.md` "Known gaps" — the current, maintained list of what is not done. Prefer it

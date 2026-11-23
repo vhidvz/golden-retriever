@@ -8,6 +8,7 @@ use crate::renderer::Renderer;
 use crate::skills::{Permissions, Undo};
 use anyhow::{Context, Result, anyhow, bail};
 use buddy_core::language::{self, TRICKS};
+use buddy_core::workflow::{ReplayEvent, ReplayState};
 use buddy_core::{Body, ClientMsg, Command, Heard, Identity, Life, Mind, Output, ServerMsg, Settings, Sim, StateMsg, Stimulus, Store, paths};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -25,6 +26,8 @@ use std::{fs, thread};
 const TICK_MOVING: Duration = Duration::from_millis(50);
 const TICK_RESTING: Duration = Duration::from_millis(250);
 const SAVE_EVERY: Duration = Duration::from_secs(30);
+/// How long a replayed step waits for its application to come to the front.
+const REPLAY_STEP_TIMEOUT: f64 = 30.0;
 
 enum Incoming {
     Connected(u64, UnixStream),
@@ -261,6 +264,13 @@ fn accept_loop(listener: UnixListener, tx: Sender<Incoming>) {
     }
 }
 
+struct Replay {
+    requester: u64,
+    workflow_id: u64,
+    args: Value,
+    state: ReplayState,
+}
+
 struct Daemon {
     store: Store,
     sim: Sim,
@@ -277,6 +287,8 @@ struct Daemon {
     /// What he may do on the computer, what is waiting for a yes, and the way back from the last change.
     permissions: Permissions,
     waiting: Vec<assist::Waiting>,
+    current_app: Option<String>,
+    replay: Option<Replay>,
     next_id: u64,
     last_undo: Option<(String, Undo)>,
     last_result: Option<String>,
@@ -429,6 +441,87 @@ impl Daemon {
 
     /// Something a provider observed. Dropped here, before anything is done with it,
     /// if that sense is switched off or privacy mode is on.
+    fn start_replay(&mut self, requester: u64, mut args: Value, at: f64) {
+        if self.replay.is_some() {
+            let _ =
+                self.send(requester, &ServerMsg::Reply { ok: false, data: Value::Null, error: Some("a workflow is already being replayed".into()) });
+            return;
+        }
+        let workflow = if let Some(id) = args["id"].as_u64() {
+            self.sim.workflows().iter().find(|workflow| workflow.id == id).cloned()
+        } else if let Some(name) = args["workflow"].as_str() {
+            self.sim.workflows().iter().find(|workflow| workflow.name.eq_ignore_ascii_case(name)).cloned()
+        } else {
+            None
+        };
+        let Some(workflow) = workflow else {
+            let _ = self.send(requester, &ServerMsg::Reply { ok: false, data: Value::Null, error: Some("no such workflow".into()) });
+            return;
+        };
+        if workflow.never {
+            let _ = self.send(
+                requester,
+                &ServerMsg::Reply { ok: false, data: Value::Null, error: Some("you told him not to help with this workflow".into()) },
+            );
+            return;
+        }
+        if args["workflow"].as_str().is_none() {
+            args["workflow"] = json!(workflow.name);
+        }
+        let state = ReplayState::new(workflow.apps.clone(), at);
+        self.replay = Some(Replay { requester, workflow_id: workflow.id, args, state });
+        if self.current_app.as_deref() == self.replay.as_ref().and_then(|replay| replay.state.expected()) {
+            self.advance_replay(at);
+        } else {
+            self.open_replay_app(at);
+        }
+    }
+
+    fn open_replay_app(&mut self, at: f64) {
+        let Some(app) = self.replay.as_ref().and_then(|replay| replay.state.expected()).map(str::to_string) else { return };
+        if self.current_app.as_deref() == Some(app.as_str()) {
+            return;
+        }
+        let notes = paths::data_dir().join("notes.md");
+        if let Err(why) = crate::skills::run("open_app", &json!({ "name": app }), &self.permissions, &notes) {
+            self.fail_replay(format!("could not open '{app}': {why:#}"), at);
+        }
+    }
+
+    fn advance_replay(&mut self, at: f64) {
+        let Some(mut replay) = self.replay.take() else { return };
+        match replay.state.check(self.current_app.as_deref(), at, REPLAY_STEP_TIMEOUT) {
+            ReplayEvent::Waiting => self.replay = Some(replay),
+            ReplayEvent::StepOk => {
+                self.replay = Some(replay);
+                self.open_replay_app(at);
+            }
+            ReplayEvent::Done => {
+                let _ = self.sim.workflow_outcome(replay.workflow_id, true, at);
+                let summary = format!("replayed the workflow ({} steps)", replay.state.apps.len());
+                self.did(replay.requester, "replay_workflow", &replay.args, None, Ok((summary, String::new(), None)), at);
+            }
+            ReplayEvent::TimedOut => {
+                let expected = replay.state.expected().unwrap_or("?").to_string();
+                let _ = self.sim.workflow_outcome(replay.workflow_id, false, at);
+                self.did(
+                    replay.requester,
+                    "replay_workflow",
+                    &replay.args,
+                    None,
+                    Err(format!("the workflow stopped at '{expected}': it did not come to the front within {REPLAY_STEP_TIMEOUT:.0} s")),
+                    at,
+                );
+            }
+        }
+    }
+
+    fn fail_replay(&mut self, why: String, at: f64) {
+        let Some(replay) = self.replay.take() else { return };
+        let _ = self.sim.workflow_outcome(replay.workflow_id, false, at);
+        self.did(replay.requester, "replay_workflow", &replay.args, None, Err(why), at);
+    }
+
     fn perceive(&mut self, provider: &str, kind: &str, data: &Value, at: f64) {
         let senses = &self.sim.settings.senses;
         // A stretch of speech from the microphone: have it written down locally, then delete the recording.
@@ -463,6 +556,9 @@ impl Daemon {
             return;
         }
         let Some(stimulus) = Stimulus::parse(kind, data) else { return };
+        if let Stimulus::Focus { app } = &stimulus {
+            self.current_app = Some(app.clone());
+        }
         let source = stimulus.source();
         if senses.get(source) != Some(true) {
             return;
@@ -622,6 +718,55 @@ impl Daemon {
             "quiet" => Command::Quiet(args["on"].as_bool().context("quiet needs {\"on\": true|false}")?),
             "drag" => Command::DragTo { x_frac: args["x_frac"].as_f64().context("drag needs x_frac")? },
             "drag_end" => Command::DragEnd,
+            "workflows" => return Ok(json!({ "workflows": self.sim.workflows() })),
+            "workflow" => {
+                let found = if let Some(id) = args["id"].as_u64() {
+                    self.sim.workflows().iter().find(|workflow| workflow.id == id)
+                } else if let Some(name) = args["name"].as_str() {
+                    self.sim.workflows().iter().find(|workflow| workflow.name.eq_ignore_ascii_case(name))
+                } else {
+                    bail!("workflow needs an id or a name")
+                };
+                return found.cloned().map(|workflow| json!(workflow)).context("no such workflow");
+            }
+            "workflow_record" => {
+                let action = args["action"].as_str().context("workflow_record needs an action")?;
+                match action {
+                    "start" => {
+                        let name = args["name"].as_str().context("workflow_record start needs a name")?;
+                        self.sim.start_workflow_recording(name.to_string(), at)?;
+                        let _ = self.store.journal(at as i64, "workflow_recording", &json!({ "name": name }));
+                        return Ok(json!({ "recording": name }));
+                    }
+                    "stop" => {
+                        let workflow = self.sim.stop_workflow_recording(at)?;
+                        self.persist(at)?;
+                        let _ = self.store.journal(
+                            at as i64,
+                            "workflow_recorded",
+                            &json!({ "id": workflow.id, "name": workflow.name, "apps": workflow.apps }),
+                        );
+                        return Ok(json!(workflow));
+                    }
+                    "cancel" => {
+                        let cancelled = self.sim.cancel_workflow_recording();
+                        if cancelled {
+                            let _ = self.store.journal(at as i64, "workflow_cancelled", &Value::Null);
+                        }
+                        return Ok(json!({ "cancelled": cancelled }));
+                    }
+                    other => bail!("workflow_record action is start, stop or cancel, not {other:?}"),
+                }
+            }
+            "workflow_delete" => {
+                let id = args["id"].as_u64().context("workflow_delete needs an id")?;
+                let deleted = self.sim.delete_workflow(id);
+                if deleted {
+                    self.persist(at)?;
+                    let _ = self.store.journal(at as i64, "workflow_deleted", &json!({ "id": id }));
+                }
+                return Ok(json!({ "deleted": deleted }));
+            }
             "set" => {
                 let value = args["value"].as_str().context("set needs a value")?;
                 let number = || value.parse::<f64>().map_err(|_| anyhow!("'{value}' is not a number"));
@@ -756,6 +901,7 @@ impl Daemon {
                 ClientMsg::Command { name, args } if name == "approve" || name == "deny" => {
                     self.answer(id, args["id"].as_u64(), name == "approve", args["lasting"] == true, at)
                 }
+                ClientMsg::Command { name, args } if name == "replay_workflow" => self.propose(id, "replay_workflow", args, None, "you", at),
                 ClientMsg::Command { name, args } if name == "say" => self.said(id, args["text"].as_str().unwrap_or_default(), at),
                 ClientMsg::Command { name, args } => {
                     let reply = match self.command(&name, &args, at) {
@@ -821,6 +967,8 @@ pub fn run(no_renderer: bool) -> Result<()> {
         addressed_at: f64::NEG_INFINITY,
         permissions,
         waiting: Vec::new(),
+        current_app: None,
+        replay: None,
         next_id: 0,
         last_undo: None,
         last_result: None,
@@ -861,6 +1009,7 @@ pub fn run(no_renderer: bool) -> Result<()> {
         let at = now();
         let outputs = daemon.sim.tick(at, local_hour());
         daemon.absorb(outputs, at);
+        daemon.advance_replay(at);
 
         let state = daemon.sim.snapshot(at);
         if last_state.as_ref() != Some(&state) && (daemon.sim.is_moving() || last_push.elapsed() >= TICK_RESTING) {

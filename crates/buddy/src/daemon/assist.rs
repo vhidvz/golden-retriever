@@ -79,7 +79,10 @@ impl Daemon {
 
     /// Runs a skill on a thread of its own; the outcome comes back as `Incoming::Did`.
     pub(super) fn carry_out(&mut self, requester: u64, skill: &str, args: Value, habit: Option<String>, at: f64) {
-        let _ = at;
+        if skill == "replay_workflow" {
+            self.start_replay(requester, args, at);
+            return;
+        }
         let (permissions, tx, skill) = (self.permissions.clone(), self.tx.clone(), skill.to_string());
         thread::spawn(move || {
             let outcome = skills::run(&skill, &args, &permissions, &notes()).map(|d| (d.summary, d.detail, d.undo));

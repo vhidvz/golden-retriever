@@ -70,7 +70,7 @@ configuration and operational assumptions. Keeping Claude Code as an optional he
 would keep those assumptions alive and contradict "Ollama as the sole runtime".
 
 **Consequence.** Buddy loses the ability to hand a coding or analysis task to an agent
-with read/edit tools. The other seven skills remain. A local coding agent is **not** part
+with read/edit tools. The other seven skills remained; a later workflow replay skill makes eight. A local coding agent is **not** part
 of this change; if wanted, it is a separate feature with its own permissions, sandbox,
 verification and undo.
 

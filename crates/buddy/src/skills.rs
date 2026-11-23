@@ -44,7 +44,7 @@ pub struct Skill {
     pub arguments: &'static [&'static str],
 }
 
-pub const SKILLS: [Skill; 7] = [
+pub const SKILLS: [Skill; 8] = [
     Skill { name: "find_files", what: "Find files by name in the folders he may use.", risk: Risk::Looks, arguments: &["query"] },
     Skill { name: "read_file", what: "Read a text file in the folders he may use.", risk: Risk::Looks, arguments: &["path"] },
     Skill { name: "open_app", what: "Open an installed application.", risk: Risk::Changes, arguments: &["name"] },
@@ -52,6 +52,7 @@ pub const SKILLS: [Skill; 7] = [
     Skill { name: "make_note", what: "Add a line to his notes file.", risk: Risk::Changes, arguments: &["text"] },
     Skill { name: "move_file", what: "Move or rename a file within the folders he may use.", risk: Risk::Changes, arguments: &["from", "to"] },
     Skill { name: "run_command", what: "Run a shell command.", risk: Risk::Sensitive, arguments: &["command"] },
+    Skill { name: "replay_workflow", what: "Replay a saved workflow and check each step.", risk: Risk::Changes, arguments: &["workflow", "id"] },
 ];
 
 pub fn skill(name: &str) -> Option<&'static Skill> {
@@ -132,6 +133,7 @@ pub fn describe(name: &str, args: &Value) -> String {
         "make_note" => format!("note down \u{201c}{}\u{201d}", arg("text")),
         "move_file" => format!("move {} to {}", arg("from"), arg("to")),
         "run_command" => format!("run the command: {}", arg("command")),
+        "replay_workflow" => format!("replay the workflow \u{201c}{}\u{201d}", arg("workflow")),
         other => format!("do '{other}'"),
     }
 }
@@ -445,10 +447,11 @@ mod tests {
     }
 
     #[test]
-    fn the_skill_list_is_the_seven_local_skills() {
-        assert_eq!(SKILLS.len(), 7);
+    fn the_skill_list_is_the_eight_local_skills() {
+        assert_eq!(SKILLS.len(), 8);
         assert!(skill("ask_claude").is_none(), "Claude Code was removed; it is not a skill");
         assert!(skill("run_command").is_some());
+        assert!(skill("replay_workflow").is_some());
     }
 
     #[test]
