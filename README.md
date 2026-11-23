@@ -472,7 +472,10 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
    replay, accessible actions, text entry, mixed sequences and assisted steps for
    apps without an accessibility tree are implemented. Name recognition and the
    control panel are part of this phase as well.
-6. Refinement: fur and model quality, the puppy shape, KDE.
+6. Refinement: fur and model quality, the puppy shape, KDE. Started 2026-11-24 with a
+   body-surface pass (softer cheek/lip volume, broader ears, fuller tail base) while the
+   measured skeleton and all proportion checks stayed unchanged; KDE and the remaining
+   visual craft are still open.
 7. Automation beyond accessible actions — **done on the helper path** (2026-11-24).
    The owner can register named argv-only helper scripts; the local model sees one tool
    per helper with its declared arguments; helper runs support an optional bubblewrap

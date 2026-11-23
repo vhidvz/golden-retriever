@@ -171,3 +171,20 @@ with the longer femur, the old rule stood it up over his back.
 - Fischer MS, Lilje KE (2011). *Dogs in Motion*. Press summary: https://phys.org/news/2011-05-dogs-motion.html
 - Zink C, Schlehr MR (2020). Working dog structure: evaluation and relationship to function. Frontiers in Veterinary Science 7:559055
 - Photographs: https://commons.wikimedia.org/wiki/File:Agnes_the_Golden_Retriever.jpg and https://commons.wikimedia.org/wiki/File:Golden_Retriever_dark_stacked.jpg
+
+## Phase 6 surface refinement (2026-11-24)
+
+A first Phase 6 pass leaves the measured skeleton and all the ratios above untouched; it
+only changes surface volume and coat support:
+
+- the cheek and upper-lip ellipsoids were made smaller and less spherical, removing the
+  jowl-like lumps visible in the bare-body preview while keeping the muzzle supported;
+- the brow volume was softened slightly;
+- the ears were widened a little without moving their roots or changing their length;
+- the tail base and middle sections were made fuller; the tail's length, root and reach
+  are unchanged.
+
+`tools/measure_dog.py` (adult and puppy) still reports every reference check as `ok`, and
+the Godot self-test renders the adult with the coat and eyes. The body changed, so the
+pre-drawn sprite sets are correctly invalidated and will be rebuilt by the baker while
+the user is away.

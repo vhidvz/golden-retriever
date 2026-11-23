@@ -16,3 +16,4 @@
 - [Release direction (Phase 9, Linux foundation implemented)](release-direction.md) — GitHub Actions artifacts for DEB/RPM/Arch/AppImage/Windows after a port; opt-in Buddy/tool update checks; Windows/signing open
 - [Context direction (Phase 10, pointer/click foundation)](context-direction.md) — clicks by app/coarse region implemented; semantic text, screen glances and warmth remain; not a keylogger
 - [Helper registry (Phase 7 Stage 1)](helper-registry.md) — owner-registered argv-only helpers with dry-run, timeout, approved cwd and always-ask execution; model selection/synthetic input remain
+- [Phase 6 body refinement](phase6-body-refinement.md) — measured-skeleton-preserving cheek/lip/ear/tail surface pass; sprite bakes invalidated; KDE and more craft remain

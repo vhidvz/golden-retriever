@@ -363,11 +363,11 @@ def ear(sign):
     coat = (0.030, 0.026, 0.030)
     tone = (DEEP, DEEP, DEEP)
     return {"name": f"ear_{s}", "face": (-1, 0, 0), "caps": (0.5, 0.9), "own": True, "tilt": True, "cuts": [
-        cut(0.450, 0.922, 0.024, 0.024, 0.014, (0.016, 0.016, 0.016), tone, {"head": 0.7, f"ear_{s}": 0.3}, z=0.070 * sign),
-        cut(0.453, 0.892, 0.040, 0.038, 0.0125, coat, tone, e, z=0.090 * sign),
-        cut(0.459, 0.850, 0.047, 0.042, 0.0115, coat, tone, e, z=0.098 * sign),
-        cut(0.466, 0.806, 0.039, 0.035, 0.0105, coat, tone, e, z=0.099 * sign),
-        cut(0.472, 0.776, 0.020, 0.020, 0.0095, coat, tone, e, z=0.096 * sign),
+        cut(0.450, 0.922, 0.024, 0.024, 0.016, (0.016, 0.016, 0.016), tone, {"head": 0.7, f"ear_{s}": 0.3}, z=0.070 * sign),
+        cut(0.453, 0.892, 0.040, 0.038, 0.0150, coat, tone, e, z=0.090 * sign),
+        cut(0.459, 0.850, 0.047, 0.042, 0.0140, coat, tone, e, z=0.098 * sign),
+        cut(0.466, 0.806, 0.039, 0.035, 0.0125, coat, tone, e, z=0.099 * sign),
+        cut(0.472, 0.776, 0.020, 0.020, 0.0110, coat, tone, e, z=0.096 * sign),
     ]}
 
 
@@ -432,13 +432,13 @@ def shifted(part, dx):
 def tail():
     t1, t2, t3 = {"tail1": 1.0}, {"tail2": 1.0}, {"tail3": 1.0}
     return {"name": "tail", "face": (0, 1, 0), "caps": (0.5, 1.0), "cuts": [
-        cut(-0.425 + TAIL_SHIFT, 0.632, 0.046, 0.050, 0.046, (0.036, 0.046, 0.070), (GOLD, GOLD, LIGHT), {"hips": 1.0}),
-        cut(-0.500 + TAIL_SHIFT, 0.630, 0.034, 0.036, 0.034, (0.040, 0.052, 0.095), (GOLD, GOLD, LIGHT), t1),
-        cut(-0.600 + TAIL_SHIFT, 0.600, 0.028, 0.030, 0.028, (0.042, 0.056, 0.125), (GOLD, LIGHT, CREAM), {"tail1": 0.5, "tail2": 0.5}),
-        cut(-0.665 + TAIL_SHIFT, 0.580, 0.024, 0.026, 0.024, (0.042, 0.056, 0.130), (GOLD, LIGHT, CREAM), t2),
-        cut(-0.730 + TAIL_SHIFT, 0.555, 0.020, 0.022, 0.020, (0.040, 0.054, 0.120), (GOLD, LIGHT, CREAM), {"tail2": 0.5, "tail3": 0.5}),
-        cut(-0.800 + TAIL_SHIFT, 0.528, 0.016, 0.017, 0.016, (0.038, 0.050, 0.100), (GOLD, LIGHT, CREAM), t3),
-        cut(-0.865 + TAIL_SHIFT, 0.505, 0.012, 0.012, 0.012, (0.034, 0.042, 0.070), (LIGHT, LIGHT, CREAM), t3),
+        cut(-0.425 + TAIL_SHIFT, 0.632, 0.050, 0.054, 0.050, (0.036, 0.046, 0.070), (GOLD, GOLD, LIGHT), {"hips": 1.0}),
+        cut(-0.500 + TAIL_SHIFT, 0.630, 0.040, 0.042, 0.040, (0.040, 0.052, 0.095), (GOLD, GOLD, LIGHT), t1),
+        cut(-0.600 + TAIL_SHIFT, 0.600, 0.034, 0.036, 0.034, (0.042, 0.056, 0.125), (GOLD, LIGHT, CREAM), {"tail1": 0.5, "tail2": 0.5}),
+        cut(-0.665 + TAIL_SHIFT, 0.580, 0.029, 0.031, 0.029, (0.042, 0.056, 0.130), (GOLD, LIGHT, CREAM), t2),
+        cut(-0.730 + TAIL_SHIFT, 0.555, 0.024, 0.026, 0.024, (0.040, 0.054, 0.120), (GOLD, LIGHT, CREAM), {"tail2": 0.5, "tail3": 0.5}),
+        cut(-0.800 + TAIL_SHIFT, 0.528, 0.019, 0.020, 0.019, (0.038, 0.050, 0.100), (GOLD, LIGHT, CREAM), t3),
+        cut(-0.865 + TAIL_SHIFT, 0.505, 0.014, 0.014, 0.014, (0.034, 0.042, 0.070), (LIGHT, LIGHT, CREAM), t3),
     ]}
 
 
@@ -449,9 +449,9 @@ LUMPS = [((0.305, 0.525, 0.0), (0.045, 0.055, 0.055), False)]            # the b
 for _s in (1, -1):
     LUMPS += [
         (front(0.215, 0.520) + (0.078 * _s,), (0.060, 0.085, 0.030), False),      # shoulder
-        ((0.505, 0.818, 0.056 * _s), (0.050, 0.038, 0.027), True),       # cheek
-        ((0.545, 0.906, 0.036 * _s), (0.022, 0.012, 0.022), True),       # brow
-        ((0.600, 0.792, 0.040 * _s), (0.050, 0.020, 0.012), True),       # the upper lip hanging over the jaw
+        ((0.505, 0.818, 0.056 * _s), (0.040, 0.030, 0.020), True),       # cheek
+        ((0.545, 0.906, 0.036 * _s), (0.020, 0.010, 0.018), True),       # brow
+        ((0.600, 0.792, 0.040 * _s), (0.042, 0.014, 0.009), True),       # the upper lip hanging over the jaw
     ]
     for _x, _z in ((0.248 + FRONT_PAW_SHIFT, 0.088), (-0.352 + HIND_PAW_SHIFT, 0.092)):
         for _off in (-0.035, -0.012, 0.012, 0.035):                       # four toes on every paw

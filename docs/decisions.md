@@ -298,3 +298,16 @@ implementation. The evidence, options and recommendation are in
   consent, can reach password dialogs and terminals, and GNOME 50 has input-grab
   lifecycle risks. This is a deliberate decision, not deferred work. See `docs/helpers.md`
   and `docs/automation-direction.md`.
+
+
+## Phase 6 body refinement (started 2026-11-24)
+
+- **The measured skeleton is not being re-guessed.** The first visual pass only changes
+  the cheek/upper-lip volume, brow softness, ear width and tail fullness in
+  `tools/build_dog.py`. `tools/measure_dog.py` still passes every adult and puppy
+  reference check; head and limb landmarks did not move.
+- **The body change invalidates sprite sets by design.** The baker will rebuild the
+  pictures while the user is away; the live 3D body and tests keep working meanwhile.
+- **Still open for Phase 6:** KDE desktop support and the remaining fur/model craft
+  (surface detail, coat response, puppy-specific polish). This is a first increment, not
+  a claim that Phase 6 is complete.
