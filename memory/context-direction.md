@@ -1,19 +1,20 @@
 ---
 name: context-direction
-description: Phase 10 requirements for richer desktop context and family-dog warmth; semantic observation, not raw keylogging; not yet approved
+description: Phase 10 pointer/click foundation implemented; semantic text, screen glances and warmth remain; not a keylogger
 metadata:
   type: project
 ---
 
-Recorded 2026-11-23 at the owner's request: more observation should make Buddy a better
-helper and feel more like a warm family dog. Phase 10 is **requirements only**, not
-approved or implemented. The durable record is `docs/context-direction.md`.
+Recorded 2026-11-23 at the owner's request. The pointer/click foundation is implemented;
+the remaining context layers are requirements. The durable record is
+`docs/context-direction.md`.
 
 - Existing context: focus, fullscreen, overview, pointer position, optional window titles,
   one-shot screen/camera vision, microphone speech and accessibility.
-- Proposed safe layer: pointer clicks at app/coarse-region level; semantic text changes
-  in the focused accessible control; bounded optional screen glances; routines-aware
-  greetings and quiet company.
+- Implemented: pointer clicks at app/coarse-region level; the headless Shell harness
+  verifies them and privacy suppression. Proposed: semantic text changes in the focused
+  accessible control; bounded optional screen glances; routines-aware greetings and quiet
+  company.
 - Explicitly not proposed: raw global keycodes, clipboard capture, hidden continuous
   screenshots, password/terminal/consent/login observation, cloud processing or
   unbounded retention. A separate raw-input mode would be a different high-risk decision.

@@ -1,10 +1,8 @@
 # Context and companionship direction
 
-**Status:** requirements record, 2026-11-23. This is **not an approved decision** and
-no observation beyond the existing senses has been implemented. The owner wants Buddy to
-observe more of the desktop so he can be a better helper and feel more like a warm family
-dog. The shape below is the safe starting point; the final choice needs a spike, a written
-plan and explicit approval.
+**Status:** pointer/click foundation implemented 2026-11-23; the remaining context layers
+are still requirements. The owner wants Buddy to observe more of the desktop so he can be
+a better helper and feel more like a warm family dog.
 
 ## What exists today
 
@@ -20,10 +18,11 @@ plan and explicit approval.
 
 ### Pointer and clicks
 
-Movement already reaches him; clicks do not. A safe next layer is a click event carrying
-the current application and a coarse screen region, not a permanent coordinate history.
+Movement already reaches him. A click event now carries the current application, the
+button and a coarse screen region, not a permanent coordinate history or any content.
 This is enough for reactions such as looking up, wagging or offering help without turning
-Buddy into a detailed activity logger.
+Buddy into a detailed activity logger. The headless GNOME Shell harness verifies the
+click path and its suppression in privacy mode.
 
 ### Screen
 

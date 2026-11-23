@@ -75,6 +75,11 @@ pub enum Stimulus {
     Focus {
         app: String,
     },
+    /// A pointer click, reduced to a button and a coarse region; never a click history.
+    Click {
+        button: u32,
+        region: String,
+    },
     Notification {
         app: String,
     },
@@ -97,7 +102,9 @@ impl Stimulus {
     pub fn source(&self) -> &'static str {
         match self {
             Stimulus::UserIdle(_) | Stimulus::Locked(_) | Stimulus::Load(_) => "system",
-            Stimulus::Fullscreen(_) | Stimulus::Overview(_) | Stimulus::Focus { .. } | Stimulus::Notification { .. } => "desktop",
+            Stimulus::Fullscreen(_) | Stimulus::Overview(_) | Stimulus::Focus { .. } | Stimulus::Notification { .. } | Stimulus::Click { .. } => {
+                "desktop"
+            }
             Stimulus::Presence(_) => "camera",
             Stimulus::Sound { .. } => "microphone",
             Stimulus::Glimpse { .. } => "screen",
@@ -114,6 +121,7 @@ impl Stimulus {
             "fullscreen" => Stimulus::Fullscreen(data["on"].as_bool()?),
             "overview" => Stimulus::Overview(data["on"].as_bool()?),
             "focus" => Stimulus::Focus { app: text("app")? },
+            "click" => Stimulus::Click { button: data["button"].as_u64()? as u32, region: text("region").unwrap_or_default() },
             "notification" => Stimulus::Notification { app: text("app").unwrap_or_default() },
             "presence" => Stimulus::Presence(data["on"].as_bool()?),
             "sound" => Stimulus::Sound { level: data["level"].as_f64()?.clamp(0.0, 1.0) },
@@ -144,13 +152,14 @@ mod tests {
         let seen = [
             Stimulus::parse("idle", &json!({ "secs": 3.0 })),
             Stimulus::parse("focus", &json!({ "app": "org.gnome.Nautilus" })),
+            Stimulus::parse("click", &json!({ "button": 272, "region": "3:2" })),
             Stimulus::parse("presence", &json!({ "on": true })),
             Stimulus::parse("sound", &json!({ "level": 7.0 })),
             Stimulus::parse("glimpse", &json!({ "summary": "a terminal" })),
         ];
         let sources: Vec<_> = seen.iter().map(|s| s.as_ref().unwrap().source()).collect();
-        assert_eq!(sources, ["system", "desktop", "camera", "microphone", "screen"]);
-        assert_eq!(seen[3], Some(Stimulus::Sound { level: 1.0 }), "levels are clamped");
+        assert_eq!(sources, ["system", "desktop", "desktop", "camera", "microphone", "screen"]);
+        assert_eq!(seen[4], Some(Stimulus::Sound { level: 1.0 }), "levels are clamped");
         assert_eq!(Stimulus::parse("something_new", &json!({})), None);
         assert_eq!(Stimulus::parse("focus", &json!({})), None, "a malformed message is dropped, not guessed at");
     }

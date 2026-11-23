@@ -263,8 +263,12 @@ implementation. The evidence, options and recommendation are in
   self-update.
 
 
-## Context and companionship (requirements, 2026-11-23)
+## Context and companionship (pointer/click foundation, 2026-11-23)
 
+- **Pointer/click foundation implemented.** The GNOME Shell desktop sense reports a click
+  by button, current application and coarse region only. It stores no click history and
+  sends nothing in privacy mode; the headless Shell harness covers it. Semantic text,
+  bounded screen glances and routines-aware warmth remain unimplemented.
 - **Phase 10 is recorded, not approved.** The owner wants Buddy to observe more of the
   environment so he can be a better helper and feel more like a family dog. The safe
   requirements and limits are in `docs/context-direction.md`.

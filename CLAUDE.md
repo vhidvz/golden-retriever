@@ -158,7 +158,7 @@ Two crates, one long-running process, a replaceable renderer, and an optional na
 - `shell-extension/` and `perception/` — his senses. The GNOME Shell extension also
   registers the guided-capture shortcut (`Super+Shift+B` by default) from its compiled
   schema, and reports
-  application focus, fullscreen, overview, pointer and notifications; Python helpers for
+  application focus, fullscreen, overview, pointer, clicks and notifications; Python helpers for
   camera, microphone and screen are started only while their sense is allowed. Privacy
   mode is enforced in the daemon, not in the helpers.
 - Data: `~/.local/share/buddy/buddy.db` (SQLite; migrations are the `MIGRATIONS` array in

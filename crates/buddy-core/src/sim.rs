@@ -1305,6 +1305,11 @@ impl Sim {
             }
             Stimulus::Fullscreen(on) => self.fullscreen = on,
             Stimulus::Overview(on) => self.overview = on,
+            Stimulus::Click { .. } => {
+                // A click is activity, not content. Keep it for the context layer; it
+                // must not become a screen or keyboard record.
+                self.attended = 1.0;
+            }
             Stimulus::Focus { app } => {
                 if let Some(recording) = self.recording.as_mut() {
                     recording.observe(&app, now);

@@ -53,6 +53,7 @@ expect "fullscreen on and off" 'sense shell fullscreen \{"on":true\}' "$OUT/hear
 expect "overview on and off" 'sense shell overview \{"on":true\}' "$OUT/heard.log"
 expect "a notification, by application name only" 'sense shell notification \{"app":' "$OUT/heard.log"
 expect "pointer position" 'sense shell pointer \{"x":900' "$OUT/heard.log"
+expect "a click, by button and coarse region only" 'sense shell click .*"button":1' "$OUT/heard.log"
 if [ -e "$OUT/driver-error.txt" ]; then echo "  FAIL  the test driver crashed: $(head -1 "$OUT/driver-error.txt")"; failures=$((failures + 1)); fi
 
 echo "With window titles switched on:"

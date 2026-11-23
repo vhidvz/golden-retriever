@@ -8,6 +8,7 @@
 
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
+import Clutter from 'gi://Clutter';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
@@ -26,6 +27,8 @@ export default class BuddySense extends Extension {
         this._connect();
 
         this._watch(global.display, 'notify::focus-window', () => this._reportFocus());
+        // Click context is content-free: button, current app and a coarse region.
+        this._signals.push([global.stage, global.stage.connect('captured-event', (_actor, event) => this._onCapturedEvent(event))]);
         this._watch(global.display, 'in-fullscreen-changed', () => this._reportFullscreen());
         this._watch(Main.overview, 'showing', () => this._report('overview', {on: true}));
         this._watch(Main.overview, 'hidden', () => this._report('overview', {on: false}));
@@ -186,16 +189,43 @@ export default class BuddySense extends Extension {
 
     // --- what is observed
 
-    _reportFocus() {
+    _currentApp() {
         const window = global.display.focus_window;
         if (!window)
-            return;
+            return null;
         const app = Shell.WindowTracker.get_default().get_window_app(window);
         // Applications without a launcher get a throwaway id ("window:7"); their window class is steadier.
         const id = app?.get_id();
-        const data = {app: (id && !id.startsWith('window:') ? id : window.get_wm_class() ?? 'unknown').replace(/\.desktop$/, '')};
-        if (this._policy.window_titles)
-            data.title = window.get_title() ?? '';
+        return (id && !id.startsWith('window:') ? id : window.get_wm_class() ?? 'unknown').replace(/\.desktop$/, '');
+    }
+
+    _onCapturedEvent(event) {
+        if (!this._policy.desktop || !this._output || event.type() !== Clutter.EventType.BUTTON_PRESS)
+            return Clutter.EVENT_PROPAGATE;
+        try {
+            const [x, y] = event.get_coords();
+            const button = event.get_button();
+            const region = `${Math.floor(x / 240)}:${Math.floor(y / 180)}`;
+            const data = {button, region};
+            const app = this._currentApp();
+            if (app)
+                data.app = app;
+            this._report('click', data, true);
+        } catch {
+            // An event we cannot describe is simply not reported.
+        }
+        return Clutter.EVENT_PROPAGATE;
+    }
+
+    _reportFocus() {
+        const app = this._currentApp();
+        if (!app)
+            return;
+        const data = {app};
+        if (this._policy.window_titles) {
+            const window = global.display.focus_window;
+            data.title = window?.get_title() ?? '';
+        }
         this._report('focus', data);
     }
 

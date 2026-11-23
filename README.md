@@ -148,7 +148,7 @@ it that is restored automatically if the database is ever damaged.
 | Sense | Default | What it tells him | How |
 |---|---|---|---|
 | `system` | on | Seconds since you touched the computer, screen lock, system load | Session bus and `/proc`, polled every 2 s |
-| `desktop` | on | Which application is in front, fullscreen, overview, pointer position, that a notification arrived | A GNOME Shell extension |
+| `desktop` | on | Which application is in front, fullscreen, overview, pointer position and clicks, that a notification arrived | A GNOME Shell extension |
 | `window_titles` | off | Window titles as well | The same extension |
 | `screen` | off | A one-line description of what is on screen, when asked to look | One frame through the desktop portal, described by a local model |
 | `camera` | off | Whether someone is there | Movement in a 64×48 greyscale picture; no frame is kept |
@@ -482,9 +482,9 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
    `buddy version`, `buddy update check` and `buddy update tools` report and compare
    versions without installing anything. A Windows installer still needs a daemon port;
    signing and AppImage/Godot bundling remain open. See `docs/release-direction.md`.
-10. Context and companionship — requirements recorded 2026-11-23, not yet approved.
-   Richer context for better help and a warmer family-dog presence: pointer movement and
-   clicks, semantic text changes in accessible controls (not raw global keystrokes),
-   optional bounded screen glances, and routines-aware greetings/company. Off by default,
-   local-only, privacy-gated and explicitly not a keylogger. See
-   `docs/context-direction.md`.
+10. Context and companionship — pointer/click foundation implemented 2026-11-23. The
+   Shell sense now reports a click by button, application and coarse screen region, with
+   no content or click history; semantic text changes in accessible controls (not raw
+   global keystrokes), bounded screen glances, routines-aware greetings and warmth remain.
+   Off by default where content is involved, local-only and explicitly not a keylogger.
+   See `docs/context-direction.md`.

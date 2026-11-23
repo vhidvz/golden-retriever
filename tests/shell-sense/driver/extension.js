@@ -42,6 +42,9 @@ export default class Driver extends Extension {
         for (const [x, y] of [[200, 200], [600, 400], [900, 700]]) {
             pointer.notify_absolute_motion(GLib.get_monotonic_time(), x, y); await sleep(450);
         }
+        pointer.notify_button(GLib.get_monotonic_time(), 1, Clutter.ButtonState.PRESSED);
+        await sleep(120);
+        pointer.notify_button(GLib.get_monotonic_time(), 1, Clutter.ButtonState.RELEASED);
         await sleep(800);
         global.context.terminate();
     }
