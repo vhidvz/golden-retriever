@@ -176,25 +176,58 @@ pub fn interpret(model: &str, said: &str, tricks: &[&str], taught: &[String]) ->
     })
 }
 
-/// Asks a local model which one skill, if any, fulfils a request, and with what arguments.
-pub fn plan(model: &str, request: &str) -> Result<Option<(String, Value)>> {
+/// Build one model tool for an owner-registered helper. The tool name is an index
+/// (`helper_0`, …), while the description carries the human name; this avoids invalid
+/// function names and keeps the mapping unambiguous.
+pub fn helper_tool(index: usize, helper: &crate::helpers::Helper) -> Value {
+    let properties: serde_json::Map<String, Value> = helper.arguments.iter().map(|arg| (arg.clone(), json!({ "type": "string" }))).collect();
+    json!({
+        "type": "function",
+        "function": {
+            "name": format!("helper_{index}"),
+            "description": format!(
+                "Run the owner-registered helper '{}': {}. Arguments are separate strings; this is not a shell command.",
+                helper.name, helper.description
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": properties,
+                "required": helper.arguments.clone()
+            }
+        }
+    })
+}
+
+/// Asks a local model which one skill or helper, if any, fulfils a request, and with
+/// what arguments. Helpers are exposed as `helper_0`, `helper_1`, … and are converted
+/// to the always-ask `run_helper` skill. The model never gets a shell command tool here.
+pub fn plan(model: &str, request: &str, helpers: &[crate::helpers::Helper]) -> Result<Option<(String, Value)>> {
     let installed = models()?;
     if !installed.iter().any(|m| m == model) {
         bail!("the model '{model}' is not installed in Ollama");
     }
+    let mut tools = crate::skills::as_tools().as_array().cloned().unwrap_or_default();
+    tools.extend(helpers.iter().enumerate().map(|(index, helper)| helper_tool(index, helper)));
     let body = json!({
         "model": model, "stream": false, "think": false, "keep_alive": KEEP_ALIVE, "options": { "temperature": 0, "num_predict": 200, "num_ctx": NUM_CTX },
-        "tools": crate::skills::as_tools(),
+        "tools": tools,
         "messages": [
             { "role": "system", "content": "A person asked their assistant, a dog living on their Linux desktop, to do something on the computer, in English or Persian. \
                Choose the one tool that does it and fill in its arguments from their words. \
+               The helper_* tools are scripts the owner registered; use one only when its description matches the request, and pass its arguments separately. \
                If no tool fits, call none and reply with the single word: none." },
             { "role": "user", "content": request }],
     });
     let mut response = agent(Duration::from_secs(120)).post(&url("/api/chat")).send_json(&body).context("the local model did not answer")?;
     let reply: Value = response.body_mut().read_json()?;
     let call = &reply["message"]["tool_calls"][0]["function"];
-    Ok(call["name"].as_str().filter(|name| crate::skills::skill(name).is_some()).map(|name| (name.to_string(), call["arguments"].clone())))
+    let name = call["name"].as_str().unwrap_or_default();
+    if let Some(index) = name.strip_prefix("helper_").and_then(|value| value.parse::<usize>().ok()) {
+        if let Some(helper) = helpers.get(index) {
+            return Ok(Some(("run_helper".to_string(), json!({ "helper": helper.name, "args": call["arguments"].clone() }))));
+        }
+    }
+    Ok(crate::skills::skill(name).map(|_| (name.to_string(), call["arguments"].clone())))
 }
 
 /// Has a local model write down what was said in a short recording (16 kHz WAV).
@@ -227,6 +260,25 @@ mod tests {
         let reply = json!({ "capabilities": ["completion", "vision", "audio", "tools", "thinking"] });
         assert_eq!(parse_capabilities(&reply), vec!["completion", "vision", "audio", "tools", "thinking"]);
         assert!(parse_capabilities(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn helper_tools_expose_their_name_and_declared_arguments() {
+        let helper = crate::helpers::Helper {
+            name: "project-tests".into(),
+            description: "Run tests".into(),
+            arguments: vec!["path".into()],
+            command: vec!["/bin/echo".into()],
+            cwd: None,
+            timeout_secs: 10,
+            risk: "changes".into(),
+            dry_run: None,
+            source: std::path::PathBuf::new(),
+        };
+        let tool = helper_tool(0, &helper);
+        assert_eq!(tool["function"]["name"], "helper_0");
+        assert!(tool["function"]["description"].as_str().unwrap().contains("project-tests"));
+        assert_eq!(tool["function"]["parameters"]["required"][0], "path");
     }
 
     #[test]

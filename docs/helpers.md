@@ -60,4 +60,10 @@ and outcome, not the full output. A helper has no automatic undo.
 - Helper runs always ask; `run_helper` is a sensitive skill, so it cannot be set to
   `allow`.
 - A helper can still do whatever its script does. Only register scripts you wrote or read.
-- Model selection of helpers and any synthetic input are later, separate slices.
+## Model selection
+
+The local model receives one tool per registered helper (`helper_0`, `helper_1`, …) with
+that helper's declared argument schema and description. A selected helper is converted
+to the sensitive `run_helper` skill; it still waits for the user's yes. The model never
+receives a shell command tool or an approval bypass. Synthetic input remains a later,
+separate decision.

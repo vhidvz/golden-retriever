@@ -56,8 +56,9 @@ impl Daemon {
             return;
         }
         let (model, request, tx) = (self.sim.settings.language_model.clone(), request.to_string(), self.tx.clone());
+        let helpers = crate::helpers::load_all(&crate::helpers::dir()).unwrap_or_default();
         thread::spawn(move || {
-            let outcome = crate::ai::plan(&model, &request).map_err(|e| format!("{e:#}"));
+            let outcome = crate::ai::plan(&model, &request, &helpers).map_err(|e| format!("{e:#}"));
             let _ = tx.send(Incoming::Planned { requester, outcome });
         });
     }

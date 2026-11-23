@@ -220,7 +220,7 @@ implementation. The evidence, options and recommendation are in
   call gets a bright greeting, later calls are a recall to the middle of the screen;
   `Life.name_calls` preserves familiarity across restarts and is shown in `status` and
   the panel. No user name is hard-coded into `lexicon.json`.
-- **Verification.** The suite is 110 Rust tests; the GUI smoke path and an isolated
+- **Verification.** The suite is 111 Rust tests; the GUI smoke path and an isolated
   daemon test exercised text replay, mixed text+manual replay, two consecutive manual
   steps, and the name/call commands.
 
@@ -289,6 +289,8 @@ implementation. The evidence, options and recommendation are in
   data directory; commands are arrays, arguments are separate, placeholders are explicit,
   cwd is confined, timeouts are enforced, and dry-run executes nothing. Every run asks
   through the sensitive `run_helper` skill; no shell or model-generated command runs.
-- **Still deferred:** model-driven helper selection, a real sandbox, and any synthetic
-  input. Synthetic input would need the consent/portal spike and is not part of this
-  slice. See `docs/helpers.md` and `docs/automation-direction.md`.
+- **Model selection implemented 2026-11-24.** The local model receives one tool per
+  helper with its declared arguments; a selected helper becomes the always-ask
+  `run_helper` skill. A real sandbox and synthetic input remain deferred; synthetic
+  input still needs the consent/portal spike. See `docs/helpers.md` and
+  `docs/automation-direction.md`.

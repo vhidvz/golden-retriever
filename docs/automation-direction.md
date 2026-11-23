@@ -201,6 +201,7 @@ shell strings), declared placeholders, an approved cwd and a timeout. `buddy hel
 `buddy helper dir|show|dry-run|run` expose them. `run_helper` is a sensitive skill and
 every execution waits for a yes; dry-run executes nothing. See `docs/helpers.md`.
 
-Not implemented: model-driven helper selection, a true sandbox and synthetic input. The
-model tool list deliberately omits `run_helper` until a helper catalogue can be attached
-to the request, and Stage 2 still requires the portal/consent spike.
+Implemented on 2026-11-24: each helper is exposed to the model as a distinct tool with
+its declared arguments. A selected helper becomes the sensitive `run_helper` skill and
+still requires a yes. Not implemented: a true sandbox and synthetic input; Stage 2 still
+requires the portal/consent spike.

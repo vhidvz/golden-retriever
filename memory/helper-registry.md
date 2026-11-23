@@ -15,8 +15,9 @@ Implemented 2026-11-23 as the first safe slice of Phase 7.
 - `run_helper` is a sensitive skill, so every execution asks first and cannot be set to
   allow. `helper dry-run` executes nothing. Output is captured/trimmed and the journal
   records the name/outcome, not the full output.
-- Not implemented: model-driven helper selection, a true sandbox, and synthetic input.
-  The model tool list deliberately omits `run_helper` until a helper catalogue is attached.
+- Model-driven selection is implemented: each helper is exposed as a `helper_N` model
+  tool with its declared arguments; a selected helper becomes the always-ask `run_helper`
+  skill. Not implemented: a true sandbox and synthetic input.
 - Tests cover rendering, dry-run, no-shell argument handling, validation and missing args.
   Phase 7’s remaining work is a separate slice. See `docs/helpers.md` and
   `docs/automation-direction.md`.

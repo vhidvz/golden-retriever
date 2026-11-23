@@ -251,8 +251,11 @@ of local code with its own limits:
 
 **How a request is worked out.** "Open X", "find X", "note X" and their Persian
 forms are placed by his own vocabulary, with no model. Anything else goes to
-the local model, which picks one skill and its arguments. The model only ever
-*chooses*; `skills.rs` is the only code that touches the system.
+the local model, which picks one skill and its arguments. Registered helpers
+are exposed as separate tools (`helper_0`, …) with their declared arguments;
+if the model chooses one it becomes the always-ask `run_helper` skill. The model
+only ever *chooses*; `skills.rs` and the helper runner only ever execute code
+inside the permission gates.
 
 **Permission.** Where a skill asks first, he sits and waits. Answer with
 `buddy approve` / `buddy deny`, or just say yes or no to him. `--always` makes
@@ -470,10 +473,11 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
    apps without an accessibility tree are implemented. Name recognition and the
    control panel are part of this phase as well.
 6. Refinement: fur and model quality, the puppy shape, KDE.
-7. Automation beyond accessible actions — Stage 1 helper registry implemented 2026-11-23.
-   The owner can register named argv-only helper scripts; Buddy lists, dry-runs and runs
-   them only after a yes, with no shell or coordinate input. Model-driven helper choice,
-   richer sandboxing and consent-gated synthetic input remain. See
+7. Automation beyond accessible actions — Stage 1 helper registry and model selection
+   implemented 2026-11-24. The owner can register named argv-only helper scripts; the
+   local model sees one tool per helper with its declared arguments, and every selected
+   helper is converted to the always-ask `run_helper` skill. No shell or coordinate input
+   is involved. Richer sandboxing and consent-gated synthetic input remain. See
    [`docs/helpers.md`](docs/helpers.md) and `docs/automation-direction.md`.
 8. Photoreal body and motion — researched 2026-11-23, not yet approved. The
    recommendation is to keep the offline sprite bake and raise its body, coat, light
