@@ -184,3 +184,21 @@ sense on, `workflow capture press`, `capture-step` and `stop` saved one button s
 invoked its accessible `click`, observed the label's name change, and recorded
 `1 runs, 1 ok`. No keys, coordinates or clipboard data were used. The durable design is
 recorded in `docs/decisions.md` and `docs/development.md`.
+
+## Real camera and microphone verification (2026-11-23)
+
+Run against the installed daemon and the actual USB camera/microphone on the
+development machine.
+
+- **Camera one-shot:** `buddy look --camera` with the camera sense on captured one
+  frame from `/dev/video0`, sent it to the local `gemma4:e4b` vision model, and returned
+  a short summary (17.5 s). The frame was deleted; no camera frame remained in the
+  runtime directory. The first attempt raced the presence helper releasing the device;
+  `camera_still.py` now retries once after 0.8 s while the helper is paused.
+- **Microphone real input:** `buddy voice on` opened the analog input and reported it.
+  At the default 27% input gain, a system test phrase was not transcribed. At a temporary
+  80% gain, `mic_listen.py` captured a 15 s utterance, and the local `gemma4:e4b` audio
+  endpoint returned a Persian transcript in 57.9 s. The WAV was deleted and the input
+  gain was restored to 27%. The transcript itself is not stored in this record.
+- These tests use only the local Ollama endpoint on `127.0.0.1:11435`; no audio or image
+  left the machine.

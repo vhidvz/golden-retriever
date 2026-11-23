@@ -14,6 +14,7 @@ import glob
 import json
 import os
 import sys
+import time
 
 try:
     import gi
@@ -48,32 +49,40 @@ def main():
 
     Gst.init(None)
     pipeline_text = pipeline_text.replace("{out}", args.out)
-    try:
-        pipeline = Gst.parse_launch(pipeline_text)
-    except Exception as error:  # noqa: BLE001
-        print(json.dumps({"ok": False, "error": f"the camera pipeline is invalid: {error}"}))
-        sys.exit(1)
-
-    pipeline.set_state(Gst.State.PLAYING)
-    try:
-        message = pipeline.get_bus().timed_pop_filtered(
-            12 * Gst.SECOND, Gst.MessageType.EOS | Gst.MessageType.ERROR
-        )
-        if message is None:
-            print(json.dumps({"ok": False, "error": "the camera did not deliver a frame within 12 seconds"}))
+    last_error = "the camera failed"
+    for attempt in range(2):
+        if attempt:
+            # The continuous presence helper may still be releasing the device.
+            time.sleep(0.8)
+            try:
+                os.unlink(args.out)
+            except OSError:
+                pass
+        try:
+            pipeline = Gst.parse_launch(pipeline_text)
+        except Exception as error:  # noqa: BLE001
+            print(json.dumps({"ok": False, "error": f"the camera pipeline is invalid: {error}"}))
             sys.exit(1)
-        if message.type == Gst.MessageType.ERROR:
-            error, debug = message.parse_error()
-            print(json.dumps({"ok": False, "error": f"the camera failed: {error.message}"}))
-            sys.exit(1)
-    finally:
-        pipeline.set_state(Gst.State.NULL)
-
-    if not os.path.isfile(args.out) or os.path.getsize(args.out) == 0:
-        print(json.dumps({"ok": False, "error": "the camera delivered no image"}))
-        sys.exit(1)
-    os.chmod(args.out, 0o600)
-    print(json.dumps({"ok": True, "path": args.out}))
+        pipeline.set_state(Gst.State.PLAYING)
+        try:
+            message = pipeline.get_bus().timed_pop_filtered(
+                12 * Gst.SECOND, Gst.MessageType.EOS | Gst.MessageType.ERROR
+            )
+            if message is None:
+                last_error = "the camera did not deliver a frame within 12 seconds"
+            elif message.type == Gst.MessageType.ERROR:
+                error, _debug = message.parse_error()
+                last_error = f"the camera failed: {error.message}"
+            elif os.path.isfile(args.out) and os.path.getsize(args.out) > 0:
+                os.chmod(args.out, 0o600)
+                print(json.dumps({"ok": True, "path": args.out}))
+                return
+            else:
+                last_error = "the camera delivered no image"
+        finally:
+            pipeline.set_state(Gst.State.NULL)
+    print(json.dumps({"ok": False, "error": last_error}))
+    sys.exit(1)
 
 
 if __name__ == "__main__":
