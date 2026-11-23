@@ -20,12 +20,13 @@ implemented and committed in `2853733`:
   a real focus event matches the expected step. Timeouts record failures.
 - CLI: `buddy workflows`, `buddy workflow record/stop/cancel/show/replay/delete`.
 - The skill count is now eight; `replay_workflow` is `Risk::Changes` and asks first.
-- The first inside-application slice is implemented: with the `accessibility` sense on,
+- The inside-application slice is implemented: with the `accessibility` sense on,
   `buddy workflow capture NAME`, `buddy workflow capture-step` and `buddy workflow stop`
   capture focused accessible controls (or press `Super+Shift+B` while capturing); replay
-  invokes the accessible action and verifies a semantic event. It never sends keys, coordinates or clipboard data; text entry,
-  password fields, terminals and apps without an accessibility tree are refused, and
-  mixed app/inside workflows are rejected for now.
+  invokes the accessible action and verifies a semantic event. Phase 5 now also supports
+  text fields (`workflow type-step`), mixed sequences, and assisted manual steps for apps
+  without a tree; see [[phase5-completion]]. It never sends keys, coordinates or
+  clipboard data, and password fields/terminals are refused.
 
 Milestone 2 research is in `spikes/workflow-a11y/`. AT-SPI is present and accessible
 actions work (a GTK4 button action changed a label), but a programmatic action emitted no

@@ -8,7 +8,7 @@ use crate::renderer::Renderer;
 use crate::skills::{Permissions, Undo};
 use anyhow::{Context, Result, anyhow, bail};
 use buddy_core::language::{self, TRICKS};
-use buddy_core::workflow::{ReplayEvent, ReplayState, WorkflowStep, Workflows};
+use buddy_core::workflow::{ReplayState, WorkflowStep, Workflows};
 use buddy_core::{Body, ClientMsg, Command, Heard, Identity, Life, Mind, Output, ServerMsg, Settings, Sim, StateMsg, Stimulus, Store, paths};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -16,6 +16,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
@@ -28,6 +29,8 @@ const TICK_RESTING: Duration = Duration::from_millis(250);
 const SAVE_EVERY: Duration = Duration::from_secs(30);
 /// How long a replayed step waits for its application to come to the front.
 const REPLAY_STEP_TIMEOUT: f64 = 30.0;
+/// How long a manual step waits for the user to perform it and run `workflow continue`.
+const MANUAL_STEP_TIMEOUT: f64 = 900.0;
 
 enum Incoming {
     Connected(u64, UnixStream),
@@ -52,11 +55,10 @@ enum Incoming {
         requester: u64,
         outcome: Result<Option<(String, Value)>, String>,
     },
-    /// An inside-application action workflow has finished.
-    ActionReplay {
-        requester: u64,
+    /// One accessible step of a replay has finished.
+    StepReplay {
         workflow_id: u64,
-        args: Value,
+        step_index: usize,
         outcome: Result<String, String>,
     },
     /// A skill has finished.
@@ -246,31 +248,49 @@ fn listen() -> Result<UnixListener> {
     UnixListener::bind(&path).with_context(|| format!("binding {}", path.display()))
 }
 
-fn run_action_steps(steps: &[WorkflowStep]) -> Result<String, String> {
-    let script = perception_helper("a11y_act.py").ok_or("perception/a11y_act.py is not installed")?;
-    for (number, step) in steps.iter().enumerate() {
-        let WorkflowStep::Activate { app, frame, role, name } = step else {
-            return Err("this workflow mixes step kinds that are not supported yet".into());
-        };
-        let output = std::process::Command::new("python3")
-            .arg(&script)
-            .args(["--app", app, "--frame", frame, "--role", role, "--name", name])
-            .output()
-            .map_err(|error| format!("step {} could not start: {error}", number + 1))?;
-        let text = String::from_utf8_lossy(&output.stdout);
-        let reply: Value =
-            serde_json::from_str(text.trim()).map_err(|error| format!("step {} sent no valid answer ({error}): {}", number + 1, text.trim()))?;
-        if reply["ok"] != true || reply["verified"] != true {
-            return Err(format!(
-                "step {} ({} '{}') failed: {}",
-                number + 1,
-                role,
-                name,
-                reply["why"].as_str().unwrap_or("no semantic change was verified")
-            ));
-        }
+fn helper_reply(output: std::process::Output, number: usize, what: &str) -> Result<String, String> {
+    let text = String::from_utf8_lossy(&output.stdout);
+    let reply: Value = serde_json::from_str(text.trim()).map_err(|error| {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        format!("step {number} sent no valid answer ({error}): {} {}", text.trim(), stderr.trim())
+    })?;
+    if reply["ok"] != true || reply["verified"] != true {
+        return Err(format!("step {number} ({what}) failed: {}", reply["why"].as_str().unwrap_or("no semantic change was verified")));
     }
-    Ok(format!("replayed {} accessible step(s)", steps.len()))
+    Ok(format!("step {number}: {what}"))
+}
+
+/// Run one accessible step. Text travels through stdin so it is not visible in the
+/// process list. Nothing here sends keys, mouse coordinates or clipboard data.
+fn run_action_step(step: &WorkflowStep, number: usize) -> Result<String, String> {
+    match step {
+        WorkflowStep::Activate { app, frame, role, name } => {
+            let script = perception_helper("a11y_act.py").ok_or("perception/a11y_act.py is not installed")?;
+            let output = std::process::Command::new("python3")
+                .arg(&script)
+                .args(["--app", app, "--frame", frame, "--role", role, "--name", name])
+                .output()
+                .map_err(|error| format!("step {number} could not start: {error}"))?;
+            helper_reply(output, number, &format!("activated {role} '{name}'"))
+        }
+        WorkflowStep::TypeText { app, frame, role, name, text } => {
+            let script = perception_helper("a11y_text.py").ok_or("perception/a11y_text.py is not installed")?;
+            let mut child = std::process::Command::new("python3")
+                .arg(&script)
+                .args(["--app", app, "--frame", frame, "--role", role, "--name", name])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(|error| format!("step {number} could not start: {error}"))?;
+            let mut stdin = child.stdin.take().ok_or_else(|| format!("step {number}: the text helper has no input"))?;
+            stdin.write_all(text.as_bytes()).map_err(|error| format!("step {number}: the text could not be passed: {error}"))?;
+            drop(stdin);
+            let output = child.wait_with_output().map_err(|error| format!("step {number} could not finish: {error}"))?;
+            helper_reply(output, number, &format!("entered text in {role} '{}'", name.trim()))
+        }
+        WorkflowStep::OpenApp { .. } | WorkflowStep::Manual { .. } => Err(format!("step {number} is not an accessible action")),
+    }
 }
 
 fn accept_loop(listener: UnixListener, tx: Sender<Incoming>) {
@@ -303,6 +323,12 @@ struct Replay {
     workflow_id: u64,
     args: Value,
     state: ReplayState,
+    /// An accessible helper is running for the current step.
+    busy: bool,
+    /// The current step is Manual and waits for `workflow_continue`.
+    manual: bool,
+    /// The step index for which we already tried to open the expected application.
+    opened_for: Option<usize>,
 }
 
 struct Daemon {
@@ -385,12 +411,29 @@ impl Daemon {
         }
     }
 
+    /// The name he answers to. The configured name is primary; the English and Persian
+    /// forms of "Buddy" are aliases only while that is actually his name.
+    fn names(&self) -> Vec<String> {
+        let configured = self.sim.identity.name.clone();
+        let normal = language::normalise(&configured);
+        let mut names = vec![configured];
+        if normal == "buddy" || normal == "بادی" {
+            for alias in ["Buddy", "بادی"] {
+                if !names.iter().any(|name| language::normalise(name) == language::normalise(alias)) {
+                    names.push(alias.to_string());
+                }
+            }
+        }
+        names
+    }
+
     /// Something was said to him (typed, for now). His own vocabulary and what he has been
     /// taught are tried first; only what they cannot place goes to the local model.
     fn said(&mut self, requester: u64, text: &str, at: f64) {
         let taught = self.sim.training.known_cues(&TRICKS);
-        let name = self.sim.identity.name.clone();
-        let heard = language::understand(text, &[&name, "buddy", "بادی"], &taught);
+        let names = self.names();
+        let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        let heard = language::understand(text, &name_refs, &taught);
         // When he is waiting for a yes or a no, that is what a yes or a no means.
         if self.heard_as_answer(requester, &heard, at) {
             return;
@@ -499,52 +542,41 @@ impl Daemon {
             );
             return;
         }
+        let steps = if workflow.steps.is_empty() {
+            workflow.apps.iter().cloned().map(|app| WorkflowStep::OpenApp { app }).collect()
+        } else {
+            workflow.steps.clone()
+        };
+        if steps.is_empty() {
+            let _ = self.send(requester, &ServerMsg::Reply { ok: false, data: Value::Null, error: Some("the workflow has no steps".into()) });
+            return;
+        }
+        if Workflows::needs_accessibility(&workflow) && (self.sim.settings.privacy_mode || !self.sim.settings.senses.accessibility) {
+            let _ = self.send(
+                requester,
+                &ServerMsg::Reply {
+                    ok: false,
+                    data: Value::Null,
+                    error: Some("turn on the accessibility sense first: buddy sense accessibility on".into()),
+                },
+            );
+            return;
+        }
         if args["workflow"].as_str().is_none() {
             args["workflow"] = json!(workflow.name);
         }
-        if Workflows::has_actions(&workflow) {
-            if workflow.steps.iter().any(|step| matches!(step, WorkflowStep::OpenApp { .. })) {
-                let _ = self.send(
-                    requester,
-                    &ServerMsg::Reply {
-                        ok: false,
-                        data: Value::Null,
-                        error: Some("workflows mixing application and inside-application steps are not supported yet".into()),
-                    },
-                );
-                return;
-            }
-            if self.sim.settings.privacy_mode || !self.sim.settings.senses.accessibility {
-                let _ = self.send(
-                    requester,
-                    &ServerMsg::Reply {
-                        ok: false,
-                        data: Value::Null,
-                        error: Some("turn on the accessibility sense first: buddy sense accessibility on".into()),
-                    },
-                );
-                return;
-            }
-            let steps = workflow.steps.clone();
-            let (workflow_id, args, tx) = (workflow.id, args.clone(), self.tx.clone());
-            thread::spawn(move || {
-                let outcome = run_action_steps(&steps);
-                let _ = tx.send(Incoming::ActionReplay { requester, workflow_id, args, outcome });
-            });
-            return;
-        }
-        let state = ReplayState::new(workflow.apps.clone(), at);
-        self.replay = Some(Replay { requester, workflow_id: workflow.id, args, state });
-        if self.current_app.as_deref() == self.replay.as_ref().and_then(|replay| replay.state.expected()) {
-            self.advance_replay(at);
-        } else {
-            self.open_replay_app(at);
-        }
+        let state = ReplayState::new(steps, at);
+        self.replay = Some(Replay { requester, workflow_id: workflow.id, args, state, busy: false, manual: false, opened_for: None });
+        self.advance_replay(at);
     }
 
     fn open_replay_app(&mut self, at: f64) {
-        let Some(app) = self.replay.as_ref().and_then(|replay| replay.state.expected()).map(str::to_string) else { return };
+        let Some(app) = self.replay.as_ref().and_then(|replay| replay.state.expected_app()).map(str::to_string) else {
+            self.fail_replay("the workflow has no next application".into(), at);
+            return;
+        };
         if self.current_app.as_deref() == Some(app.as_str()) {
+            self.advance_replay(at);
             return;
         }
         let notes = paths::data_dir().join("notes.md");
@@ -555,30 +587,125 @@ impl Daemon {
 
     fn advance_replay(&mut self, at: f64) {
         let Some(mut replay) = self.replay.take() else { return };
-        match replay.state.check(self.current_app.as_deref(), at, REPLAY_STEP_TIMEOUT) {
-            ReplayEvent::Waiting => self.replay = Some(replay),
-            ReplayEvent::StepOk => {
+        if replay.busy {
+            self.replay = Some(replay);
+            return;
+        }
+        if replay.manual {
+            if at - replay.state.started > MANUAL_STEP_TIMEOUT {
+                self.replay = Some(replay);
+                self.fail_replay(format!("the manual step timed out after {MANUAL_STEP_TIMEOUT:.0} s"), at);
+            } else {
+                self.replay = Some(replay);
+            }
+            return;
+        }
+        if replay.state.timed_out(at, REPLAY_STEP_TIMEOUT) {
+            let step = replay.state.index + 1;
+            let app = replay.state.expected_app().unwrap_or("?").to_string();
+            self.replay = Some(replay);
+            self.fail_replay(format!("step {step} in '{app}' did not come to the front within {REPLAY_STEP_TIMEOUT:.0} s"), at);
+            return;
+        }
+        let Some(step) = replay.state.step().cloned() else {
+            let _ = self.sim.workflow_outcome(replay.workflow_id, true, at);
+            let summary = format!("replayed the workflow ({} steps)", replay.state.steps.len());
+            self.did(replay.requester, "replay_workflow", &replay.args, None, Ok((summary, String::new(), None)), at);
+            return;
+        };
+        let expected = step.app().to_string();
+        if self.current_app.as_deref() != Some(expected.as_str()) {
+            if replay.opened_for != Some(replay.state.index) {
+                replay.opened_for = Some(replay.state.index);
                 self.replay = Some(replay);
                 self.open_replay_app(at);
+            } else {
+                self.replay = Some(replay);
             }
-            ReplayEvent::Done => {
-                let _ = self.sim.workflow_outcome(replay.workflow_id, true, at);
-                let summary = format!("replayed the workflow ({} steps)", replay.state.apps.len());
-                self.did(replay.requester, "replay_workflow", &replay.args, None, Ok((summary, String::new(), None)), at);
+            return;
+        }
+        replay.opened_for = None;
+        match step {
+            WorkflowStep::OpenApp { .. } => {
+                replay.state.advance(at);
+                self.replay = Some(replay);
+                self.advance_replay(at);
             }
-            ReplayEvent::TimedOut => {
-                let expected = replay.state.expected().unwrap_or("?").to_string();
-                let _ = self.sim.workflow_outcome(replay.workflow_id, false, at);
-                self.did(
-                    replay.requester,
-                    "replay_workflow",
-                    &replay.args,
-                    None,
-                    Err(format!("the workflow stopped at '{expected}': it did not come to the front within {REPLAY_STEP_TIMEOUT:.0} s")),
-                    at,
-                );
+            WorkflowStep::Activate { .. } | WorkflowStep::TypeText { .. } => {
+                if self.sim.settings.privacy_mode || !self.sim.settings.senses.accessibility {
+                    self.replay = Some(replay);
+                    self.fail_replay("the accessibility sense was turned off during the replay".into(), at);
+                    return;
+                }
+                let index = replay.state.index;
+                let workflow_id = replay.workflow_id;
+                replay.busy = true;
+                self.replay = Some(replay);
+                let tx = self.tx.clone();
+                thread::spawn(move || {
+                    let outcome = run_action_step(&step, index + 1);
+                    let _ = tx.send(Incoming::StepReplay { workflow_id, step_index: index, outcome });
+                });
+            }
+            WorkflowStep::Manual { app, note } => {
+                let step_number = replay.state.index + 1;
+                let total = replay.state.steps.len();
+                let workflow_name = self.sim.workflows().iter().find(|w| w.id == replay.workflow_id).map(|w| w.name.clone()).unwrap_or_default();
+                replay.manual = true;
+                let requester = std::mem::replace(&mut replay.requester, 0);
+                self.replay = Some(replay);
+                if requester != 0 {
+                    let _ = self.send(
+                        requester,
+                        &ServerMsg::Reply {
+                            ok: true,
+                            data: json!({
+                                "waiting_for_manual": {
+                                    "workflow": workflow_name,
+                                    "step": step_number,
+                                    "total": total,
+                                    "app": app,
+                                    "note": note,
+                                }
+                            }),
+                            error: None,
+                        },
+                    );
+                }
             }
         }
+    }
+
+    fn continue_replay(&mut self, requester: u64, at: f64) {
+        let Some(mut replay) = self.replay.take() else {
+            let _ = self.send(requester, &ServerMsg::Reply { ok: false, data: Value::Null, error: Some("no workflow is being replayed".into()) });
+            return;
+        };
+        if !replay.manual {
+            self.replay = Some(replay);
+            let _ = self.send(requester, &ServerMsg::Reply { ok: false, data: Value::Null, error: Some("no manual step is waiting".into()) });
+            return;
+        }
+        let Some(step) = replay.state.step().cloned() else {
+            self.replay = Some(replay);
+            let _ = self.send(requester, &ServerMsg::Reply { ok: false, data: Value::Null, error: Some("the workflow has no manual step".into()) });
+            return;
+        };
+        let expected = step.app().to_string();
+        if self.current_app.as_deref() != Some(expected.as_str()) {
+            self.replay = Some(replay);
+            let _ = self.send(
+                requester,
+                &ServerMsg::Reply { ok: false, data: Value::Null, error: Some(format!("focus '{expected}' before continuing the workflow")) },
+            );
+            return;
+        }
+        replay.manual = false;
+        replay.requester = requester;
+        replay.opened_for = None;
+        replay.state.advance(at);
+        self.replay = Some(replay);
+        self.advance_replay(at);
     }
 
     fn fail_replay(&mut self, why: String, at: f64) {
@@ -596,9 +723,67 @@ impl Daemon {
         let text = String::from_utf8_lossy(&output.stdout);
         let reply: Value = serde_json::from_str(text.trim()).with_context(|| format!("the accessibility helper said: {}", text.trim()))?;
         if reply["ok"] != true {
-            bail!("{}", reply["why"].as_str().unwrap_or("the focused control could not be read"));
+            bail!(
+                "{} (if this application exposes no accessibility tree, use: buddy workflow manual-step \"what to do\" --app APP)",
+                reply["why"].as_str().unwrap_or("the focused control could not be read")
+            );
         }
         let step: WorkflowStep = serde_json::from_value(reply["step"].clone()).context("the accessibility helper sent an invalid step")?;
+        self.sim.capture_action_step(step.clone())?;
+        Ok(json!({ "captured": step, "steps": self.sim.action_recording_len() }))
+    }
+
+    fn workflow_type_step(&mut self, text: &str) -> Result<Value> {
+        if self.sim.settings.privacy_mode || !self.sim.settings.senses.accessibility {
+            bail!("turn on the accessibility sense first: buddy sense accessibility on");
+        }
+        if text.is_empty() {
+            bail!("the text to enter is empty");
+        }
+        if text.chars().count() > 2_000 {
+            bail!("the text to enter is longer than 2000 characters");
+        }
+        let script = perception_helper("a11y_focus.py").context("perception/a11y_focus.py is not installed")?;
+        let output = std::process::Command::new("python3").arg(&script).arg("--text").output().context("the accessibility helper could not start")?;
+        let raw = String::from_utf8_lossy(&output.stdout);
+        let reply: Value = serde_json::from_str(raw.trim()).with_context(|| format!("the accessibility helper said: {}", raw.trim()))?;
+        if reply["ok"] != true {
+            bail!(
+                "{} (if this application exposes no accessibility tree, use: buddy workflow manual-step \"what to do\" --app APP)",
+                reply["why"].as_str().unwrap_or("the focused text field could not be read")
+            );
+        }
+        let app = reply["step"]["app"].as_str().context("the text step has no application")?.to_string();
+        let frame = reply["step"]["frame"].as_str().context("the text step has no frame")?.to_string();
+        let role = reply["step"]["role"].as_str().context("the text step has no role")?.to_string();
+        let name = reply["step"]["name"].as_str().unwrap_or_default().to_string();
+        if role == "password text" {
+            bail!("password fields are not allowed");
+        }
+        let step = WorkflowStep::TypeText { app, frame, role, name, text: text.to_string() };
+        self.sim.capture_action_step(step.clone())?;
+        Ok(json!({ "captured": step, "steps": self.sim.action_recording_len() }))
+    }
+
+    fn workflow_manual_step(&mut self, args: &Value) -> Result<Value> {
+        if self.sim.settings.privacy_mode {
+            bail!("turn privacy mode off before recording a manual step");
+        }
+        let note = args["note"].as_str().context("manual-step needs a note describing what to do")?.trim().to_string();
+        if note.is_empty() {
+            bail!("the manual step needs a note");
+        }
+        if note.chars().count() > 240 {
+            bail!("the note is longer than 240 characters");
+        }
+        let app = args["app"]
+            .as_str()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .or_else(|| self.current_app.clone())
+            .context("focus the target application, or pass --app with its application id")?;
+        let step = WorkflowStep::Manual { app, note };
         self.sim.capture_action_step(step.clone())?;
         Ok(json!({ "captured": step, "steps": self.sim.action_recording_len() }))
     }
@@ -821,7 +1006,7 @@ impl Daemon {
                         return Ok(json!({ "recording": name }));
                     }
                     "stop" => {
-                        let workflow = if self.sim.action_recording_len() > 0 {
+                        let workflow = if self.sim.has_action_recording() {
                             self.sim.stop_action_recording(at)?
                         } else {
                             self.sim.stop_workflow_recording(at)?
@@ -848,8 +1033,8 @@ impl Daemon {
                 let action = args["action"].as_str().context("workflow_capture needs an action")?;
                 match action {
                     "start" => {
-                        if self.sim.settings.privacy_mode || !self.sim.settings.senses.accessibility {
-                            bail!("turn on the accessibility sense first: buddy sense accessibility on");
+                        if self.sim.settings.privacy_mode {
+                            bail!("turn privacy mode off before capturing a workflow");
                         }
                         let name = args["name"].as_str().context("workflow_capture start needs a name")?;
                         self.sim.start_action_recording(name.to_string(), at)?;
@@ -871,6 +1056,24 @@ impl Daemon {
                 }
             }
             "workflow_capture_step" => return self.workflow_capture_step(),
+            "workflow_abort" => {
+                let replay = self.replay.take();
+                let replayed = replay.is_some();
+                if let Some(replay) = replay {
+                    let _ = self.sim.workflow_outcome(replay.workflow_id, false, at);
+                }
+                let recorded = self.sim.cancel_workflow_recording() | self.sim.cancel_action_recording();
+                if replayed || recorded {
+                    let _ = self.store.journal(at as i64, "workflow_aborted", &json!({ "replay": replayed, "recording": recorded }));
+                    return Ok(json!({ "aborted": replayed, "cancelled_recording": recorded }));
+                }
+                bail!("nothing is being replayed or recorded");
+            }
+            "workflow_type_step" => {
+                let text = args["text"].as_str().context("workflow_type_step needs text")?;
+                return self.workflow_type_step(text);
+            }
+            "workflow_manual_step" => return self.workflow_manual_step(args),
             "workflow_delete" => {
                 let id = if let Some(id) = args["id"].as_u64() {
                     id
@@ -895,7 +1098,13 @@ impl Daemon {
                 let value = args["value"].as_str().context("set needs a value")?;
                 let number = || value.parse::<f64>().map_err(|_| anyhow!("'{value}' is not a number"));
                 match args["key"].as_str() {
-                    Some("name") => Command::Rename(value.to_string()),
+                    Some("name") => {
+                        let name = value.trim();
+                        if name.is_empty() || name.chars().count() > 60 || name.chars().any(char::is_control) {
+                            bail!("a name needs 1–60 printable characters");
+                        }
+                        Command::Rename(name.to_string())
+                    }
                     Some("size_px") => Command::SetSize(number()?),
                     Some("adult_days") => Command::SetAdultDays(number()?),
                     Some("stay_in_fullscreen") => Command::StayInFullscreen(matches!(value, "on" | "true" | "yes")),
@@ -948,12 +1157,12 @@ impl Daemon {
                     return;
                 }
                 // Talk in the room is not for him unless his name is in it, or he was spoken to moments ago.
-                let name = language::normalise(&self.sim.identity.name);
-                let heard = language::normalise(&words);
-                let named = heard.split(' ').any(|w| w == name || w == "buddy" || w == "بادی");
+                let names = self.names();
+                let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+                let named = language::addresses(&words, &name_refs);
                 let addressed = named || at - self.addressed_at < 20.0;
                 if std::env::var_os("BUDDY_TRACE_SENSES").is_some() {
-                    eprintln!("heard speech ({} words), {}", heard.split(' ').count(), if addressed { "for him" } else { "not for him" });
+                    eprintln!("heard speech ({} words), {}", words.split_whitespace().count(), if addressed { "for him" } else { "not for him" });
                 }
                 if addressed {
                     self.addressed_at = at;
@@ -980,11 +1189,24 @@ impl Daemon {
                     self.send(requester, &ServerMsg::Reply { ok: false, data: Value::Null, error: Some(why) });
                 }
             },
-            Incoming::ActionReplay { requester, workflow_id, args, outcome } => {
-                let ok = outcome.is_ok();
-                self.sim.workflow_outcome(workflow_id, ok, at);
-                let result = outcome.map(|summary| (summary, String::new(), None));
-                self.did(requester, "replay_workflow", &args, None, result, at);
+            Incoming::StepReplay { workflow_id, step_index, outcome } => {
+                let Some(mut replay) = self.replay.take() else { return };
+                if replay.workflow_id != workflow_id || replay.state.index != step_index {
+                    // A late answer from a step that has already been abandoned.
+                    self.replay = Some(replay);
+                    return;
+                }
+                replay.busy = false;
+                self.replay = Some(replay);
+                match outcome {
+                    Ok(_) => {
+                        let Some(mut replay) = self.replay.take() else { return };
+                        replay.state.advance(at);
+                        self.replay = Some(replay);
+                        self.advance_replay(at);
+                    }
+                    Err(why) => self.fail_replay(why, at),
+                }
             }
             Incoming::Did { requester, skill, args, habit, outcome } => self.did(requester, &skill, &args, habit, outcome, at),
             Incoming::Unavailable { source, why } => {
@@ -1035,6 +1257,7 @@ impl Daemon {
                     self.answer(id, args["id"].as_u64(), name == "approve", args["lasting"] == true, at)
                 }
                 ClientMsg::Command { name, args } if name == "replay_workflow" => self.propose(id, "replay_workflow", args, None, "you", at),
+                ClientMsg::Command { name, args: _ } if name == "workflow_continue" => self.continue_replay(id, at),
                 ClientMsg::Command { name, args } if name == "say" => self.said(id, args["text"].as_str().unwrap_or_default(), at),
                 ClientMsg::Command { name, args } => {
                     let reply = match self.command(&name, &args, at) {

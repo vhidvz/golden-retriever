@@ -112,8 +112,10 @@ animation and personality layer.
   Mixed application-plus-inside-application workflows are rejected for now. The
   `accessibility` sense is off by default and privacy mode suspends it. Evidence:
   `spikes/workflow-a11y/RESULTS.md`.
-- Still open: text entry, applications without an accessibility tree, mixed workflows,
-  toys and fetch, and the remaining gaps listed in README "Known gaps".
+- Phase 5 is complete: accessible text entry, mixed application/inside-application
+  sequences, and assisted manual steps for applications without an accessibility tree
+  are implemented and verified. Still open: toys and fetch, and the remaining gaps
+  listed in README "Known gaps".
 
 The measurements behind the design, including the `gemma4:e4b` evaluation, are in
 `spikes/RESULTS.md`.
@@ -191,3 +193,33 @@ implementation. The evidence, options and recommendation are in
   model that is rigged but low-detail and unanimated.
 - No option is approved. Any implementation needs the usual spike, written plan and
   explicit approval. The target on-screen size for "indistinguishable" is still open.
+
+## Phase 5 completion and names (approved 2026-11-23)
+
+- **Phase 5 is complete when the remaining workflow gaps are safe.** Accessible text
+  entry uses the AT-SPI editable-text interface, locates one uniquely identified
+  field by app/frame/role/name, clears then replaces its contents, and verifies an
+  insertion event. Text reaches the helper on stdin, not in the process list. Password
+  fields, terminals, shells and ambiguous fields are refused. The text is stored as
+  part of the workflow (and in exports); the CLI, GUI and docs warn that it must not
+  contain passwords or secrets.
+- **Mixed sequences are first-class.** A replay walks application, accessible-action,
+  text and assisted steps in order. It opens each expected application, waits for
+  focus, runs the helper, verifies the semantic event, and only then advances. A
+  captured sequence inserts an explicit application step before a new app. The old
+  app-only workflows and action-only workflows remain loadable and replayable.
+- **Apps without a tree are supported honestly, not blindly.** They can be included as
+  explicit assisted manual steps: Buddy brings the app forward, tells the user what to
+  do, and waits for `buddy workflow continue`. It never falls back to coordinates,
+  synthetic keys or the clipboard. The user's confirmation is the verification for
+  that step; a timeout and `buddy workflow abort` release a stuck replay.
+- **Names are user data, not vocabulary.** `buddy name NAME` (or Rename in Train and
+  Settings) sets the name he answers to. `language::addresses` and `Heard::Called`
+  recognize it in typed and spoken speech in English and Persian; the English/Persian
+  forms of "Buddy" remain aliases only while that is the configured name. The first
+  call gets a bright greeting, later calls are a recall to the middle of the screen;
+  `Life.name_calls` preserves familiarity across restarts and is shown in `status` and
+  the panel. No user name is hard-coded into `lexicon.json`.
+- **Verification.** The suite is 105 Rust tests; the GUI smoke path and an isolated
+  daemon test exercised text replay, mixed text+manual replay, two consecutive manual
+  steps, and the name/call commands.

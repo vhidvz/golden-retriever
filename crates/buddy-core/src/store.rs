@@ -258,7 +258,7 @@ mod tests {
         {
             let store = Store::open(&path).unwrap();
             store.save("identity", &identity, 1).unwrap();
-            store.save("life", &Life { awake_secs: 12.5, sessions: 3, last_seen: 9, pets: 2 }, 1).unwrap();
+            store.save("life", &Life { awake_secs: 12.5, sessions: 3, last_seen: 9, pets: 2, ..Life::default() }, 1).unwrap();
             store.journal(5, "born", &json!({ "name": "Buddy" })).unwrap();
         }
         let store = Store::open(&path).unwrap();

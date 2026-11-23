@@ -50,6 +50,8 @@ pub enum Heard {
         skill: Option<String>,
         argument: Option<String>,
     },
+    /// His name, alone or with nothing but an address: he is being called.
+    Called,
     /// Said to him, but nothing he is asked to do.
     Chat,
     Unknown,
@@ -127,15 +129,62 @@ fn teaching(words: &[&str]) -> Option<Heard> {
     (!cue.is_empty()).then(|| Heard::Teach { cue: cue.join(" "), trick })
 }
 
+/// Words that add nothing to a call beyond the name itself.
+const ADDRESS_WORDS: [&str; 10] = ["hey", "hi", "hello", "yo", "سلام", "درود", "هی", "الو", "جان", "جانم"];
+
+fn name_words(names: &[&str]) -> Vec<Vec<String>> {
+    names.iter().map(|name| normalise(name)).filter(|name| !name.is_empty()).map(|name| name.split(' ').map(str::to_string).collect()).collect()
+}
+
+/// Remove his name, including a multi-word name, wherever it occurs.
+fn without_names<'a>(words: &[&'a str], names: &[Vec<String>]) -> Vec<&'a str> {
+    let mut kept = Vec::new();
+    let mut index = 0;
+    while index < words.len() {
+        let mut skip = None;
+        for name in names {
+            if !name.is_empty() && index + name.len() <= words.len() && words[index..index + name.len()].iter().zip(name).all(|(a, b)| *a == b) {
+                skip = Some(name.len());
+                break;
+            }
+        }
+        match skip {
+            Some(len) => index += len,
+            None => {
+                kept.push(words[index]);
+                index += 1;
+            }
+        }
+    }
+    kept
+}
+
+/// Whether the utterance actually contains one of his names.
+pub fn addresses(text: &str, names: &[&str]) -> bool {
+    let normalised = normalise(text);
+    if normalised.is_empty() {
+        return false;
+    }
+    let words: Vec<&str> = normalised.split(' ').collect();
+    without_names(&words, &name_words(names)).len() != words.len()
+}
+
 /// Understands an utterance from the built-in vocabulary and what he has been taught.
 /// `names` are what he is called; `taught` are the cue phrases the user has taught him.
 pub fn understand(text: &str, names: &[&str], taught: &[String]) -> Heard {
     let normalised = normalise(text);
-    let called: Vec<String> = names.iter().map(|n| normalise(n)).collect();
-    let words: Vec<&str> = normalised.split(' ').filter(|w| !w.is_empty() && !called.iter().any(|n| n == w)).collect();
+    if normalised.is_empty() {
+        return Heard::Unknown;
+    }
+    let called_parts = name_words(names);
+    let called_flat: Vec<String> = names.iter().map(|name| normalise(name)).filter(|name| !name.is_empty()).collect();
+    let all_words: Vec<&str> = normalised.split(' ').collect();
+    let words = without_names(&all_words, &called_parts);
     if words.is_empty() {
-        // Just his name: he is being called.
-        return if normalised.is_empty() { Heard::Unknown } else { Heard::Chat };
+        return Heard::Called;
+    }
+    if words.iter().all(|word| ADDRESS_WORDS.contains(word)) && words.len() != all_words.len() {
+        return Heard::Called;
     }
     // "When I say X, do Y" is teaching, not a request for Y.
     if let Some(teaching) = teaching(&words) {
@@ -169,7 +218,7 @@ pub fn understand(text: &str, names: &[&str], taught: &[String]) -> Heard {
         "open" | "find" | "note" => {
             // What is to be opened, found or noted is whatever else was said, in the original wording.
             // English puts it after the verb ("open the calculator"); Persian usually before ("ماشین‌حساب رو باز کن").
-            let said: Vec<&str> = text.split_whitespace().filter(|w| !called.contains(&normalise(w))).collect();
+            let said: Vec<&str> = text.split_whitespace().filter(|w| !called_flat.contains(&normalise(w))).collect();
             let object = if at + len < words.len() {
                 said[said.len().saturating_sub(words.len() - at - len)..].join(" ")
             } else {
@@ -308,7 +357,19 @@ mod tests {
     fn taught_words_come_first_and_his_name_alone_is_a_call() {
         let taught = vec![normalise("بپر")];
         assert_eq!(understand("بادی بپر!", &["Buddy", "بادی"], &taught), Heard::Cue("بپر".into()));
-        assert_eq!(hear("Buddy!"), Heard::Chat);
+        assert_eq!(hear("Buddy!"), Heard::Called);
         assert_eq!(hear("what a lovely day"), Heard::Unknown);
+    }
+
+    #[test]
+    fn a_chosen_name_calls_him_and_works_inside_a_sentence() {
+        let names = ["پشمک"];
+        assert_eq!(understand("پشمک!", &names, &[]), Heard::Called);
+        assert_eq!(understand("hey پشمک", &names, &[]), Heard::Called);
+        assert_eq!(understand("پشمک بیا", &names, &[]), Heard::Cue("come".into()));
+        assert_eq!(understand("پشمک، بشین", &names, &[]), Heard::Cue("sit".into()));
+        assert!(addresses("Hey, Peshmark, come here", &["Peshmark"]));
+        assert!(!addresses("the cat is here", &["Peshmark"]));
+        assert_eq!(understand("پشمک خان", &["پشمک خان"], &[]), Heard::Called);
     }
 }

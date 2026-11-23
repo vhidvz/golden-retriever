@@ -48,3 +48,14 @@ around AT-SPI with:
 - a clear "unsupported application" state.
 
 This keeps the roadmap moving without turning Buddy into an unconstrained input bot.
+
+## Post-spike update (2026-11-23)
+
+This was the research stage. The later Phase 5 implementation added the safe
+conclusions above, not a fallback to blind input:
+
+- text entry through `Atspi.EditableText`, with text on stdin and insertion-event
+  verification (`perception/a11y_text.py`);
+- mixed application/inside-application sequences;
+- explicit assisted manual steps for applications that expose no tree; Buddy never
+  clicks coordinates or sends synthetic keys.

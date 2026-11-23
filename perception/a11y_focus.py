@@ -9,6 +9,7 @@ Prints one JSON line:
   {"ok": true, "step": {"kind": "activate", "app": ..., "frame": ..., "role": ..., "name": ...}}
   {"ok": false, "why": ...}
 """
+import argparse
 import json
 import sys
 
@@ -51,6 +52,16 @@ def frame_of(node):
     return None
 
 
+def matching_controls(node, role, name, found):
+    try:
+        if node.get_role_name() == role and (node.get_name() or "") == name:
+            found.append(node)
+        for index in range(node.get_child_count()):
+            matching_controls(node.get_child_at_index(index), role, name, found)
+    except Exception:
+        return
+
+
 def focused_controls(node):
     try:
         state = node.get_state_set()
@@ -63,6 +74,10 @@ def focused_controls(node):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--text", action="store_true", help="capture the focused editable text field instead of an action")
+    args = parser.parse_args()
+
     desktop = Atspi.get_desktop(0)
     for node in focused_controls(desktop):
         try:
@@ -73,18 +88,26 @@ def main():
                 continue
             if role in ("frame", "window", "application", "desktop frame"):
                 continue
-            if node.get_n_actions() < 1:
+            if args.text:
+                if not node.is_editable_text():
+                    continue
+            elif node.get_n_actions() < 1:
                 continue
             frame = frame_of(node)
             frame_name = frame.get_name() if frame is not None else ""
             if not frame_name:
                 continue
+            if args.text:
+                candidates = []
+                matching_controls(frame, role, name, candidates)
+                if len(candidates) > 1:
+                    fail(f"{len(candidates)} text fields in this frame match role '{role}' and name '{name}'; give the target an accessible name")
             print(
                 json.dumps(
                     {
                         "ok": True,
                         "step": {
-                            "kind": "activate",
+                            "kind": "type_text" if args.text else "activate",
                             "app": app,
                             "frame": frame_name,
                             "role": role,
@@ -97,7 +120,11 @@ def main():
             return
         except Exception:
             continue
-    fail("focus a button, menu item or other control that has an accessible action")
+    fail(
+        "focus an editable text field (passwords and terminals are not allowed)"
+        if args.text
+        else "focus a button, menu item or other control that has an accessible action"
+    )
 
 
 if __name__ == "__main__":

@@ -94,7 +94,7 @@ Create the directory when needed; it is not part of the repository.
 
 ## Testing and runtime traps
 
-- `cargo test` currently runs 100 tests in under 30 seconds. Unit tests sit beside their
+- `cargo test` currently runs 105 tests in under 30 seconds. Unit tests sit beside their
   modules; the daemon lifecycle test is `crates/buddy/tests/lifecycle.rs`.
 - **Wall-clock time:** tests must not depend on the hour. The lifecycle sandbox sets
   `BUDDY_HOUR=12` because a sleeping dog answers differently; a test that passes at noon
@@ -113,15 +113,25 @@ Create the directory when needed; it is not part of the repository.
 - **Workflows:** `buddy workflow record NAME`, `stop`, `replay`, `workflows` for
   application-level routines. Inside applications, turn on the `accessibility` sense,
   run `buddy workflow capture NAME`, focus a control, press `Super+Shift+B` (or run
-  `buddy workflow capture-step`) for each action, then `buddy workflow stop` and
-  `buddy workflow replay NAME`. The shortcut is registered by the GNOME extension from
-  its compiled schema; `scripts/install.sh` compiles it. Replay
-  locates the control by app/frame/role/name, invokes its accessible action, and waits
-  for a semantic event; it sends no keys, coordinates or clipboard data. Text entry,
-  password fields, terminals, shells and apps without an accessibility tree are refused;
-  mixed app-plus-inside workflows are rejected for now. Evidence:
+  `buddy workflow capture-step`) for each action. Text uses
+  `buddy workflow type-step "TEXT" --delay 5`; the helper receives text on stdin, and
+  the text is stored in the workflow (warn the user: not for secrets). Apps without a
+  tree use `buddy workflow manual-step "NOTE" --app APP`; replay brings the app forward,
+  waits for `buddy workflow continue`, and never blind-clicks or sends keys. Stop with
+  `buddy workflow stop`; replay with `buddy workflow replay NAME`. Replay walks mixed
+  application/accessible/text/manual sequences, opening each app and verifying each
+  accessible step. The shortcut is registered by the GNOME extension from its compiled
+  schema; `scripts/install.sh` compiles it. Password fields, terminals, shells and
+  coordinate/key replay remain refused. Text is stored in the workflow and export; do
+  not use it for secrets. `buddy workflow abort` releases a waiting replay. Evidence:
   `spikes/workflow-a11y/RESULTS.md`; durable decisions are in `docs/decisions.md`. No
   separate plan file is kept as a project artifact.
+- **Name recognition:** `Identity.name` is the configured name; `daemon`/CLI use
+  `language::addresses` and `Heard::Called`. In English and Persian, the name is
+  stripped from a sentence before cue matching. The English/Persian forms of "Buddy"
+  are aliases only while that is the configured name. `Life.name_calls` records calls;
+  the first is a greeting, later ones are a recall. The GUI exposes Rename and Call on
+  Train and Settings. Do not hard-code a user's name in vocabulary data.
 - **Ollama:** `scripts/install.sh` installs a pinned runtime under
   `$BUDDY_DATA_DIR/ollama/<version>` and starts `buddy-ollama.service` on
   `127.0.0.1:11435` with its own model store. A system Ollama on 11434 is left untouched.

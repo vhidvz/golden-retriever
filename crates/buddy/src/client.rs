@@ -64,6 +64,7 @@ pub fn status(as_json: bool) -> Result<()> {
         s["life"]["sessions"],
         s["life"]["pets"]
     );
+    println!("  called by name: {} time(s)", s["life"]["name_calls"].as_u64().unwrap_or(0));
     println!("  renderer:    {}", text(&s["renderer"]));
     println!("  pictures:    {}", s["pictures"].as_str().unwrap_or("?"));
     println!("  privacy:     {}", if st["privacy"] == true { "ON — all observation suspended" } else { "off" });
@@ -179,6 +180,10 @@ pub fn say(words: &str) -> Result<()> {
     };
     println!("Understood as: {}{detail} (by {})", text(&meaning["kind"]), text(&r["by"]));
     let kind = meaning["kind"].as_str().unwrap_or_default();
+    if kind == "called" {
+        println!("He heard his name — {} because: {}.", text(&r["now"]), text(&r["because"]));
+        return Ok(());
+    }
     if r["puzzled"] == true && kind == "cue" {
         println!("He knows that word only a little and did not do it this time. Praise him when he does, and he will learn it.");
     } else if r["puzzled"] == true {
@@ -199,6 +204,18 @@ pub fn say(words: &str) -> Result<()> {
         );
     }
     Ok(())
+}
+
+pub fn set_name(name: &str) -> Result<()> {
+    request("set", serde_json::json!({ "key": "name", "value": name }))?;
+    println!("His name is now {name}. Call him with: buddy call");
+    Ok(())
+}
+
+pub fn call_name() -> Result<()> {
+    let status = request("status", Value::Null)?;
+    let name = status["state"]["name"].as_str().unwrap_or("Buddy");
+    say(name)
 }
 
 pub fn knows() -> Result<()> {
@@ -252,7 +269,16 @@ pub fn absolute(path: &str) -> String {
 
 /// What came of something he was asked (or offered) to do.
 fn show_outcome(r: &Value) -> Result<()> {
-    if let Some(id) = r["waiting_for_yes"].as_u64() {
+    if let Some(step) = r.get("waiting_for_manual") {
+        println!(
+            "Buddy is waiting at step {}/{} in {}: {}",
+            step["step"].as_u64().unwrap_or(0),
+            step["total"].as_u64().unwrap_or(0),
+            step["app"].as_str().unwrap_or("?"),
+            step["note"].as_str().unwrap_or("")
+        );
+        println!("Do that step, then run: buddy workflow continue");
+    } else if let Some(id) = r["waiting_for_yes"].as_u64() {
         println!("He would like to {}.", r["would"].as_str().unwrap_or("?"));
         println!("He is sitting and waiting for your answer:   buddy approve {id}   or   buddy deny {id}");
         println!("(or just say so: buddy say yes / buddy say \"نه ممنون\")");
@@ -457,8 +483,28 @@ fn human_bytes(bytes: u64) -> String {
 /// One line for a stored workflow: id, name, steps and the record.
 pub fn workflow_line(value: &Value) -> String {
     let apps: Vec<&str> = value["apps"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
-    let steps = value["steps"].as_array().map_or(0, Vec::len);
-    let what = if apps.is_empty() && steps > 0 { format!("{steps} inside-app step(s)") } else { apps.join(" > ") };
+    let steps = value["steps"].as_array().cloned().unwrap_or_default();
+    let mut step_apps: Vec<String> = Vec::new();
+    for step in &steps {
+        if let Some(app) = step["app"].as_str() {
+            if step_apps.last().map(String::as_str) != Some(app) {
+                step_apps.push(app.to_string());
+            }
+        }
+    }
+    let what = if !apps.is_empty() {
+        let mut text = apps.join(" > ");
+        if !steps.is_empty() {
+            text.push_str(&format!(" ({} steps)", steps.len()));
+        }
+        text
+    } else if steps.is_empty() {
+        "(no steps)".to_string()
+    } else if step_apps.is_empty() {
+        format!("{} step(s)", steps.len())
+    } else {
+        format!("{} step(s): {}", steps.len(), step_apps.join(" > "))
+    };
     format!(
         "{}  {}  {}  ({} runs, {} ok, {} failed)",
         value["id"].as_u64().unwrap_or(0),
@@ -491,6 +537,9 @@ pub fn workflows() -> Result<()> {
 
 pub fn workflow_show(key: &str) -> Result<()> {
     let workflow = request("workflow", workflow_key(key))?;
+    if workflow["steps"].as_array().into_iter().flatten().any(|step| step["kind"] == "type_text") {
+        eprintln!("note: this workflow contains text, stored in Buddy's database; inspect it before sharing an export.");
+    }
     println!("{}", serde_json::to_string_pretty(&workflow)?);
     Ok(())
 }
@@ -521,8 +570,10 @@ pub fn workflow_capture(action: &str, name: Option<&str>) -> Result<()> {
     let data = request("workflow_capture", args)?;
     match action {
         "start" => {
-            println!("Capturing inside-application steps. Focus a button or menu item, then:");
+            println!("Capturing workflow steps. For accessible controls, turn on the accessibility sense and focus a button or menu item:");
             println!("  buddy workflow capture-step");
+            println!("For text: buddy workflow type-step \"TEXT\" --delay 5  (focus the field during the delay)");
+            println!("For an app without a tree: buddy workflow manual-step \"NOTE\" --app APP");
             println!("Stop with: buddy workflow stop");
         }
         "stop" => println!("Saved: {}", workflow_line(&data)),
@@ -542,6 +593,67 @@ pub fn workflow_capture_step() -> Result<()> {
         step["frame"].as_str().unwrap_or("?"),
         data["steps"].as_u64().unwrap_or(0)
     );
+    Ok(())
+}
+
+fn delay_arg(args: &[String]) -> f64 {
+    let mut index = 0;
+    while index < args.len() {
+        if args[index] == "--delay" {
+            return args.get(index + 1).and_then(|value| value.parse::<f64>().ok()).unwrap_or(0.0).clamp(0.0, 60.0);
+        }
+        index += 1;
+    }
+    0.0
+}
+
+fn option_arg(args: &[String], flag: &str) -> Option<String> {
+    let position = args.iter().position(|value| value == flag)?;
+    args.get(position + 1).cloned()
+}
+
+pub fn workflow_type_step(args: &[String]) -> Result<()> {
+    let text = args.first().context("workflow type-step needs text")?;
+    let delay = delay_arg(args);
+    if delay > 0.0 {
+        eprintln!("Focus the text field; capturing in {delay:.0} seconds…");
+        std::thread::sleep(Duration::from_secs_f64(delay));
+    }
+    let data = request("workflow_type_step", serde_json::json!({ "text": text }))?;
+    println!(
+        "Captured text step in {} '{}' ({} steps). The text is stored in Buddy's database.",
+        data["captured"]["role"].as_str().unwrap_or("?"),
+        data["captured"]["name"].as_str().unwrap_or(""),
+        data["steps"].as_u64().unwrap_or(0)
+    );
+    Ok(())
+}
+
+pub fn workflow_manual_step(args: &[String]) -> Result<()> {
+    let note = args.first().context("workflow manual-step needs a note")?;
+    let delay = delay_arg(args);
+    let app = option_arg(args, "--app");
+    if app.is_none() && delay <= 0.0 {
+        bail!("pass --app APP, or --delay 5 and focus the target application during the countdown");
+    }
+    if delay > 0.0 {
+        eprintln!("Focus the application; recording the manual step in {delay:.0} seconds…");
+        std::thread::sleep(Duration::from_secs_f64(delay));
+    }
+    let data = request("workflow_manual_step", serde_json::json!({ "note": note, "app": app }))?;
+    println!(
+        "Manual step in {}: “{}” ({} steps). At replay Buddy will bring the app forward and wait for you to do it, then: buddy workflow continue",
+        data["captured"]["app"].as_str().unwrap_or("?"),
+        data["captured"]["note"].as_str().unwrap_or(""),
+        data["steps"].as_u64().unwrap_or(0)
+    );
+    Ok(())
+}
+
+pub fn workflow_abort() -> Result<()> {
+    let data = request("workflow_abort", Value::Null)?;
+    println!("Stopped the replay.");
+    let _ = data;
     Ok(())
 }
 

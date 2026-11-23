@@ -365,13 +365,26 @@ impl Sim {
     }
 
     pub fn capture_action_step(&mut self, step: WorkflowStep) -> Result<()> {
-        let recording = self.action_recording.as_mut().ok_or_else(|| anyhow::anyhow!("no inside-app workflow is being recorded"))?;
+        let recording = self
+            .action_recording
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("no workflow capture is active; start one with: buddy workflow capture NAME"))?;
+        // Make the application transition explicit, so a captured sequence that moves
+        // between applications is a real mixed workflow rather than an implicit one.
+        let app = step.app().to_string();
+        if !matches!(step, WorkflowStep::OpenApp { .. }) && recording.last_app() != Some(app.as_str()) {
+            recording.push(WorkflowStep::OpenApp { app: app.clone() });
+        }
         recording.push(step);
         Ok(())
     }
 
     pub fn action_recording_len(&self) -> usize {
         self.action_recording.as_ref().map_or(0, ActionRecording::len)
+    }
+
+    pub fn has_action_recording(&self) -> bool {
+        self.action_recording.is_some()
     }
 
     pub fn stop_action_recording(&mut self, now: f64) -> Result<Workflow> {
@@ -1069,6 +1082,7 @@ impl Sim {
                     self.look("you", 3.0, now);
                 }
             }
+            Heard::Called => self.notice_name(now),
             Heard::Chat => {
                 if !asleep {
                     let secs = self.rng.range(2.5, 4.5);
@@ -1171,6 +1185,32 @@ impl Sim {
             self.puzzle(now);
         }
         std::mem::take(&mut self.out)
+    }
+
+    /// His name is a recall, not a trick. The first call gets a bright greeting;
+    /// after that he comes to the middle of the screen and sits. A name called while
+    /// he is asleep wakes him, unless the user deliberately sent him to sleep.
+    fn notice_name(&mut self, now: f64) {
+        if self.activity == Activity::Sleep && self.settings.asleep_by_user {
+            return;
+        }
+        self.life.name_calls += 1;
+        self.out.push(journal("called", json!({ "total": self.life.name_calls })));
+        if self.activity == Activity::Sleep {
+            self.finish(now);
+            self.perform_as(Activity::Stand, 0, 4.0, "you called his name", now);
+            self.look("you", 3.5, now);
+            return;
+        }
+        if self.life.name_calls == 1 {
+            self.finish(now);
+            self.perform_as(Activity::Greet, 0, 4.0, "you called his name", now);
+            self.look("you", 3.5, now);
+        } else {
+            let name = self.identity.name.clone();
+            self.perform("come", &name, now);
+            self.look("you", 3.0, now);
+        }
     }
 
     /// He did not understand: he looks at you and tilts his head.
@@ -1626,6 +1666,21 @@ mod tests {
     }
 
     #[test]
+    fn his_name_is_a_recall_and_becomes_familiar() {
+        let mut s = sim(0);
+        s.apply(Command::SetScreen { walk_px: 2000.0 }, 0.0);
+        s.tick(1.0, 12.0);
+        let first = s.hear(Heard::Called, 2.0);
+        assert_eq!(s.life.name_calls, 1);
+        assert_eq!(s.activity(), Activity::Greet);
+        assert!(first.iter().any(|output| matches!(output, Output::Journal(entry) if entry.kind == "called")));
+        let second = s.hear(Heard::Called, 3.0);
+        assert_eq!(s.life.name_calls, 2);
+        assert!(matches!(s.activity(), Activity::Walk | Activity::Sit), "the second call is a recall");
+        assert!(second.iter().any(|output| matches!(output, Output::Journal(entry) if entry.kind == "called")));
+    }
+
+    #[test]
     fn he_comes_when_called_and_remembers_what_he_is_told() {
         let mut s = sim(0);
         s.apply(Command::SetScreen { walk_px: 2000.0 }, 0.0);
@@ -1726,7 +1781,7 @@ mod tests {
     }
 
     #[test]
-    fn an_inside_app_recording_captures_one_action() {
+    fn an_inside_app_recording_captures_actions_text_and_manual_steps() {
         let mut s = sim(0);
         s.start_action_recording("press".into(), 0.0).unwrap();
         s.capture_action_step(WorkflowStep::Activate {
@@ -1736,8 +1791,21 @@ mod tests {
             name: "Press me".into(),
         })
         .unwrap();
+        s.capture_action_step(WorkflowStep::TypeText {
+            app: "local.buddy.A11yProbe".into(),
+            frame: "Buddy A11y Probe".into(),
+            role: "text".into(),
+            name: "".into(),
+            text: "hello".into(),
+        })
+        .unwrap();
+        s.capture_action_step(WorkflowStep::Manual { app: "telegram-desktop".into(), note: "send the file".into() }).unwrap();
         let workflow = s.stop_action_recording(1.0).unwrap();
-        assert_eq!(workflow.steps.len(), 1);
+        assert_eq!(workflow.steps.len(), 5);
+        assert!(matches!(workflow.steps[0], WorkflowStep::OpenApp { .. }));
+        assert_eq!(workflow.apps, vec!["local.buddy.A11yProbe", "telegram-desktop"]);
         assert!(Workflows::has_actions(&workflow));
+        assert!(Workflows::needs_accessibility(&workflow));
+        assert!(!s.has_action_recording());
     }
 }

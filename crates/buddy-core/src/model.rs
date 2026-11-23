@@ -21,6 +21,9 @@ pub struct Life {
     /// Unix seconds of the last simulated moment.
     pub last_seen: i64,
     pub pets: u64,
+    /// Times the user called him by name, for a dog whose name becomes more familiar.
+    #[serde(default)]
+    pub name_calls: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

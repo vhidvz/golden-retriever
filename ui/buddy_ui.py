@@ -907,8 +907,10 @@ class BuddyWindow(Adw.ApplicationWindow):
             if state.get("privacy"):
                 suffix.append("privacy on")
             self.home_activity.set_text(activity + (f" · {', '.join(suffix)}" if suffix else ""))
+            calls = int(life.get("name_calls") or 0)
             self.home_life.set_text(
-                f"{seconds(life.get('awake_secs', 0))} awake · {life.get('sessions', 0)} sessions · petted {life.get('pets', 0)} times"
+                f"{seconds(life.get('awake_secs', 0))} awake · {life.get('sessions', 0)} sessions · petted {life.get('pets', 0)} times · "
+                f"called {calls} time{'s' if calls != 1 else ''}"
             )
             for child in list(self.home_mood_box):
                 self.home_mood_box.remove(child)
@@ -944,6 +946,7 @@ class BuddyWindow(Adw.ApplicationWindow):
         quiet = bool(settings.get("quiet"))
         privacy = bool(state.get("privacy")) or bool(settings.get("privacy_mode"))
         labels = {
+            "call": f"Call “{state.get('name') or 'Buddy'}”",
             "sleep": "Wake him" if asleep else "Let him sleep",
             "hide": "Show him" if hidden else "Hide him",
             "quiet": f"Quiet: {'on' if quiet else 'off'}",
@@ -1007,7 +1010,9 @@ class BuddyWindow(Adw.ApplicationWindow):
                 self._waiting_signature = None
                 self._refresh_status_and_waiting()
                 return
-            if data and data.get("declined"):
+            if data and data.get("waiting_for_manual"):
+                self._show_manual_prompt(data["waiting_for_manual"])
+            elif data and data.get("declined"):
                 self._toast(f"All right: he will not {data['declined']}")
             elif data and data.get("did"):
                 self._toast(f"Done: {data['did']}")
@@ -1069,6 +1074,7 @@ class BuddyWindow(Adw.ApplicationWindow):
         self.home_activity.add_css_class("hero-activity")
         self.home_life = Gtk.Label(label="")
         self.home_life.set_xalign(0)
+        self.home_life.set_wrap(True)
         self.home_life.add_css_class("hero-meta")
         self.home_mood_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self.home_mood_box.set_margin_top(2)
@@ -1088,6 +1094,7 @@ class BuddyWindow(Adw.ApplicationWindow):
         flow.set_row_spacing(8)
         flow.set_column_spacing(8)
         quick_actions = [
+            ("call", "Call him", "call"),
             ("pet", "Pet him", "pet"),
             ("praise", "Good boy", "praise"),
             ("treat", "Give a treat", "treat"),
@@ -1193,6 +1200,9 @@ class BuddyWindow(Adw.ApplicationWindow):
         body.append(window_card)
 
     def _quick(self, command: str):
+        if command == "call":
+            self._call_his_name()
+            return
         if command in ("sleep", "hide", "quiet", "privacy"):
             state = (self.status or {}).get("state") or {}
             settings = (self.status or {}).get("settings") or {}
@@ -1352,6 +1362,9 @@ class BuddyWindow(Adw.ApplicationWindow):
         elif isinstance(raw, dict):
             detail = f" “{raw.get('cue', '?')}” means {clean(raw.get('trick'))}"
         lines = [f"Understood as: {kind}{detail} (by {clean(data.get('by'))})."]
+        if kind == "called":
+            lines = [f"He heard his name — {clean(data.get('now')) or 'he looked up'} because: {clean(data.get('because')) or 'you called him'}."]
+            return "\n".join(lines)
         if data.get("puzzled"):
             if kind == "cue":
                 lines.append("He knows that word only a little and did not do it this time. Praise him when he does, and he will learn it.")
@@ -1418,6 +1431,18 @@ class BuddyWindow(Adw.ApplicationWindow):
     # ---------------------------------------------------------------- train
 
     def _build_train(self, body: Gtk.Box):
+        name_card = self._card(
+            "His name",
+            "The name he answers to. He hears it in typed speech and, with the microphone on, in the room. The first call gets a bright greeting; afterwards he comes and sits.",
+        )
+        self.train_name_entry = self._entry("e.g. پشمک or Peshmark")
+        name_card.append(self._field_row("Name", "Use any English or Persian name; punctuation and Persian spelling variants do not matter.", self.train_name_entry))
+        name_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        name_row.append(self._text_button("Rename", self._rename_from_train, "small-button", "suggested"))
+        name_row.append(self._text_button("Call him", self._call_his_name, "small-button"))
+        name_card.append(name_row)
+        body.append(name_card)
+
         teach = self._card(
             "Teach a word",
             "Telling him outright is the quickest way. Praise him when he does it, and the word becomes surer.",
@@ -1493,6 +1518,25 @@ class BuddyWindow(Adw.ApplicationWindow):
 
         self._command("teach", {"cue": cue, "trick": trick}, done=done)
 
+    def _rename_from_train(self):
+        name = self.train_name_entry.get_text().strip()
+        if not name:
+            self._toast("Give him a name first.")
+            return
+
+        def done(data, error):
+            if error is None:
+                self._toast(f"His name is {name}.")
+                self._refresh_status_and_waiting()
+                self._refresh_train()
+
+        self._command("set", {"key": "name", "value": name}, done=done)
+
+    def _call_his_name(self):
+        name = ((self.status or {}).get("state") or {}).get("name") or "Buddy"
+        self._toast(f"Calling {name}…")
+        self._send_talk_text(name)
+
     def _remember(self):
         text = self.memory_entry.get_text().strip()
         if not text:
@@ -1510,6 +1554,8 @@ class BuddyWindow(Adw.ApplicationWindow):
             if error is not None:
                 return
             known, memories = result
+            if hasattr(self, "train_name_entry") and not self.train_name_entry.has_focus():
+                self.train_name_entry.set_text(str(((self.status or {}).get("state") or {}).get("name") or "Buddy"))
             self._clear(self.known_box)
             rows = known or []
             rows.sort(key=lambda item: (-float(item.get("strength") or 0), str(item.get("cue") or "")))
@@ -2198,19 +2244,55 @@ class BuddyWindow(Adw.ApplicationWindow):
         body.append(record)
 
         capture = self._card(
-            "Capture actions inside applications",
-            "Guided capture stores the focused accessible control. The accessibility sense must be on, and privacy off. "
-            "Use the button or the Super+Shift+B shortcut.",
+            "Capture actions, text and assisted steps",
+            "Start a capture, then use the buttons or the Super+Shift+B shortcut. Accessible actions and text need the accessibility sense and privacy off. "
+            "An application with no accessibility tree can use a manual step: Buddy brings it forward and waits while you do the work.",
         )
         self.capture_name = self._entry("a name, e.g. “file my report”")
-        capture.append(self._field_row("Name", "A workflow can have several accessible steps.", self.capture_name))
+        capture.append(self._field_row("Name", "A workflow can have several steps across applications.", self.capture_name))
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         row.append(self._text_button("Start capture", lambda: self._capture("start"), "small-button", "suggested"))
         row.append(self._text_button("Capture step", self._capture_step, "small-button", icon="input-keyboard-symbolic"))
         row.append(self._text_button("Stop", lambda: self._capture("stop"), "small-button"))
         row.append(self._text_button("Cancel", lambda: self._capture("cancel"), "small-button", "destructive"))
         capture.append(row)
-        self.capture_note = Gtk.Label(label="Text entry, coordinates and keystrokes are never recorded.")
+
+        divider = Gtk.Label(label="Text entry")
+        divider.set_xalign(0)
+        divider.add_css_class("field-label")
+        divider.set_margin_top(6)
+        capture.append(divider)
+        self.text_step_entry = self._entry("text to enter, e.g. “quarterly report”")
+        capture.append(self._field_row("Text", "Stored as part of the workflow in his database. Do not use passwords or secrets.", self.text_step_entry))
+        text_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.text_delay = Gtk.SpinButton.new_with_range(1, 15, 1)
+        self.text_delay.set_value(5)
+        self.text_delay.set_size_request(90, -1)
+        text_row.append(self._text_button("Capture text step", self._capture_text, "small-button", "suggested"))
+        text_row.append(Gtk.Label(label="after"))
+        text_row.append(self.text_delay)
+        text_row.append(Gtk.Label(label="seconds; focus the target field during the countdown."))
+        capture.append(text_row)
+
+        divider = Gtk.Label(label="Application without an accessibility tree")
+        divider.set_xalign(0)
+        divider.add_css_class("field-label")
+        divider.set_margin_top(6)
+        capture.append(divider)
+        self.manual_note_entry = self._entry("what you will do, e.g. “send the prepared file”")
+        self.manual_app_entry = self._entry("application id; leave blank and focus it during the countdown")
+        capture.append(self._field_row("Manual step", "No keystrokes, coordinates or blind clicks are used. You perform it; Buddy only brings the app forward and waits.", self.manual_note_entry))
+        capture.append(self._field_row("Application", "Optional when the countdown leaves you time to focus it.", self.manual_app_entry))
+        manual_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.manual_delay = Gtk.SpinButton.new_with_range(1, 30, 1)
+        self.manual_delay.set_value(5)
+        self.manual_delay.set_size_request(90, -1)
+        manual_row.append(self._text_button("Add manual step", self._capture_manual, "small-button", "suggested"))
+        manual_row.append(Gtk.Label(label="after"))
+        manual_row.append(self.manual_delay)
+        manual_row.append(Gtk.Label(label="seconds."))
+        capture.append(manual_row)
+        self.capture_note = Gtk.Label(label="Coordinates, keystrokes and password fields are never recorded. A manual step is explicitly assisted; it is not automated.")
         self.capture_note.set_xalign(0)
         self.capture_note.set_wrap(True)
         self.capture_note.add_css_class("field-hint")
@@ -2219,9 +2301,22 @@ class BuddyWindow(Adw.ApplicationWindow):
 
         listing = self._card(
             "What he has recorded",
-            "Replaying checks each application came to the front and each accessible control still exists.",
+            "Replaying checks each application came to the front and each accessible control still exists. A manual step waits for you.",
             action=self._text_button("Refresh", self._refresh_workflows, "small-button"),
         )
+        self.manual_bar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.manual_bar.add_css_class("waiting-row")
+        self.manual_bar.set_visible(False)
+        self.manual_label = Gtk.Label(label="")
+        self.manual_label.set_xalign(0)
+        self.manual_label.set_wrap(True)
+        self.manual_label.add_css_class("field-label")
+        manual_buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        manual_buttons.append(self._text_button("I did it", self._continue_workflow, "small-button", "suggested"))
+        manual_buttons.append(self._text_button("Cancel replay", self._abort_workflow, "small-button", "destructive"))
+        self.manual_bar.append(self.manual_label)
+        self.manual_bar.append(manual_buttons)
+        listing.append(self.manual_bar)
         self.workflows_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         listing.append(self.workflows_box)
         body.append(listing)
@@ -2267,8 +2362,8 @@ class BuddyWindow(Adw.ApplicationWindow):
     def _capture_step(self):
         def done(data, error):
             if error is None:
-                if isinstance(data, dict) and data.get("step"):
-                    step = data["step"]
+                if isinstance(data, dict) and data.get("captured"):
+                    step = data["captured"]
                     self._toast(f"Captured {clean(step.get('role'))} “{step.get('name')}”.")
                 else:
                     self._toast("Captured the focused control.")
@@ -2276,6 +2371,103 @@ class BuddyWindow(Adw.ApplicationWindow):
                 self._toast(str(error))
 
         self._command("workflow_capture_step", None, done=done)
+
+    def _schedule(self, seconds: int, action):
+        def fire():
+            action()
+            return False
+
+        GLib.timeout_add(max(1, seconds) * 1000, fire)
+
+    def _capture_text(self):
+        text = self.text_step_entry.get_text()
+        if not text:
+            self._toast("Type the text to enter first.")
+            return
+        settings = (self.status or {}).get("settings") or {}
+        if (settings.get("senses") or {}).get("accessibility") is not True or settings.get("privacy_mode"):
+            self._toast("Turn on the accessibility sense and turn privacy off first.")
+            return
+        seconds = int(self.text_delay.get_value())
+        self._toast(f"Focus the text field; capturing in {seconds} seconds…")
+
+        def send():
+            def done(data, error):
+                if error is None:
+                    self._toast("Text step captured.")
+
+            self._command("workflow_type_step", {"text": text}, done=done)
+
+        self._schedule(seconds, send)
+
+    def _capture_manual(self):
+        note = self.manual_note_entry.get_text().strip()
+        if not note:
+            self._toast("Describe what you will do in the manual step first.")
+            return
+        app = self.manual_app_entry.get_text().strip() or None
+        seconds = int(self.manual_delay.get_value())
+        self._toast(f"Focus the application; recording the manual step in {seconds} seconds…")
+
+        def send():
+            def done(data, error):
+                if error is None:
+                    self._toast("Manual step captured.")
+
+            self._command("workflow_manual_step", {"note": note, "app": app}, done=done)
+
+        self._schedule(seconds, send)
+
+    def _show_manual_prompt(self, step: dict):
+        self._manual_step = step
+        text = f"Step {step.get('step', '?')}/{step.get('total', '?')} in {step.get('app', '?')}: {step.get('note', '')}"
+        if hasattr(self, "manual_bar"):
+            self.manual_label.set_text(text)
+            self.manual_bar.set_visible(True)
+        dialog = Adw.MessageDialog(transient_for=self, heading="Buddy is waiting for you", body=text)
+        dialog.add_response("later", "Later")
+        dialog.add_response("done", "I did it")
+        dialog.set_response_appearance("done", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("done")
+        dialog.set_close_response("later")
+
+        def response(dlg, choice):
+            dlg.close()
+            if choice == "done":
+                self._continue_workflow()
+
+        dialog.connect("response", response)
+        dialog.present()
+
+    def _continue_workflow(self):
+        def done(data, error):
+            if error is not None:
+                self._toast(str(error))
+                return
+            if isinstance(data, dict) and data.get("waiting_for_manual"):
+                self._show_manual_prompt(data["waiting_for_manual"])
+                return
+            if hasattr(self, "manual_bar"):
+                self.manual_bar.set_visible(False)
+            self._manual_step = None
+            if isinstance(data, dict) and data.get("did"):
+                self._toast(f"Done: {data['did']}")
+            else:
+                self._toast("The workflow is finished.")
+            self._refresh_workflows()
+
+        self._command("workflow_continue", None, done=done, timeout=16 * 60)
+
+    def _abort_workflow(self):
+        def done(data, error):
+            if hasattr(self, "manual_bar"):
+                self.manual_bar.set_visible(False)
+            self._manual_step = None
+            if error is None:
+                self._toast("The replay is stopped.")
+                self._refresh_workflows()
+
+        self._command("workflow_abort", None, done=done)
 
     def _refresh_workflows(self):
         def work():
@@ -2304,6 +2496,12 @@ class BuddyWindow(Adw.ApplicationWindow):
                 summary = f"{len(steps)} step{'s' if len(steps) != 1 else ''}"
                 if apps:
                     summary += " · " + " → ".join(apps)
+                text_steps = sum(1 for step in steps if step.get("kind") == "type_text")
+                manual_steps = sum(1 for step in steps if step.get("kind") == "manual")
+                if text_steps:
+                    summary += f" · {text_steps} text"
+                if manual_steps:
+                    summary += f" · {manual_steps} manual"
                 meta = Gtk.Label(label=f"#{item.get('id')} · {summary}")
                 meta.set_xalign(0)
                 meta.set_wrap(True)
@@ -2349,7 +2547,9 @@ class BuddyWindow(Adw.ApplicationWindow):
         def done(data, error):
             if error is not None:
                 return
-            if isinstance(data, dict) and data.get("waiting_for_yes"):
+            if isinstance(data, dict) and data.get("waiting_for_manual"):
+                self._show_manual_prompt(data["waiting_for_manual"])
+            elif isinstance(data, dict) and data.get("waiting_for_yes"):
                 self._show_approval(data, self.talk_approval_box)
                 self._toast("He is waiting for your answer on Home or Talk.")
                 self._refresh_status_and_waiting()

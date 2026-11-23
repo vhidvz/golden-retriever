@@ -68,3 +68,10 @@ Milestone 2 should use **guided capture**, not blind event recording:
 
 Text entry is a later, separate spike. No coordinate replay and no synthetic keystrokes
 are part of this design.
+
+## Later implementation (2026-11-23)
+
+Phase 5 later implemented accessible text entry, mixed workflow replay and explicit
+assisted manual steps for apps with no tree. This directory remains the research
+record; the implementation is in `perception/a11y_text.py`, `crates/buddy-core/src/workflow.rs`
+and `crates/buddy/src/daemon.rs`.

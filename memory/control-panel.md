@@ -17,10 +17,10 @@ The durable shape:
   same protocol as `crates/buddy/src/client.rs`. It owns no simulation state, never opens
   SQLite, and asks the daemon for every change. Closing it does not stop Buddy.
 - Pages: Home (status, needs, quick actions, waiting approvals, why, snapshot), Talk,
-  Train (words, memories, praise/correction), Senses (all seven sources and privacy),
+  Train (name, call, words, memories, praise/correction), Senses (all seven sources and privacy),
   Local AI (runtime, model dropdowns, capabilities, voice, doctor, setup commands),
-  Skills (policies, folders, undo/result), Workflows (record, guided capture, replay,
-  delete), Journal/export, and Settings (name, size, growth, fullscreen, pictures, quiet,
+  Skills (policies, folders, undo/result), Workflows (record, guided capture, text and manual steps, replay,
+  continue, abort, delete), Journal/export, and Settings (name, size, growth, fullscreen, pictures, quiet,
   privacy, data).
 - `ui/buddy.svg` is the application icon; `dist/buddy-ui.desktop` is the launcher.
   `scripts/install.sh` installs the files under the Buddy data directory, `buddy-ui` in

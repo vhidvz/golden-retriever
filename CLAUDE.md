@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Buddy is a Golden Retriever who lives on a Linux desktop: a long-running Rust daemon
 simulates his life, a Godot overlay draws him, and an optional local model helps him
-understand language and act on the computer. The project is at **Phase 5 (skills and
-helpers)**; Phase 6 (refinement) has begun with his body. `README.md` is the user-facing
+understand language and act on the computer. **Phase 5 (skills and helpers) is
+complete**; Phase 6 (refinement) continues with his body. `README.md` is the user-facing
 specification and describes every command and behaviour. `docs/decisions.md` records the
 project owner's binding decisions; `docs/development.md` records the machine, tools and
 working agreements. `memory/MEMORY.md` is the durable, git-tracked project memory that
@@ -33,7 +33,7 @@ The invariants that matter most:
 
 ```sh
 cargo build --release
-cargo test                                    # 100 tests, under 30 s on the dev machine
+cargo test                                    # 105 tests, under 30 s on the dev machine
 cargo test -p buddy-core <test_name>          # one unit test
 cargo test -p buddy --test lifecycle          # daemon persistence/lifecycle integration test
 cargo fmt --check                             # rustfmt.toml: max_width 150 (currently reports pre-existing diffs)
@@ -44,6 +44,8 @@ scripts/install.sh                            # install for this user and start 
 scripts/install.sh --remove                   # stop and remove (keeps ~/.local/share/buddy)
 buddy-ui                                      # optional GTK4/libadwaita control panel
 python3 -m py_compile ui/buddy_ui.py          # check the panel
+buddy name "پشمک"                              # choose the name he answers to
+buddy call                                    # call him by that name
 ```
 
 `cargo fmt --check` currently reports pre-existing formatting differences on this
@@ -130,8 +132,11 @@ Two crates, one long-running process, a replaceable renderer, and an optional na
   socket. `client.rs` is the CLI half. `renderer.rs` supervises Godot and restarts it
   with backoff. `skills.rs` is the only code that touches files or processes.
   `daemon.rs` also tracks the application in front and advances permissioned workflow
-  replays; inside applications it uses `perception/a11y_focus.py` and `a11y_act.py`
-  through the off-by-default `accessibility` sense. `daemon/assist.rs` resolves requests,
+  replays; inside applications it uses `perception/a11y_focus.py`, `a11y_act.py` and
+  `a11y_text.py` through the off-by-default `accessibility` sense. It can replay a
+  mixed sequence of application, accessible, text and assisted manual steps; a manual
+  step waits for `buddy workflow continue` and never blind-clicks. `daemon/assist.rs`
+  resolves requests,
   gates them on permission, and handles his own offers. `ai.rs` is the Ollama client; `ai_runtime.rs` owns the managed runtime
   manifest, endpoint and port checks; `ai_hardware.rs`, `ai_catalog.rs` and `ai_setup.rs`
   implement the first-run hardware assessment and model choice. Claude Code was removed.
@@ -197,12 +202,16 @@ lives in `memory/`; start at `memory/MEMORY.md`.
 
 - Behaviour, needs, mood, personality: `crates/buddy-core/src/sim.rs`, `behavior.rs`,
   `needs.rs`, `mood.rs`, `personality.rs`.
+- Name recognition and bilingual speech: `crates/buddy-core/src/language.rs`
+  (`Heard::Called`, `addresses`), `identity.name`, `Life.name_calls`.
 - Daemon, CLI, protocol: `crates/buddy/src/daemon.rs`, `client.rs`,
   `crates/buddy-core/src/proto.rs`.
 - Skills, permissions, offers: `crates/buddy/src/skills.rs`, `daemon/assist.rs`.
 - Workflow recording and replay: `crates/buddy-core/src/workflow.rs`, `daemon.rs`,
-  `buddy workflow` commands; inside-app capture uses `perception/a11y_focus.py` and
-  `a11y_act.py` behind the `accessibility` sense. Evidence: `spikes/workflow-a11y/`.
+  `buddy workflow` commands; inside-app capture uses `perception/a11y_focus.py`,
+  `a11y_act.py` and `a11y_text.py` behind the `accessibility` sense. Manual steps cover
+  apps without a tree without coordinates or synthetic keys. Evidence:
+  `spikes/workflow-a11y/`.
 - Optional provider: `crates/buddy/src/ai.rs` (Ollama), managed by `ai_runtime.rs` on
   `127.0.0.1:11435` with its own model store; first-run choice in `ai_setup.rs`.
 - Renderer and body: `renderer/main.gd`, `retriever.gd`, `sprites.gd`,

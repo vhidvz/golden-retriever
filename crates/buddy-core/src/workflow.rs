@@ -10,12 +10,33 @@ use serde::{Deserialize, Serialize};
 const MIN_DWELL_SECS: f64 = 2.0;
 const MAX_STEPS: usize = 8;
 const MIN_APP_STEPS: usize = 2;
+const MAX_TEXT_CHARS: usize = 2_000;
+const MAX_NOTE_CHARS: usize = 240;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WorkflowStep {
+    /// Bring an application to the front, or wait for it to arrive there.
     OpenApp { app: String },
+    /// Invoke one accessible action, located semantically.
     Activate { app: String, frame: String, role: String, name: String },
+    /// Replace the contents of one accessible editable text field.
+    TypeText { app: String, frame: String, role: String, name: String, text: String },
+    /// An application that exposes no usable accessibility tree: bring it forward
+    /// and wait while the user performs this step. It is never blind-clicked.
+    Manual { app: String, note: String },
+}
+
+impl WorkflowStep {
+    pub fn app(&self) -> &str {
+        match self {
+            Self::OpenApp { app } | Self::Activate { app, .. } | Self::TypeText { app, .. } | Self::Manual { app, .. } => app,
+        }
+    }
+
+    pub fn needs_accessibility(&self) -> bool {
+        matches!(self, Self::Activate { .. } | Self::TypeText { .. })
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -71,6 +92,19 @@ impl Workflows {
                 WorkflowStep::Activate { app, frame, role, name }
                     if app.trim().is_empty() || frame.trim().is_empty() || role.trim().is_empty() || name.trim().is_empty() =>
                 {
+                    continue;
+                }
+                WorkflowStep::TypeText { app, frame, role, text, .. }
+                    if app.trim().is_empty()
+                        || frame.trim().is_empty()
+                        || role.trim().is_empty()
+                        || text.is_empty()
+                        || role == "password text"
+                        || text.chars().count() > MAX_TEXT_CHARS =>
+                {
+                    continue;
+                }
+                WorkflowStep::Manual { app, note } if app.trim().is_empty() || note.trim().is_empty() || note.chars().count() > MAX_NOTE_CHARS => {
                     continue;
                 }
                 WorkflowStep::OpenApp { app } if clean.last() == Some(&WorkflowStep::OpenApp { app: app.clone() }) => continue,
@@ -131,7 +165,11 @@ impl Workflows {
     }
 
     pub fn has_actions(workflow: &Workflow) -> bool {
-        workflow.steps.iter().any(|step| matches!(step, WorkflowStep::Activate { .. }))
+        workflow.steps.iter().any(|step| !matches!(step, WorkflowStep::OpenApp { .. }))
+    }
+
+    pub fn needs_accessibility(workflow: &Workflow) -> bool {
+        workflow.steps.iter().any(WorkflowStep::needs_accessibility)
     }
 
     pub fn outcome(&mut self, id: u64, ok: bool, now: f64) {
@@ -167,6 +205,10 @@ impl ActionRecording {
 
     pub fn len(&self) -> usize {
         self.steps.len()
+    }
+
+    pub fn last_app(&self) -> Option<&str> {
+        self.steps.last().map(WorkflowStep::app)
     }
 
     pub fn finish(self) -> Vec<WorkflowStep> {
@@ -212,44 +254,37 @@ impl Recording {
     pub fn cancel(self) {}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ReplayEvent {
-    Waiting,
-    StepOk,
-    Done,
-    TimedOut,
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReplayState {
-    pub apps: Vec<String>,
+    pub steps: Vec<WorkflowStep>,
     pub index: usize,
     pub started: f64,
 }
 
 impl ReplayState {
-    pub fn new(apps: Vec<String>, now: f64) -> Self {
-        Self { apps, index: 0, started: now }
+    pub fn new(steps: Vec<WorkflowStep>, now: f64) -> Self {
+        Self { steps, index: 0, started: now }
     }
 
-    pub fn expected(&self) -> Option<&str> {
-        self.apps.get(self.index).map(String::as_str)
+    pub fn step(&self) -> Option<&WorkflowStep> {
+        self.steps.get(self.index)
     }
 
-    pub fn check(&mut self, front: Option<&str>, now: f64, timeout: f64) -> ReplayEvent {
-        if self.index >= self.apps.len() {
-            return ReplayEvent::Done;
-        }
-        if now - self.started > timeout {
-            return ReplayEvent::TimedOut;
-        }
-        if front == Some(self.apps[self.index].as_str()) {
-            self.index += 1;
-            self.started = now;
-            if self.index >= self.apps.len() { ReplayEvent::Done } else { ReplayEvent::StepOk }
-        } else {
-            ReplayEvent::Waiting
-        }
+    pub fn expected_app(&self) -> Option<&str> {
+        self.step().map(WorkflowStep::app)
+    }
+
+    pub fn advance(&mut self, now: f64) {
+        self.index += 1;
+        self.started = now;
+    }
+
+    pub fn done(&self) -> bool {
+        self.index >= self.steps.len()
+    }
+
+    pub fn timed_out(&self, now: f64, timeout: f64) -> bool {
+        !self.done() && now - self.started > timeout
     }
 }
 
@@ -304,18 +339,87 @@ mod tests {
     }
 
     #[test]
-    fn a_step_passes_only_when_the_expected_app_is_in_front() {
-        let mut state = ReplayState::new(vec!["terminal".into(), "editor".into()], 0.0);
-        assert_eq!(state.check(Some("browser"), 1.0, 20.0), ReplayEvent::Waiting);
-        assert_eq!(state.check(Some("terminal"), 2.0, 20.0), ReplayEvent::StepOk);
-        assert_eq!(state.expected(), Some("editor"));
-        assert_eq!(state.check(Some("editor"), 3.0, 20.0), ReplayEvent::Done);
+    fn text_entry_is_kept_as_a_typed_step_and_password_fields_are_refused() {
+        let mut workflows = Workflows::default();
+        let step = WorkflowStep::TypeText {
+            app: "local.buddy.A11yProbe".into(),
+            frame: "Buddy A11y Probe".into(),
+            role: "text".into(),
+            name: "".into(),
+            text: "hello from Buddy".into(),
+        };
+        let saved = workflows.record_steps("type", vec![step.clone()], 0.0).unwrap();
+        assert_eq!(saved.steps, vec![step]);
+        assert!(Workflows::needs_accessibility(&saved));
+        let restored: Workflows = serde_json::from_str(&serde_json::to_string(&workflows).unwrap()).unwrap();
+        assert_eq!(restored.list()[0].steps, saved.steps);
+
+        let password = WorkflowStep::TypeText {
+            app: "local.buddy.A11yProbe".into(),
+            frame: "Buddy A11y Probe".into(),
+            role: "password text".into(),
+            name: "Password".into(),
+            text: "secret".into(),
+        };
+        assert!(workflows.record_steps("password", vec![password], 0.0).is_err());
+    }
+
+    #[test]
+    fn a_manual_step_is_for_an_app_without_a_tree() {
+        let mut workflows = Workflows::default();
+        let step = WorkflowStep::Manual { app: "telegram-desktop".into(), note: "send the prepared file".into() };
+        let saved = workflows.record_steps("telegram", vec![step.clone()], 0.0).unwrap();
+        assert_eq!(saved.steps, vec![step]);
+        assert!(!Workflows::needs_accessibility(&saved));
+        assert!(Workflows::has_actions(&saved));
+        assert!(workflows.record_steps("empty", vec![WorkflowStep::Manual { app: "x".into(), note: "".into() }], 0.0).is_err());
+    }
+
+    #[test]
+    fn application_and_inside_application_steps_keep_their_order() {
+        let mut workflows = Workflows::default();
+        let steps = vec![
+            WorkflowStep::OpenApp { app: "editor".into() },
+            WorkflowStep::Activate { app: "editor".into(), frame: "Editor".into(), role: "button".into(), name: "New".into() },
+            WorkflowStep::OpenApp { app: "browser".into() },
+            WorkflowStep::TypeText {
+                app: "browser".into(),
+                frame: "Browser".into(),
+                role: "text".into(),
+                name: "Address".into(),
+                text: "https://example.test".into(),
+            },
+        ];
+        let saved = workflows.record_steps("mixed", steps.clone(), 0.0).unwrap();
+        assert_eq!(saved.steps, steps);
+        assert_eq!(saved.apps, vec!["editor", "browser"]);
+        assert!(Workflows::needs_accessibility(&saved));
+    }
+
+    #[test]
+    fn a_replay_walks_the_step_sequence() {
+        let steps = vec![
+            WorkflowStep::OpenApp { app: "terminal".into() },
+            WorkflowStep::Activate { app: "terminal".into(), frame: "Terminal".into(), role: "button".into(), name: "Run".into() },
+            WorkflowStep::Manual { app: "chat".into(), note: "send it".into() },
+        ];
+        let mut state = ReplayState::new(steps, 0.0);
+        assert_eq!(state.expected_app(), Some("terminal"));
+        assert!(!state.done());
+        state.advance(1.0);
+        assert!(matches!(state.step(), Some(WorkflowStep::Activate { .. })));
+        state.advance(2.0);
+        assert_eq!(state.expected_app(), Some("chat"));
+        assert!(!state.timed_out(3.0, 20.0));
+        state.advance(3.0);
+        assert!(state.done());
+        assert!(!state.timed_out(100.0, 20.0));
     }
 
     #[test]
     fn a_step_that_never_appears_times_out() {
-        let mut state = ReplayState::new(vec!["terminal".into()], 0.0);
-        assert_eq!(state.check(None, 5.0, 20.0), ReplayEvent::Waiting);
-        assert_eq!(state.check(None, 21.0, 20.0), ReplayEvent::TimedOut);
+        let state = ReplayState::new(vec![WorkflowStep::OpenApp { app: "terminal".into() }], 0.0);
+        assert!(!state.timed_out(5.0, 20.0));
+        assert!(state.timed_out(21.0, 20.0));
     }
 }
