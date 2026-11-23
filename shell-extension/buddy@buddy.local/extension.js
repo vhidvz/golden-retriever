@@ -8,6 +8,7 @@
 
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
+import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -36,6 +37,21 @@ export default class BuddySense extends Extension {
             this._reportPointer();
             return GLib.SOURCE_CONTINUE;
         });
+
+        // Guided capture: one keypress saves the focused accessible control. The daemon
+        // does the reading and deciding; this only sends the request.
+        try {
+            this._settings = this.getSettings();
+            Main.wm.addKeybinding(
+                'capture-step',
+                this._settings,
+                Meta.KeyBindingFlags.NONE,
+                Shell.ActionMode.NORMAL,
+                () => this._captureStep(),
+            );
+        } catch (error) {
+            logError(error, "Buddy's capture shortcut is unavailable");
+        }
     }
 
     disable() {
@@ -54,6 +70,14 @@ export default class BuddySense extends Extension {
         this._cancel?.cancel();
         this._connection?.close(null);
         this._connection = this._output = this._cancel = null;
+        if (this._settings) {
+            try {
+                Main.wm.removeKeybinding('capture-step');
+            } catch {
+                // the shell is already tearing down this extension
+            }
+            this._settings = null;
+        }
     }
 
     _watch(object, signal, handler) {
@@ -116,6 +140,8 @@ export default class BuddySense extends Extension {
                 const message = JSON.parse(line);
                 if (message.type === 'policy')
                     this._setPolicy(message);
+                else if (message.type === 'reply' && message.ok === false)
+                    Main.notify('Buddy', message.error ?? 'The capture step could not be saved.');
             } catch {
                 // not for us
             }
@@ -144,6 +170,10 @@ export default class BuddySense extends Extension {
     }
 
     /// Reports one observation, unless not allowed to or nothing has changed.
+    _captureStep() {
+        this._send({type: 'command', name: 'workflow_capture_step', args: {}});
+    }
+
     _report(kind, data, always = false) {
         if (!this._policy.desktop || !this._output)
             return;

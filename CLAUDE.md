@@ -140,7 +140,9 @@ Two crates, one long-running process, and a replaceable renderer.
   model from `renderer/dog/retriever.json` and extends it. `sprites.gd` uses pre-drawn
   pictures when a set matches his age and activity. `voice.gd` plays his sounds.
   `export_poses.gd` records poses for the Blender bake.
-- `shell-extension/` and `perception/` — his senses. A GNOME Shell extension reports
+- `shell-extension/` and `perception/` — his senses. The GNOME Shell extension also
+  registers the guided-capture shortcut (`Super+Shift+B` by default) from its compiled
+  schema, and reports
   application focus, fullscreen, overview, pointer and notifications; Python helpers for
   camera, microphone and screen are started only while their sense is allowed. Privacy
   mode is enforced in the daemon, not in the helpers.

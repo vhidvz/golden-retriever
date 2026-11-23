@@ -16,7 +16,11 @@ trap cleanup EXIT
 
 desktop() {  # runs the headless shell once; everything it does is over when this returns
   for name in "buddy@buddy.local:$REPO/shell-extension/buddy@buddy.local" "buddydriver@test:$D/driver"; do
-    mkdir -p "$R/data/gnome-shell/extensions/${name%%:*}"; cp "${name#*:}"/* "$R/data/gnome-shell/extensions/${name%%:*}/"
+    mkdir -p "$R/data/gnome-shell/extensions/${name%%:*}"
+    cp -r "${name#*:}"/. "$R/data/gnome-shell/extensions/${name%%:*}/"
+    if [ -d "$R/data/gnome-shell/extensions/${name%%:*}/schemas" ] && command -v glib-compile-schemas >/dev/null 2>&1; then
+        glib-compile-schemas "$R/data/gnome-shell/extensions/${name%%:*}/schemas" 2>/dev/null || true
+    fi
   done
   mkdir -p "$R"/{home,config,cache}
   env -i HOME="$R/home" PATH=/usr/bin:/usr/local/bin USER="$USER" LANG=en_US.UTF-8 \

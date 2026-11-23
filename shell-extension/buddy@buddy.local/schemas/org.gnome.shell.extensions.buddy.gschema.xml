@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.buddy" path="/org/gnome/shell/extensions/buddy/">
+    <key name="capture-step" type="as">
+      <default><![CDATA[['<Super><Shift>b']]]></default>
+      <summary>Capture the focused control</summary>
+      <description>
+        While a guided workflow capture is active, save the focused button, menu item or
+        other accessible control as a step. Set an empty list to disable the shortcut.
+      </description>
+    </key>
+  </schema>
+</schemalist>

@@ -78,6 +78,12 @@ buddy simulate 90 --user absent   # live 90 days offline and report how varied t
 
 On the dog: click to pet, drag to move, right-click for a menu.
 
+While a guided capture is active, `Super+Shift+B` saves the focused control. The
+shortcut comes from the GNOME Shell extension; change it with:
+
+    gsettings --schemadir ~/.local/share/gnome-shell/extensions/buddy@buddy.local/schemas \
+      set org.gnome.shell.extensions.buddy capture-step "['<Super><Shift>b']"
+
 `scripts/install.sh` also installs a pinned Ollama runtime under
 `~/.local/share/buddy/ollama` and starts it with `buddy-ollama.service` on
 `127.0.0.1:11435`. It never uses or changes a system Ollama on 11434; `--no-ai`
@@ -120,7 +126,7 @@ it that is restored automatically if the database is ever damaged.
 | `screen` | off | A one-line description of what is on screen, when asked to look | One frame through the desktop portal, described by a local model |
 | `camera` | off | Whether someone is there | Movement in a 64×48 greyscale picture; no frame is kept |
 | `microphone` | off | That there was a sound, and how loud | Loudness only; nothing is recorded |
-| `accessibility` | off | The focused control's app, frame, role and accessible name, only while capturing a workflow | AT-SPI on demand; no text, keys or coordinates |
+| `accessibility` | off | The focused control's app, frame, role and accessible name, only while capturing a workflow | AT-SPI on demand; `Super+Shift+B` captures; no text, keys or coordinates |
 
 A sense that is off is not consulted at all: the extension is told to send
 nothing, the camera and microphone helpers are not running, and the accessibility

@@ -381,7 +381,12 @@ install_godot
 if command -v gnome-extensions >/dev/null 2>&1; then
     rm -rf "$extensions/$extension"
     mkdir -p "$extensions/$extension"
-    cp "$repo/shell-extension/$extension"/* "$extensions/$extension/"
+    cp -r "$repo/shell-extension/$extension"/. "$extensions/$extension/"
+    if command -v glib-compile-schemas >/dev/null 2>&1; then
+        glib-compile-schemas "$extensions/$extension/schemas" 2>/dev/null || warn "the extension schema could not be compiled; the capture shortcut is unavailable"
+    else
+        warn "glib-compile-schemas is missing; the capture shortcut is unavailable"
+    fi
     if ! gnome-extensions enable "$extension" 2>/dev/null; then
         current=$(gsettings get org.gnome.shell enabled-extensions)
         case "$current" in

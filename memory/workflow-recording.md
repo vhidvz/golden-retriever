@@ -22,8 +22,8 @@ implemented and committed in `2853733`:
 - The skill count is now eight; `replay_workflow` is `Risk::Changes` and asks first.
 - The first inside-application slice is implemented: with the `accessibility` sense on,
   `buddy workflow capture NAME`, `buddy workflow capture-step` and `buddy workflow stop`
-  capture focused accessible controls; replay invokes the accessible action and verifies
-  a semantic event. It never sends keys, coordinates or clipboard data; text entry,
+  capture focused accessible controls (or press `Super+Shift+B` while capturing); replay
+  invokes the accessible action and verifies a semantic event. It never sends keys, coordinates or clipboard data; text entry,
   password fields, terminals and apps without an accessibility tree are refused, and
   mixed app/inside workflows are rejected for now.
 

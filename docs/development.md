@@ -109,8 +109,10 @@ Create the directory when needed; it is not part of the repository.
   writable runtime directory. `BUDDY_TRACE_SENSES=1` makes the daemon log what it hears.
 - **Workflows:** `buddy workflow record NAME`, `stop`, `replay`, `workflows` for
   application-level routines. Inside applications, turn on the `accessibility` sense,
-  run `buddy workflow capture NAME`, focus a control, run `buddy workflow capture-step`
-  for each action, then `buddy workflow stop` and `buddy workflow replay NAME`. Replay
+  run `buddy workflow capture NAME`, focus a control, press `Super+Shift+B` (or run
+  `buddy workflow capture-step`) for each action, then `buddy workflow stop` and
+  `buddy workflow replay NAME`. The shortcut is registered by the GNOME extension from
+  its compiled schema; `scripts/install.sh` compiles it. Replay
   locates the control by app/frame/role/name, invokes its accessible action, and waits
   for a semantic event; it sends no keys, coordinates or clipboard data. Text entry,
   password fields, terminals, shells and apps without an accessibility tree are refused;
