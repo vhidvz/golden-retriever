@@ -14,3 +14,4 @@
 - [Name recognition](name-recognition.md) — configured name is user data; typed/voice name recognition, first-call greeting, later recall, persisted name_calls
 - [Camera one-shot vision](camera-look.md) — buddy look --camera sends one explicit webcam frame to local vision, deletes it; continuous camera sense remains presence-only
 - [Release direction (Phase 9, requirements only)](release-direction.md) — GitHub Actions artifacts for DEB/RPM/Arch/AppImage/Windows after a port; opt-in Buddy/tool update checks; not approved
+- [Context direction (Phase 10, requirements only)](context-direction.md) — richer desktop context/family-dog warmth; semantic observation, not raw keylogging; not approved

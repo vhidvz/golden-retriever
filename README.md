@@ -479,3 +479,9 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
    packages, plus a Windows installer after a daemon port. The same phase covers
    checksums/signing, `buddy version` and opt-in update checks for Buddy, Godot, Ollama
    and models. See `docs/release-direction.md`.
+10. Context and companionship — requirements recorded 2026-11-23, not yet approved.
+   Richer context for better help and a warmer family-dog presence: pointer movement and
+   clicks, semantic text changes in accessible controls (not raw global keystrokes),
+   optional bounded screen glances, and routines-aware greetings/company. Off by default,
+   local-only, privacy-gated and explicitly not a keylogger. See
+   `docs/context-direction.md`.

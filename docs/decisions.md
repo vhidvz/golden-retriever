@@ -257,3 +257,19 @@ implementation. The evidence, options and recommendation are in
   verified; package-managed and user-local installs must not overwrite each other.
 - **No implementation without the normal gate.** Spike results, a written plan and explicit
   approval are still required before any workflow, packaging or updater code lands.
+
+
+## Context and companionship (requirements, 2026-11-23)
+
+- **Phase 10 is recorded, not approved.** The owner wants Buddy to observe more of the
+  environment so he can be a better helper and feel more like a family dog. The safe
+  requirements and limits are in `docs/context-direction.md`.
+- **No raw global keylogger.** The proposed keyboard layer is opt-in semantic text-change
+  observation through AT-SPI in the focused accessible control, with password fields,
+  terminals, shells, login/lock/consent surfaces and applications without a usable tree
+  refused. Raw keycodes, clipboard capture and hidden continuous screenshots are not
+  proposed. More context must remain local, privacy-gated and bounded.
+- **Warmth is a behavior goal, not surveillance.** Routines-aware greetings, quiet
+  company, looking up and well-timed offers matter more than logging. The existing dog
+  behaviour remains the interface. A spike, written plan and explicit approval are still
+  required before any implementation.
