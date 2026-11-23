@@ -12,3 +12,4 @@ __pycache__/
 
 # Superpowers scratch workspaces (plans are process, not project artifacts)
 .superpowers/
+dist/release/

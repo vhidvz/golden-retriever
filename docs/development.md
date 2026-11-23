@@ -94,7 +94,7 @@ Create the directory when needed; it is not part of the repository.
 
 ## Testing and runtime traps
 
-- `cargo test` currently runs 105 tests in under 30 seconds. Unit tests sit beside their
+- `cargo test` currently runs 107 tests in under 30 seconds. Unit tests sit beside their
   modules; the daemon lifecycle test is `crates/buddy/tests/lifecycle.rs`.
 - **Wall-clock time:** tests must not depend on the hour. The lifecycle sandbox sets
   `BUDDY_HOUR=12` because a sleeping dog answers differently; a test that passes at noon
@@ -181,3 +181,11 @@ Create the directory when needed; it is not part of the repository.
   only to the local vision model. `BUDDY_CAMERA_PIPELINE` substitutes a GStreamer test
   pipeline (`{out}` is the output path) for hardware-free tests. The continuous camera
   helper remains `camera_watch.py` and presence-only.
+
+- **Release artifacts:** `scripts/package.sh FORMAT` builds tar/deb/rpm/arch/AppImage
+  from the release binary, the renderer project, perception helpers, UI, systemd user
+  unit and desktop/icon files. `.github/workflows/release.yml` runs the tests and package
+  jobs on a `v*` tag or manually, then uploads artifacts to the GitHub Release. Windows
+  is not built yet because the daemon is Unix-specific. `buddy version`,
+  `buddy update check` and `buddy update tools` are network-only-on-request checks; no
+  updater or installer runs automatically.

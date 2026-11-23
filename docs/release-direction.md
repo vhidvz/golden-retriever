@@ -1,9 +1,9 @@
 # Release engineering and updates
 
-**Status:** requirements record, 2026-11-23. This is **not an approved decision** and
-no release automation has been implemented. The owner asked for this to be added as a
-roadmap phase; the shape below is the minimum design that fits the project's rules and
-must still pass a spike, a written plan and explicit approval.
+**Status:** Linux foundation implemented 2026-11-23; Windows, signing and bundled-runtime
+policy remain open. The GitHub Actions workflow has not yet run in Actions, so the
+release pipeline is not yet proven end to end. This is not a claim that Phase 9 is fully
+complete.
 
 ## Goal
 
@@ -76,3 +76,22 @@ It changes distribution, permissions, installers, secrets and the meaning of a r
 it does not change Buddy's brain. It must not be smuggled into a normal feature branch.
 The project rule is still: spike results, written plan, explicit approval, then
 implementation. This record is the durable input to that plan.
+
+
+## Current implementation (2026-11-23)
+
+- `scripts/package.sh tar|deb|rpm|arch|appimage` stages the release binary, renderer
+  project, perception helpers, control panel, systemd user unit, desktop entry, icon and
+  docs, then produces the requested artifact. The portable tar build was run locally.
+- `.github/workflows/release.yml` runs the test suite and the five Linux packaging jobs
+  on a `v*` tag or manual dispatch, uploads artifacts, and publishes them to the GitHub
+  Release when the trigger is a tag.
+- `buddy version`, `buddy update check` (GitHub latest release) and `buddy update tools`
+  (managed Godot/Ollama vs GitHub releases) exist. They only contact the network when
+  invoked and never install or update anything.
+- Still blocked/open: Windows (daemon port required), signing, checksum manifest/SBOM,
+  AppImage Godot/Ollama bundling policy, and an actual Actions run. The workflow uses
+  versioned actions; pin them to commit SHAs before treating the supply chain as hardened.
+- The existing installer remains the supported way to install Godot/Ollama and the
+  systemd user service on Linux; packages include the daemon/UI but not those managed
+  runtimes.

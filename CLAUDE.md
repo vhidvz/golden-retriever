@@ -33,7 +33,7 @@ The invariants that matter most:
 
 ```sh
 cargo build --release
-cargo test                                    # 105 tests, under 30 s on the dev machine
+cargo test                                    # 107 tests, under 30 s on the dev machine
 cargo test -p buddy-core <test_name>          # one unit test
 cargo test -p buddy --test lifecycle          # daemon persistence/lifecycle integration test
 cargo fmt --check                             # rustfmt.toml: max_width 150 (currently reports pre-existing diffs)
@@ -44,6 +44,8 @@ scripts/install.sh                            # install for this user and start 
 scripts/install.sh --remove                   # stop and remove (keeps ~/.local/share/buddy)
 buddy-ui                                      # optional GTK4/libadwaita control panel
 python3 -m py_compile ui/buddy_ui.py          # check the panel
+buddy version | update check | update tools   # versions; network only on request
+scripts/package.sh tar|deb|rpm|arch|appimage  # release artifacts
 buddy name "پشمک"                              # choose the name he answers to
 buddy call                                    # call him by that name
 ```

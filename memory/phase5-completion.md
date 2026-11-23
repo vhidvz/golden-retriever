@@ -21,7 +21,7 @@ Completed 2026-11-23. Phase 5's remaining workflow gaps are implemented:
   it never blind-clicks, sends keys or uses coordinates. `buddy workflow abort` releases
   a stuck replay. Manual steps do not require the accessibility sense; accessible and
   text steps do.
-- **Evidence:** 105 Rust tests; isolated daemon runs exercised text+mixed replay and two
+- **Evidence:** 107 Rust tests; isolated daemon runs exercised text+mixed replay and two
   consecutive manual steps; the GTK panel smoke path passes. Durable decisions are in
   `docs/decisions.md` "Phase 5 completion and names"; commands and limits are in
   `README.md` and `docs/development.md`.

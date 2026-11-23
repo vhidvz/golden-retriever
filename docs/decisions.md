@@ -220,7 +220,7 @@ implementation. The evidence, options and recommendation are in
   call gets a bright greeting, later calls are a recall to the middle of the screen;
   `Life.name_calls` preserves familiarity across restarts and is shown in `status` and
   the panel. No user name is hard-coded into `lexicon.json`.
-- **Verification.** The suite is 105 Rust tests; the GUI smoke path and an isolated
+- **Verification.** The suite is 107 Rust tests; the GUI smoke path and an isolated
   daemon test exercised text replay, mixed text+manual replay, two consecutive manual
   steps, and the name/call commands.
 
@@ -255,8 +255,12 @@ implementation. The evidence, options and recommendation are in
 - **Local-first still applies.** Update checks run only on request; there is no
   background poll, silent self-update or model auto-update. Checksums and signatures are
   verified; package-managed and user-local installs must not overwrite each other.
-- **No implementation without the normal gate.** Spike results, a written plan and explicit
-  approval are still required before any workflow, packaging or updater code lands.
+- **Linux foundation implemented 2026-11-23.** `scripts/package.sh` builds tar, DEB, RPM,
+  Arch and AppImage; `.github/workflows/release.yml` runs tests and packages on a tag or
+  manually; `buddy version`, `buddy update check` and `buddy update tools` exist.
+  Windows remains blocked by the daemon port, signing and bundled-runtime policy are open,
+  and the workflow has not yet been run in GitHub Actions. This does not approve silent
+  self-update.
 
 
 ## Context and companionship (requirements, 2026-11-23)

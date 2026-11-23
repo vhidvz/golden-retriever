@@ -57,6 +57,9 @@ skills and workflows, read the journal and change his settings. Closing the wind
 not stop him. If the daemon is not running, the panel says so and offers to start him or retry.
 
 ```sh
+buddy version           # installed Buddy version
+buddy update check      # ask GitHub for the latest release; nothing is installed
+buddy update tools      # compare managed Godot/Ollama versions with their releases
 buddy status            # how he is, what is running, what is being observed
 buddy hide [MINUTES]    # stops the renderer entirely; `buddy show` brings him back
 buddy why               # what he is doing, why, how he feels, what else he considered
@@ -474,11 +477,11 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
    and motion quality, with real dog mocap as an optional separate download.
    Splat-based neural avatars need 24-48 GB of VRAM and non-commercial models, so they
    are not a path on this machine. See `docs/realism-direction.md`.
-9. Release engineering and updates — requirements recorded 2026-11-23, not yet
-   approved. GitHub Actions on release tags should build AppImage, DEB, RPM and Arch
-   packages, plus a Windows installer after a daemon port. The same phase covers
-   checksums/signing, `buddy version` and opt-in update checks for Buddy, Godot, Ollama
-   and models. See `docs/release-direction.md`.
+9. Release engineering and updates — Linux foundation implemented 2026-11-23. GitHub
+   Actions on release tags now builds tar, DEB, RPM, Arch and AppImage artifacts, and
+   `buddy version`, `buddy update check` and `buddy update tools` report and compare
+   versions without installing anything. A Windows installer still needs a daemon port;
+   signing and AppImage/Godot bundling remain open. See `docs/release-direction.md`.
 10. Context and companionship — requirements recorded 2026-11-23, not yet approved.
    Richer context for better help and a warmer family-dog presence: pointer movement and
    clicks, semantic text changes in accessible controls (not raw global keystrokes),

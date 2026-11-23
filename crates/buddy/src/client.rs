@@ -42,6 +42,21 @@ pub fn run(name: &str, args: Value) -> Result<()> {
     Ok(())
 }
 
+pub fn version() -> Result<()> {
+    println!("buddy {}", crate::update::current_version());
+    Ok(())
+}
+
+pub fn update_check() -> Result<()> {
+    println!("{}", crate::update::check_buddy()?);
+    Ok(())
+}
+
+pub fn update_tools() -> Result<()> {
+    println!("{}", crate::update::check_tools()?);
+    Ok(())
+}
+
 pub fn status(as_json: bool) -> Result<()> {
     let s = request("status", Value::Null)?;
     if as_json {

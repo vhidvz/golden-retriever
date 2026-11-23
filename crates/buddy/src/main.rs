@@ -11,6 +11,7 @@ mod daemon;
 mod renderer;
 mod skills;
 mod system;
+mod update;
 
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -20,6 +21,9 @@ buddy — a dog who lives on your desktop
 
 Usage:
   buddy daemon [--no-renderer]   run Buddy (normally started by the systemd user service)
+  buddy version                  show the installed Buddy version
+  buddy update check             ask GitHub for the latest release (no install)
+  buddy update tools             check the managed Godot/Ollama versions
   buddy status [--json]          how he is, what is running, what is being observed
   buddy hide [MINUTES]           hide him, for a while or until `buddy show`
   buddy show                     bring him back
@@ -86,6 +90,9 @@ fn main() -> Result<()> {
     }
     let command: (&str, Value) = match (arg(0), arg(1)) {
         (Some("daemon"), flag) => return daemon::run(flag == Some("--no-renderer")),
+        (Some("version"), _) | (Some("--version"), _) => return client::version(),
+        (Some("update"), Some("check")) => return client::update_check(),
+        (Some("update"), Some("tools")) => return client::update_tools(),
         (Some("status"), flag) => return client::status(flag == Some("--json")),
         (Some("hide"), minutes) => ("hide", json!({ "minutes": minutes.and_then(|m| m.parse::<f64>().ok()) })),
         (Some("show"), _) => ("show", Value::Null),

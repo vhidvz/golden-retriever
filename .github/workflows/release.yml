@@ -1,0 +1,107 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y desktop-file-utils
+      - run: cargo test --all
+      - run: python3 -m py_compile ui/buddy_ui.py perception/*.py
+      - run: sh -n scripts/install.sh scripts/package.sh
+      - run: desktop-file-validate dist/buddy-ui.desktop
+
+  tarball:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: scripts/package.sh tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: buddy-linux-tar
+          path: dist/release/*
+
+  deb:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y dpkg-dev
+      - run: scripts/package.sh deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: buddy-deb
+          path: dist/release/*
+
+  rpm:
+    needs: test
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: dnf install -y cargo rust rpm-build git tar gzip findutils
+      - run: scripts/package.sh rpm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: buddy-rpm
+          path: dist/release/*
+
+  arch:
+    needs: test
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pacman -Syu --noconfirm --needed base-devel rust cargo git tar gzip
+      - run: |
+          useradd -m builder
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+      - run: chown -R builder:builder .
+      - run: runuser -u builder -- scripts/package.sh arch
+      - uses: actions/upload-artifact@v4
+        with:
+          name: buddy-arch
+          path: dist/release/*
+
+  appimage:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: |
+          sudo apt-get update && sudo apt-get install -y librsvg2-bin
+          curl -L -o /tmp/appimagetool https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x /tmp/appimagetool
+          sudo mv /tmp/appimagetool /usr/local/bin/appimagetool
+      - run: scripts/package.sh appimage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: buddy-appimage
+          path: dist/release/*
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [tarball, deb, rpm, arch, appimage]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
