@@ -60,7 +60,7 @@ On the computer (try: buddy say 'find my tax report'):
   buddy why                      what he is doing, why, and how he feels
   buddy privacy on|off           suspend / resume every perception source
   buddy senses                   what he may perceive, and what is actually reporting
-  buddy look [--file IMAGE]      have him look at the screen once (or at an image) and say what he makes of it
+  buddy look [--file IMAGE|--camera]  look once at the screen, an image, or one webcam frame
   buddy sense SOURCE on|off      system | desktop | window_titles | screen | camera | microphone
   buddy set KEY VALUE            name | size_px (adult height) | adult_days (growth timeline) |
                                  stay_in_fullscreen (on/off) | vision_model | language_model | audio_model |
@@ -92,7 +92,9 @@ fn main() -> Result<()> {
         (Some("simulate"), _) => return client::simulate(&args[1..]),
         (Some("why"), _) => return client::why(),
         (Some("senses"), _) => return client::senses(),
-        (Some("look"), flag) => return client::look(if flag == Some("--file") { arg(2) } else { None }),
+        (Some("look"), Some("--camera")) => return client::look(None, true),
+        (Some("look"), Some("--file")) => return client::look(arg(2), false),
+        (Some("look"), _) => return client::look(None, false),
         (Some("sense"), Some(source)) if matches!(arg(2), Some("on" | "off")) => ("sense", json!({ "source": source, "on": arg(2) == Some("on") })),
         (Some(simple @ ("feed" | "water" | "praise" | "treat")), _) => (simple, Value::Null),
         (Some("say"), Some(_)) => return client::say(&args[1..].join(" ")),

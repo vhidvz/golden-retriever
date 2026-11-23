@@ -12,3 +12,5 @@
 - [Body realism direction (researched, not decided)](realism-direction.md) — offline sprite bake upgrade first; 3DGS/neural not viable on 2-4 GB VRAM; MANN motion is optional and separate; target size open
 - [Phase 5 completion](phase5-completion.md) — text entry, mixed workflows, assisted no-tree steps and abort/continue are implemented; 105 Rust tests
 - [Name recognition](name-recognition.md) — configured name is user data; typed/voice name recognition, first-call greeting, later recall, persisted name_calls
+- [Camera one-shot vision](camera-look.md) — buddy look --camera sends one explicit webcam frame to local vision, deletes it; continuous camera sense remains presence-only
+- [Release direction (Phase 9, requirements only)](release-direction.md) — GitHub Actions artifacts for DEB/RPM/Arch/AppImage/Windows after a port; opt-in Buddy/tool update checks; not approved

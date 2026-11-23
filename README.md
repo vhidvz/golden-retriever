@@ -94,6 +94,7 @@ buddy voice on          # microphone + local audio model; buddy voice off to sto
 buddy sense screen on   # switch one sense: system, desktop, window_titles, screen, camera, microphone, accessibility
 buddy look              # have him look at the screen once and say what he makes of it
 buddy look --file IMAGE # have him look at one image with the vision model
+buddy look --camera     # one webcam frame to the vision model; deleted after reading
 buddy set adult_days 30 # re-time growth without resetting him
 buddy journal | export  # what happened; everything he knows, as JSON
 buddy simulate 90 --user absent   # live 90 days offline and report how varied they were
@@ -223,9 +224,12 @@ sent or shown to a model. `buddy voice on` opens the microphone and checks that
 the selected audio model (`gemma4:e4b` here) supports audio before listening. The
 microphone writes each short speech stretch to a private temporary WAV, the
 daemon sends it to the local audio model, and the file is deleted immediately.
-To have him look at a picture or the screen with the vision model, use `buddy look
---file IMAGE` or `buddy look`; these paths use `gemma4:e4b` vision, not the camera
-sense. The camera-to-vision still-image path is not implemented yet.
+
+A one-shot camera look is explicit: with the camera sense on and privacy off,
+`buddy look --camera` pauses the presence helper, captures **one** frame, sends it
+to the local vision model, and deletes the frame as soon as it has been read.
+The normal camera sense remains presence-only; there is no continuous camera-vision
+stream. `buddy look --file IMAGE` and `buddy look` (screen) use the same vision model.
 
 ## Doing things on the computer
 
@@ -425,9 +429,11 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
   unevaluated models; only `gemma4:e4b` has measurements from this project.
 - Looking at the screen is on request only (`buddy look`), sees the whole monitor
   at reduced size, and has no OCR, so small text is beyond it.
-- The camera sense detects presence only (64×48 greyscale motion) and never sends
-  frames to the vision model. The microphone transcribes short speech through the
-  local audio model, and has been tested with a recording, not a real microphone.
+- The camera sense itself detects presence only (64×48 greyscale motion) and never sends
+  frames to the vision model. `buddy look --camera` is an explicit one-shot vision
+  look, not continuous camera vision; the frame is deleted after it is read. The
+  microphone transcribes short speech through the local audio model, and has been
+  tested with a recording, not a real microphone.
 - Habits are noticed at the level of application order, not of what is done in them.
 - Speech has been tested with a recording only; there is no wake word, so with the
   microphone on every stretch of speech goes through the local model.
@@ -468,3 +474,8 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
    and motion quality, with real dog mocap as an optional separate download.
    Splat-based neural avatars need 24-48 GB of VRAM and non-commercial models, so they
    are not a path on this machine. See `docs/realism-direction.md`.
+9. Release engineering and updates — requirements recorded 2026-11-23, not yet
+   approved. GitHub Actions on release tags should build AppImage, DEB, RPM and Arch
+   packages, plus a Windows installer after a daemon port. The same phase covers
+   checksums/signing, `buddy version` and opt-in update checks for Buddy, Godot, Ollama
+   and models. See `docs/release-direction.md`.

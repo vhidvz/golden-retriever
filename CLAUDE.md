@@ -116,6 +116,8 @@ spikes/claude-code/run.sh         # historical: the Claude Code boundary was rem
   `BUDDY_HOUR=12`; otherwise they can fail at night. The lifecycle sandbox already does.
 - `BUDDY_GODOT`, `BUDDY_RENDERER_DIR`, `BUDDY_BLENDER`, `BUDDY_PERCEPTION_DIR` — tool
   locations.
+- `BUDDY_CAMERA_PIPELINE` — a full GStreamer pipeline with `{out}`, for hardware-free
+  camera-look tests. `buddy look --camera` pauses the presence helper and deletes the frame.
 
 ## Architecture
 
@@ -210,7 +212,9 @@ lives in `memory/`; start at `memory/MEMORY.md`.
 - Workflow recording and replay: `crates/buddy-core/src/workflow.rs`, `daemon.rs`,
   `buddy workflow` commands; inside-app capture uses `perception/a11y_focus.py`,
   `a11y_act.py` and `a11y_text.py` behind the `accessibility` sense. Manual steps cover
-  apps without a tree without coordinates or synthetic keys. Evidence:
+  apps without a tree without coordinates or synthetic keys. One-shot camera vision uses
+  `perception/camera_still.py`; the continuous camera sense remains presence-only.
+  Evidence:
   `spikes/workflow-a11y/`.
 - Optional provider: `crates/buddy/src/ai.rs` (Ollama), managed by `ai_runtime.rs` on
   `127.0.0.1:11435` with its own model store; first-run choice in `ai_setup.rs`.

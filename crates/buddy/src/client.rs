@@ -148,12 +148,17 @@ pub fn senses() -> Result<()> {
     Ok(())
 }
 
-pub fn look(file: Option<&str>) -> Result<()> {
-    let args = match file {
-        Some(path) => serde_json::json!({ "file": std::fs::canonicalize(path).with_context(|| format!("no such image: {path}"))? }),
-        None => {
-            eprintln!("Looking… (the first time, GNOME asks which screen to share)");
-            Value::Null
+pub fn look(file: Option<&str>, camera: bool) -> Result<()> {
+    let args = if camera {
+        eprintln!("Looking through the camera once; the frame is deleted after the local model reads it…");
+        serde_json::json!({ "camera": true })
+    } else {
+        match file {
+            Some(path) => serde_json::json!({ "file": std::fs::canonicalize(path).with_context(|| format!("no such image: {path}"))? }),
+            None => {
+                eprintln!("Looking… (the first time, GNOME asks which screen to share)");
+                Value::Null
+            }
         }
     };
     let seen = request_within("look", args, Duration::from_secs(240))?;

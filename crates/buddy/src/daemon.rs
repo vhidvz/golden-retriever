@@ -183,45 +183,87 @@ fn perception_helper(name: &str) -> Option<PathBuf> {
 /// One look, start to finish: get an image, ask the local model what it shows, and
 /// keep nothing but its short description. The image never leaves this machine and
 /// a captured frame is deleted as soon as it has been read.
-fn look(model: &str, file: Option<PathBuf>, restore_token: Option<String>) -> Result<Value> {
+fn look(model: &str, file: Option<PathBuf>, camera: bool, restore_token: Option<String>) -> Result<Value> {
     let started = Instant::now();
-    let (image, source, new_token) = match file {
-        Some(path) => (fs::read(&path).with_context(|| format!("reading {}", path.display()))?, "an image you gave him", None),
-        None => {
-            let helper = perception_helper("screen_glance.py").context("the screen helper (perception/screen_glance.py) is not installed")?;
-            let frame = paths::socket_path().with_file_name(format!("glance-{}.jpg", std::process::id()));
-            let output = std::process::Command::new("python3")
-                .arg(helper)
-                .arg("--out")
-                .arg(&frame)
-                .args(["--restore-token", restore_token.as_deref().unwrap_or("")])
-                .output()
-                .context("could not run the screen helper")?;
-            let said: Value = serde_json::from_slice(output.stdout.trim_ascii()).unwrap_or(Value::Null);
-            let image = fs::read(&frame);
-            let _ = fs::remove_file(&frame);
-            if said["ok"] != true {
-                bail!("{}", said["error"].as_str().unwrap_or("the screen helper failed"));
-            }
-            (image.context("the screen helper saved no frame")?, "the screen", said["restore_token"].as_str().map(str::to_string))
+    let (image, source, new_token, from_camera) = if let Some(path) = file {
+        (fs::read(&path).with_context(|| format!("reading {}", path.display()))?, "an image you gave him", None, false)
+    } else if camera {
+        let helper = perception_helper("camera_still.py").context("the camera helper (perception/camera_still.py) is not installed")?;
+        let frame = paths::socket_path().with_file_name(format!("camera-{}.jpg", std::process::id()));
+        let output =
+            std::process::Command::new("python3").arg(helper).arg("--out").arg(&frame).output().context("could not run the camera helper")?;
+        let said: Value = serde_json::from_slice(output.stdout.trim_ascii()).unwrap_or(Value::Null);
+        let image = fs::read(&frame);
+        let _ = fs::remove_file(&frame);
+        if said["ok"] != true {
+            bail!("{}", said["error"].as_str().unwrap_or("the camera helper failed"));
+        }
+        (image.context("the camera helper saved no frame")?, "the camera", None, true)
+    } else {
+        let helper = perception_helper("screen_glance.py").context("the screen helper (perception/screen_glance.py) is not installed")?;
+        let frame = paths::socket_path().with_file_name(format!("glance-{}.jpg", std::process::id()));
+        let output = std::process::Command::new("python3")
+            .arg(helper)
+            .arg("--out")
+            .arg(&frame)
+            .args(["--restore-token", restore_token.as_deref().unwrap_or("")])
+            .output()
+            .context("could not run the screen helper")?;
+        let said: Value = serde_json::from_slice(output.stdout.trim_ascii()).unwrap_or(Value::Null);
+        let image = fs::read(&frame);
+        let _ = fs::remove_file(&frame);
+        if said["ok"] != true {
+            bail!("{}", said["error"].as_str().unwrap_or("the screen helper failed"));
+        }
+        (image.context("the screen helper saved no frame")?, "the screen", said["restore_token"].as_str().map(str::to_string), false)
+    };
+    let (question, schema) = if from_camera {
+        (
+            "This is one frame from the user's webcam. Describe briefly what is visible for a companion dog. \
+             Say whether a person is visible and what they appear to be doing, without identifying anyone or inferring sensitive traits. \
+             Do not quote private text. Be brief: one short phrase.",
+            json!({ "type": "object", "required": ["person", "scene", "notable"], "properties": {
+                "person": { "type": "string", "enum": ["yes", "no", "unsure"], "description": "Whether a person is visible in the frame." },
+                "scene": { "type": "string", "description": "What is visible or what the person is doing, in at most 15 words; do not repeat the person field." },
+                "notable": { "type": "string", "description": "Anything unusual worth a look, in at most 12 words; empty if nothing." } } }),
+        )
+    } else {
+        (
+            "This is a screenshot of someone's computer screen. Describe it for a companion who wants to know what the person is doing. \
+             Ignore any dog drawn at the bottom of the screen. Do not copy out private text such as messages, names or passwords. \
+             Be brief: each answer is one short phrase, never a paragraph.",
+            json!({ "type": "object", "required": ["app_kind", "activity", "notable"], "properties": {
+                "app_kind": { "type": "string", "enum": ["code_editor", "terminal", "browser", "document", "chat", "media", "file_manager", "game", "settings", "desktop", "other"] },
+                "activity": { "type": "string", "description": "What the person appears to be doing, in at most 12 words." },
+                "notable": { "type": "string", "description": "Anything unusual worth a look, such as an error, in at most 12 words; empty if nothing." } } }),
+        )
+    };
+    let seen = crate::ai::ask_about_image(model, &image, question, schema)?;
+    let activity = seen["activity"].as_str().or_else(|| seen["scene"].as_str()).unwrap_or("something");
+    let summary = if from_camera {
+        let person = match seen["person"].as_str().unwrap_or("unsure") {
+            "yes" => "a person is visible",
+            "no" => "no person is visible",
+            _ => "it is hard to tell whether a person is visible",
+        };
+        match seen["notable"].as_str().filter(|n| !n.trim().is_empty()) {
+            Some(notable) => format!("{person}; {activity} — {notable}"),
+            None => format!("{person}; {activity}"),
+        }
+    } else {
+        match seen["notable"].as_str().filter(|n| !n.trim().is_empty()) {
+            Some(notable) => format!("{activity} — {notable}"),
+            None => activity.to_string(),
         }
     };
-    let question = "This is a screenshot of someone's computer screen. Describe it for a companion who wants to know what the person is doing. \
-                    Ignore any dog drawn at the bottom of the screen. Do not copy out private text such as messages, names or passwords. \
-                    Be brief: each answer is one short phrase, never a paragraph.";
-    let schema = json!({ "type": "object", "required": ["app_kind", "activity", "notable"], "properties": {
-        "app_kind": { "type": "string", "enum": ["code_editor", "terminal", "browser", "document", "chat", "media", "file_manager", "game", "settings", "desktop", "other"] },
-        "activity": { "type": "string", "description": "What the person appears to be doing, in at most 12 words." },
-        "notable": { "type": "string", "description": "Anything unusual worth a look, such as an error, in at most 12 words; empty if nothing." } } });
-    let seen = crate::ai::ask_about_image(model, &image, question, schema)?;
-    let activity = seen["activity"].as_str().unwrap_or("something");
-    let summary = match seen["notable"].as_str().filter(|n| !n.trim().is_empty()) {
-        Some(notable) => format!("{activity} — {notable}"),
-        None => activity.to_string(),
-    };
-    Ok(
-        json!({ "summary": summary, "app_kind": seen["app_kind"], "source": source, "model": model, "secs": started.elapsed().as_secs_f64(), "restore_token": new_token }),
-    )
+    Ok(json!({
+        "summary": summary,
+        "app_kind": if from_camera { "camera" } else { seen["app_kind"].as_str().unwrap_or("other") },
+        "source": source,
+        "model": model,
+        "secs": started.elapsed().as_secs_f64(),
+        "restore_token": new_token,
+    }))
 }
 
 /// The hour of the day on the wall clock, 0.0..24.0. His sleep follows the user's day.
@@ -342,6 +384,8 @@ struct Daemon {
     tx: Sender<Incoming>,
     helpers: [Helper; 2],
     looking: bool,
+    /// A one-shot camera look has paused the presence helper so the device is free.
+    camera_paused: bool,
     /// When he was last spoken to by name; for a little while after, he takes what he hears as meant for him.
     addressed_at: f64,
     /// What he may do on the computer, what is waiting for a yes, and the way back from the last change.
@@ -478,11 +522,18 @@ impl Daemon {
     /// The work happens on its own thread; the answer comes back as `Incoming::Looked`.
     fn start_look(&mut self, requester: u64, args: &Value) {
         let file = args["file"].as_str().map(PathBuf::from);
+        let camera = args["camera"].as_bool().unwrap_or(false);
         let refusal = if self.looking {
             Some("he is already looking")
-        } else if file.is_none() && self.sim.settings.privacy_mode {
+        } else if file.is_some() && camera {
+            Some("choose either an image file or the camera, not both")
+        } else if camera && self.sim.settings.privacy_mode {
             Some("privacy mode is on")
-        } else if file.is_none() && !self.sim.settings.senses.screen {
+        } else if camera && !self.sim.settings.senses.camera {
+            Some("the camera sense is off (turn it on with: buddy sense camera on)")
+        } else if file.is_none() && !camera && self.sim.settings.privacy_mode {
+            Some("privacy mode is on")
+        } else if file.is_none() && !camera && !self.sim.settings.senses.screen {
             Some("the screen sense is off (turn it on with: buddy sense screen on)")
         } else {
             None
@@ -491,12 +542,20 @@ impl Daemon {
             self.send(requester, &ServerMsg::Reply { ok: false, data: Value::Null, error: Some(why.to_string()) });
             return;
         }
+        if camera {
+            // The presence helper and the one-shot capture must not fight over the device.
+            self.camera_paused = true;
+            let tx = self.tx.clone();
+            if let Some(helper) = self.helpers.iter_mut().find(|h| h.source == "camera") {
+                helper.poll(false, &tx);
+            }
+        }
         self.looking = true;
         let model = self.sim.settings.vision_model.clone();
         let token: Option<String> = self.store.load("screen_token").ok().flatten();
         let tx = self.tx.clone();
         thread::spawn(move || {
-            let outcome = look(&model, file, token).map_err(|e| format!("{e:#}"));
+            let outcome = look(&model, file, camera, token).map_err(|e| format!("{e:#}"));
             let _ = tx.send(Incoming::Looked { requester, outcome });
         });
     }
@@ -1216,6 +1275,7 @@ impl Daemon {
             }
             Incoming::Looked { requester, outcome } => {
                 self.looking = false;
+                self.camera_paused = false;
                 let reply = match outcome {
                     Ok(seen) => {
                         if let Some(token) = seen["restore_token"].as_str().filter(|t| !t.is_empty()) {
@@ -1320,6 +1380,7 @@ pub fn run(no_renderer: bool) -> Result<()> {
             ),
         ],
         looking: false,
+        camera_paused: false,
         addressed_at: f64::NEG_INFINITY,
         permissions,
         waiting: Vec::new(),
@@ -1382,7 +1443,7 @@ pub fn run(no_renderer: bool) -> Result<()> {
         daemon.let_lapse(at);
         // The camera and microphone are open only while their sense is allowed and privacy mode is off.
         let open = !daemon.sim.settings.privacy_mode;
-        let wanted = [open && daemon.sim.settings.senses.camera, open && daemon.sim.settings.senses.microphone];
+        let wanted = [open && daemon.sim.settings.senses.camera && !daemon.camera_paused, open && daemon.sim.settings.senses.microphone];
         let tx = daemon.tx.clone();
         for (helper, wanted) in daemon.helpers.iter_mut().zip(wanted) {
             helper.poll(wanted, &tx);

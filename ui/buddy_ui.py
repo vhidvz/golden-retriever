@@ -1651,12 +1651,14 @@ class BuddyWindow(Adw.ApplicationWindow):
 
         look = self._card(
             "Look once",
-            "He looks at the screen or one image and keeps only a one-line impression in memory. The first screen look may ask GNOME to share it.",
+            "He can look at the screen, one image, or one webcam frame and keep only a one-line impression in memory. A camera look needs the camera sense on; the frame is deleted after the local vision model reads it.",
         )
         look_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.look_button = self._text_button("Look at the screen", self._look_screen, "small-button", icon="camera-photo-symbolic")
+        self.look_camera_button = self._text_button("Look through the camera", self._look_camera, "small-button", icon="camera-web-symbolic")
         self.look_file_button = self._text_button("Choose an image…", self._look_file, "small-button", icon="image-x-generic-symbolic")
         look_row.append(self.look_button)
+        look_row.append(self.look_camera_button)
         look_row.append(self.look_file_button)
         look.append(look_row)
         self.look_result = Gtk.Label(label="")
@@ -1759,6 +1761,33 @@ class BuddyWindow(Adw.ApplicationWindow):
             self._refresh_status_and_waiting()
 
         self._command("look", None, done=done, timeout=245)
+
+    def _look_camera(self):
+        settings = (self.status or {}).get("settings") or {}
+        senses = settings.get("senses") or {}
+        if settings.get("privacy_mode"):
+            self._toast("Turn privacy mode off first.")
+            return
+        if not senses.get("camera"):
+            self._toast("Turn the Camera sense on above first.")
+            return
+        self.look_camera_button.set_sensitive(False)
+        self.look_result.set_text("Looking through the camera once; the frame is deleted after it is read…")
+
+        def done(data, error):
+            self.look_camera_button.set_sensitive(True)
+            if error is not None:
+                self.look_result.set_text(f"Could not look: {error}")
+                return
+            if isinstance(data, dict):
+                self.look_result.set_text(
+                    f"{data.get('summary') or 'He looked.'}\n"
+                    f"Model: {data.get('model') or '?'} · {float(data.get('secs') or 0):.1f} s · only this summary is kept."
+                )
+            else:
+                self.look_result.set_text(str(data))
+
+        self._command("look", {"camera": True}, done=done, timeout=245)
 
     def _look_file(self):
         dialog = Gtk.FileDialog()

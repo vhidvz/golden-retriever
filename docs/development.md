@@ -174,3 +174,10 @@ Create the directory when needed; it is not part of the repository.
   photographs and skeletal studies, and what changed as a result.
 - `README.md` "Known gaps" — the current, maintained list of what is not done. Prefer it
   over older notes when they disagree.
+
+- **Camera one-shot:** `perception/camera_still.py` captures one frame for
+  `buddy look --camera`. It requires the camera sense and privacy off; the daemon pauses
+  the continuous presence helper while it runs, reads and deletes the JPEG, and sends it
+  only to the local vision model. `BUDDY_CAMERA_PIPELINE` substitutes a GStreamer test
+  pipeline (`{out}` is the output path) for hardware-free tests. The continuous camera
+  helper remains `camera_watch.py` and presence-only.

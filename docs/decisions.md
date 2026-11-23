@@ -223,3 +223,37 @@ implementation. The evidence, options and recommendation are in
 - **Verification.** The suite is 105 Rust tests; the GUI smoke path and an isolated
   daemon test exercised text replay, mixed text+manual replay, two consecutive manual
   steps, and the name/call commands.
+
+## Camera one-shot vision (2026-11-23)
+
+- **The camera sense stays presence-only.** `camera_watch.py` continues to read a
+  64×48 greyscale motion signal and never sends frames to a model. This keeps continuous
+  observation cheap and private.
+- **A one-shot camera look is explicit.** With the camera sense on and privacy mode off,
+  `buddy look --camera` (or **Look through the camera** in Senses) pauses the presence
+  helper, runs `perception/camera_still.py` for one frame, sends that frame to the
+  selected local vision model, and deletes it immediately after reading. The result is
+  a short summary in memory; no image is kept, uploaded or put in the journal.
+- **The model is local and capability-checked.** The path uses the same
+  `ask_about_image`/`gemma4:e4b` vision route as `buddy look --file`; cloud models are
+  refused. The camera prompt asks only whether a person is visible and what is happening,
+  and explicitly avoids identifying people or inferring sensitive traits.
+- **No continuous camera vision is promised.** If the camera sense is off, the command
+  refuses rather than bypassing the permission. The presence helper is restarted after
+  the look; it is never left competing for the device.
+- **Test seam:** `BUDDY_CAMERA_PIPELINE` can replace the GStreamer capture pipeline with
+  a synthetic source for tests. The real hardware path uses `v4l2src`; the synthetic path
+  is not used for a user's camera.
+
+
+## Release engineering and updates (requirements, 2026-11-23)
+
+- **Phase 9 is recorded, not approved.** The owner asked for a release phase covering
+  GitHub Actions artifacts (AppImage, DEB, RPM, Arch package, Windows after a daemon
+  port) and opt-in version/update checks for Buddy and its managed tools. The full
+  requirements, blockers and open decisions are in `docs/release-direction.md`.
+- **Local-first still applies.** Update checks run only on request; there is no
+  background poll, silent self-update or model auto-update. Checksums and signatures are
+  verified; package-managed and user-local installs must not overwrite each other.
+- **No implementation without the normal gate.** Spike results, a written plan and explicit
+  approval are still required before any workflow, packaging or updater code lands.
