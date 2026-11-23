@@ -155,3 +155,18 @@ The measurements behind the design, including the `gemma4:e4b` evaluation, are i
   icon (a golden retriever face in the project's forest-and-amber palette); the
   installer renders the hicolor sizes, installs `buddy.desktop`, and refreshes the
   icon cache. The window class is `buddy-ui` so the launcher groups correctly.
+
+## Automation direction (researched 2026-11-23; not decided)
+
+The owner asked for the research on virtual input versus shell/script automation to be
+kept as part of the completion roadmap, for later implementation. The evidence, the
+three options and the recommendation are in `docs/automation-direction.md`.
+
+- The recommendation is named helper scripts first (deterministic, parameterized,
+  verified, sandboxed), with `gemma4:e4b` only choosing the helper and its arguments.
+- Virtual mouse and keyboard would come later, only as replay of user-recorded
+  sequences through the RemoteDesktop/libei portal, with preconditions, per-step
+  verification, an immediate stop and audit. Never model-generated clicks or keys.
+- No option is approved. The existing preference for accessibility APIs and structured
+  tools over coordinate replay still stands (additional requirement 2), and any
+  implementation still needs a spike, a written plan and explicit approval.

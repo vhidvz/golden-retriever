@@ -417,3 +417,8 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
    verified replay are done, and focused accessible actions inside applications can
    be captured and replayed. Text entry and apps without an accessibility tree remain.
 6. Refinement: fur and model quality, the puppy shape, KDE.
+7. Automation beyond accessible actions — researched 2026-11-23, not yet approved.
+   The recommendation is named helper scripts first, with `gemma4:e4b` choosing the
+   helper and its arguments, and consent-gated synthetic input only later as a replay
+   fallback for applications without an accessibility tree. See
+   `docs/automation-direction.md`.

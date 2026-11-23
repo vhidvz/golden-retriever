@@ -8,3 +8,4 @@
 - [Tracked docs never cite untracked scratch; plans are not artifacts](tracked-docs-no-untracked-refs.md) — durable knowledge must live in git; extract plan knowledge, delete the plan copy
 - [Merge completed tasks into main](merge-completed-tasks-into-main.md) — commit finished requested work and fast-forward it to main; push only when asked
 - [Control panel (implemented)](control-panel.md) — native GTK4/libadwaita Buddy window, icon and desktop launcher; socket client covering status, training, senses, AI, skills, workflows, journal and settings
+- [Automation direction (researched, not decided)](automation-direction.md) — helpers first, synthetic input later as a consent-gated fallback; what `gemma4:e4b` can and cannot drive
