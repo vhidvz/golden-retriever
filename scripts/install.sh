@@ -386,7 +386,7 @@ install_ui() {
     mkdir -p "$share/ui"
     cp "$repo"/ui/buddy_ui.py "$repo"/ui/buddy.css "$repo"/ui/buddy.svg "$share/ui/"
     chmod 644 "$share"/ui/buddy_ui.py "$share"/ui/buddy.css "$share"/ui/buddy.svg
-    printf '#!/bin/sh\nexec python3 "%s/ui/buddy_ui.py" "$@"\n' "$share" > "$bin/buddy-ui"
+    printf '#!/bin/sh\nBUDDY_BIN="%s/buddy"\nexport BUDDY_BIN\nexec python3 "%s/ui/buddy_ui.py" "$@"\n' "$bin" "$share" > "$bin/buddy-ui"
     chmod 755 "$bin/buddy-ui"
 
     icons="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor"

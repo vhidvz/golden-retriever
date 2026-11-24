@@ -2939,6 +2939,17 @@ class BuddyApp(Adw.Application):
     def _action_about(self, action, parameter):
         self.show_about()
 
+    def _daemon_build(self):
+        binary = os.environ.get("BUDDY_BIN") or shutil.which("buddy") or str(Path.home() / ".local" / "bin" / "buddy")
+        if not Path(binary).exists():
+            return "Buddy daemon: not found on PATH."
+        try:
+            result = subprocess.run([binary, "version"], capture_output=True, text=True, timeout=3, check=False)
+        except (OSError, subprocess.SubprocessError) as error:
+            return f"Buddy daemon: version unavailable ({error})."
+        line = (result.stdout or "").strip().splitlines()
+        return f"Buddy daemon: {line[0] if line else 'unknown'}"
+
     def show_about(self):
         about = Adw.AboutWindow(
             transient_for=self.window,
@@ -2946,7 +2957,7 @@ class BuddyApp(Adw.Application):
             application_icon="buddy",
             version=APP_VERSION,
             developer_name="The Buddy project",
-            comments="A Golden Retriever who lives on your desktop. Local first; every sense optional.",
+            comments=f"A Golden Retriever who lives on your desktop. Local first; every sense optional.\n\n{self._daemon_build()}",
             license_type=Gtk.License.MIT_X11,
         )
         about.set_developers(["The Buddy project"])

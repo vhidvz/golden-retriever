@@ -101,7 +101,8 @@ Create the directory when needed; it is not part of the repository.
   and fails at night is this bug.
 - **Isolation:** `BUDDY_DATA_DIR` and `BUDDY_SOCKET` give a test its own database and
   socket. A second daemon on the same socket refuses to start; the lifecycle test relies
-  on that.
+  on that. `BUDDY_UPDATE_REPO`/`BUDDY_UPDATE_API` point update and upgrade tests at a
+  local HTTP server instead of GitHub.
 - **Renderer is disposable:** it can crash, be hidden or be missing. The daemon restarts
   it with backoff and keeps simulating. Do not put life-critical logic in Godot.
 - **Sprite bakes are expensive:** measured 72.2 s/frame on CPU and 25.4 s on the GTX
@@ -191,8 +192,11 @@ Create the directory when needed; it is not part of the repository.
 - **Release artifacts:** `scripts/package.sh FORMAT` builds tar/deb/rpm/arch/AppImage
   from the release binary, the renderer project, perception helpers, UI, systemd user
   unit and desktop/icon files. It runs `scripts/verify-package.sh` and writes a
-  `SHA256SUMS` before returning. `scripts/checksums.sh DIR` regenerates the manifest and
-  `scripts/sbom.py` writes a CycloneDX SBOM from `Cargo.lock`. The release workflow pins
+  `SHA256SUMS` before returning. `scripts/checksums.sh DIR` regenerates the manifest,
+  `scripts/sbom.py` writes a CycloneDX SBOM from `Cargo.lock`, and
+  `scripts/sign-release.sh DIR` optionally adds a detached GPG signature when
+  `BUDDY_SIGNING_KEY` is set. `scripts/release-rehearsal.sh` builds every locally
+  available format and generates the same metadata; use it before a tag. The release workflow pins
   every action by commit SHA, gives only the publish job `contents: write`, verifies
   each package, and attaches one checksum manifest plus the SBOM. It has not yet run in
   Actions, so treat it as unproven until a tagged run passes. Windows is not built

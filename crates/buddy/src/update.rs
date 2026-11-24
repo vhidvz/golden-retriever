@@ -131,9 +131,13 @@ pub fn install_mode(exe: &std::path::Path) -> InstallMode {
     }
 }
 
+fn api_base() -> String {
+    std::env::var("BUDDY_UPDATE_API").unwrap_or_else(|_| "https://api.github.com".to_string()).trim_end_matches('/').to_string()
+}
+
 pub fn latest(repo: &str) -> Result<Release> {
     let mut response = agent(Duration::from_secs(12))
-        .get(&format!("https://api.github.com/repos/{repo}/releases/latest"))
+        .get(&format!("{}/repos/{repo}/releases/latest", api_base()))
         .header("User-Agent", USER_AGENT)
         .header("Accept", "application/vnd.github+json")
         .call()

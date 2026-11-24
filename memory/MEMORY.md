@@ -13,7 +13,7 @@
 - [Phase 5 completion](phase5-completion.md) — text entry, mixed workflows, assisted no-tree steps and abort/continue are implemented; 112 Rust tests
 - [Name recognition](name-recognition.md) — configured name is user data; typed/voice name recognition, first-call greeting, later recall, persisted name_calls
 - [Camera one-shot vision](camera-look.md) — buddy look --camera sends one explicit webcam frame to local vision, deletes it; continuous camera sense remains presence-only
-- [Release direction (Phase 9 started)](release-direction.md) — hardened Linux artifacts with checksums/SBOM/pinned Actions and download-only upgrade; Windows explicitly unsupported; CI run/signing open
+- [Release direction (Phase 9 Linux complete locally)](release-direction.md) — hardened Linux artifacts with checksums/SBOM/optional GPG/pinned Actions and download-only upgrade; Windows explicitly unsupported; actual CI run/AppImage UX open
 - [Context direction (Phase 10, pointer/click foundation)](context-direction.md) — clicks by app/coarse region implemented; semantic text, screen glances and warmth remain; not a keylogger
 - [Helper registry (Phase 7 Stage 1)](helper-registry.md) — owner-registered argv-only helpers with dry-run, timeout, approved cwd and always-ask execution; model selection/synthetic input remain
 - [Phase 6 body refinement](phase6-body-refinement.md) — measured-skeleton-preserving cheek/lip/ear/tail surface pass; sprite bakes invalidated; KDE focus/pointer/overview/titles added; native click source and more craft remain

@@ -21,7 +21,9 @@ rm -rf "$stage"
 mkdir -p "$out"
 
 echo "building Buddy $version ($format)"
-(cd "$repo" && cargo build --release)
+describe=$(git -C "$repo" describe --tags --always --dirty 2>/dev/null || true)
+[ -n "$describe" ] || describe=unknown
+(cd "$repo" && BUDDY_GIT_DESCRIBE="$describe" cargo build --release)
 binary="$repo/target/release/buddy"
 [ -x "$binary" ] || { echo "the release binary is missing" >&2; exit 1; }
 
@@ -31,6 +33,7 @@ install -m 755 "$binary" "$stage/usr/bin/buddy"
 cat > "$stage/usr/bin/buddy-ui" <<'WRAPPER'
 #!/bin/sh
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+BUDDY_BIN="$here/buddy"; export BUDDY_BIN
 exec python3 "$here/../share/buddy/ui/buddy_ui.py" "$@"
 WRAPPER
 chmod 755 "$stage/usr/bin/buddy-ui"
@@ -94,6 +97,7 @@ CONTROL
         rm -rf "$top"; mkdir -p "$top/BUILD" "$top/RPMS" "$top/SPECS" "$top/SOURCES" "$top/BUILDROOT"
         tar -C "$stage" -czf "$top/SOURCES/buddy-$version.tar.gz" .
         cat > "$top/SPECS/buddy.spec" <<SPEC
+%global debug_package %{nil}
 Name: buddy
 Version: $version
 Release: 1%{?dist}
@@ -118,7 +122,7 @@ tar -xzf %{SOURCE0} -C %{buildroot}
 /usr/lib/systemd/user/buddy.service
 /usr/share/doc/buddy
 %changelog
-* $(date +%Y-%m-%d) Buddy project <noreply@example.invalid> - $version
+* $(date +'%a %b %d %Y') Buddy project <noreply@example.invalid> - $version
 - Release $version
 SPEC
         rpmbuild --define "_topdir $top" -bb "$top/SPECS/buddy.spec" >/dev/null
@@ -162,6 +166,7 @@ ARCH
         cp "$stage/usr/share/icons/hicolor/scalable/apps/buddy.svg" "$appdir/buddy.svg"
         cat > "$appdir/AppRun" <<'APPRUN'
 #!/bin/sh
+if [ -f "$HOME/.config/buddy/env" ]; then . "$HOME/.config/buddy/env"; fi
 export BUDDY_RENDERER_DIR="$APPDIR/usr/share/buddy/renderer"
 export BUDDY_PERCEPTION_DIR="$APPDIR/usr/share/buddy/perception"
 if ! "$APPDIR/usr/bin/buddy" status >/dev/null 2>&1; then

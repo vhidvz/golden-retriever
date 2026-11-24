@@ -37,7 +37,7 @@ jobs:
           }
       - run: cargo test --all
       - run: python3 -m py_compile ui/buddy_ui.py perception/*.py scripts/sbom.py
-      - run: sh -n scripts/install.sh scripts/package.sh scripts/checksums.sh scripts/verify-package.sh
+      - run: sh -n scripts/install.sh scripts/package.sh scripts/checksums.sh scripts/verify-package.sh scripts/sign-release.sh scripts/release-rehearsal.sh
       - run: desktop-file-validate dist/buddy-ui.desktop
       - run: python3 scripts/sbom.py --out "$RUNNER_TEMP/buddy-sbom.cdx.json"
       - run: python3 -m json.tool "$RUNNER_TEMP/buddy-sbom.cdx.json" >/dev/null
@@ -136,6 +136,8 @@ jobs:
           chmod +x /tmp/appimagetool
           sudo mv /tmp/appimagetool /usr/local/bin/appimagetool
       - run: scripts/package.sh appimage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: buddy-appimage
@@ -164,6 +166,12 @@ jobs:
           python3 scripts/sbom.py --out "artifacts/buddy-$version-sbom.cdx.json"
           python3 -m json.tool "artifacts/buddy-$version-sbom.cdx.json" >/dev/null
           scripts/checksums.sh artifacts
+      - name: Sign SHA256SUMS when a key is configured
+        env:
+          BUDDY_SIGNING_KEY: ${{ secrets.BUDDY_SIGNING_KEY }}
+          BUDDY_SIGNING_PRIVATE_KEY: ${{ secrets.BUDDY_SIGNING_PRIVATE_KEY }}
+          BUDDY_SIGNING_PASSPHRASE: ${{ secrets.BUDDY_SIGNING_PASSPHRASE }}
+        run: scripts/sign-release.sh artifacts
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: artifacts/*

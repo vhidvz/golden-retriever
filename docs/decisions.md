@@ -246,14 +246,14 @@ implementation. The evidence, options and recommendation are in
   is not used for a user's camera.
 
 
-## Release engineering and updates (Phase 9 started 2026-11-24)
+## Release engineering and updates (Phase 9 Linux implementation, 2026-11-24)
 
-- **Phase 9 is approved to start; it is not complete.** The Linux foundation from
-  2026-11-23 is hardened: packages find their assets under `/usr/share/buddy`, the UI
-  launcher is relocatable, `scripts/verify-package.sh` checks the complete payload,
-  `scripts/checksums.sh` writes SHA-256 manifests, `scripts/sbom.py` writes a CycloneDX
-  1.5 SBOM, and every GitHub Action is pinned by commit SHA with a read-only default
-  token. Tar and Arch packages were built and verified locally.
+- **The Linux implementation is complete and locally verified; the actual GitHub
+  Actions run is still pending.** Packages find their assets under `/usr/share/buddy`,
+  the UI launcher is relocatable, `scripts/verify-package.sh` checks the complete
+  payload, `scripts/checksums.sh` writes SHA-256 manifests, `scripts/sbom.py` writes a
+  CycloneDX 1.5 SBOM, and every GitHub Action is pinned by commit SHA with a read-only
+  default token. All five Linux formats were built and payload-verified locally.
 - **Windows is explicitly unsupported for this release line.** Unix sockets, systemd,
   the GNOME/KDE bridges and the managed Ollama service are Linux-specific. An MSI/EXE
   cannot make the current daemon work; a native port is a separate project.
@@ -261,24 +261,29 @@ implementation. The evidence, options and recommendation are in
   project, helpers and tools, but not Godot or Ollama. The existing installer or
   `BUDDY_GODOT` supplies those on first run; checksums and the unavailable state stay
   authoritative.
-- **Signing starts unsigned.** `SHA256SUMS` is generated and attached; no paid
-  certificate or signing service is assumed. A detached signature can be added later.
+- **Signing is optional and starts unsigned.** `SHA256SUMS` is generated and attached; no
+  paid certificate or signing service is assumed. `scripts/sign-release.sh` adds a
+  detached GPG signature when a key is configured; otherwise the release is
+  checksum-only. CI uses `BUDDY_SIGNING_PRIVATE_KEY`, `BUDDY_SIGNING_KEY` and optional
+  `BUDDY_SIGNING_PASSPHRASE` secrets; missing secrets keep the release unsigned.
 - **Arch is a project-generated PKGBUILD with a real source checksum**, not an AUR or
   official-repository package yet.
 - **Stable channel only.** No telemetry, background polling, silent self-update or model
   auto-update. `buddy update check`/`update tools` report only. `buddy upgrade`
   downloads a user-local artifact, verifies it against the release's `SHA256SUMS`, and
   prints manual replacement commands; it refuses system packages and checkouts and never
-  installs or overwrites anything itself. Signatures remain unimplemented.
+  installs or overwrites anything itself. The download path verifies SHA-256; detached
+  signatures are optional and not yet checked by `buddy upgrade`.
 - **Package ownership is split by design.** System packages own `/usr`; user data stays
   in `~/.local/share/buddy`. Package-managed and user-local installs must not overwrite
   each other, and no automatic data migration is attempted.
 - **Build identity is embedded.** `crates/buddy/build.rs` records the git
   tag/commit/dirty state (`unknown` outside a checkout); `buddy version` prints it.
-- **Still open:** an actual Actions run proves the workflow end to end; signatures,
-  AppImage first-run UX and any Windows port remain. Guided upgrade exists as
-  download/verify only. Do not call Phase 9 complete before a tagged run and the
-  remaining decisions are verified.
+- **Still open:** an actual GitHub Actions run proves the workflow end to end; the
+  AppImage first-run UX beyond the env/status path remains. Windows is not an open Phase 9
+  task because this release line explicitly does not target it. Guided upgrade exists as
+  download/verify only; detached signatures are optional and not yet checked by it. The
+  local release rehearsal is not a substitute for a tagged CI run.
 
 
 ## Context and companionship (pointer/click foundation, 2026-11-23)

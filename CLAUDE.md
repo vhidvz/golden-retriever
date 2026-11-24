@@ -48,9 +48,11 @@ buddy version | update check | update tools   # versions + git describe; network
 buddy upgrade                                  # download/verify user-local artifact; no install
 buddy helpers | helper dry-run|run NAME       # owner-registered argv helpers; runs ask
 scripts/package.sh tar|deb|rpm|arch|appimage  # verified release artifacts + SHA256SUMS
+scripts/release-rehearsal.sh [FORMAT...]          # build all local formats, SBOM, checksums, optional sign
 scripts/verify-package.sh dist/release/FILE       # check the full installed payload
 scripts/checksums.sh dist/release                 # regenerate SHA256SUMS
 python3 scripts/sbom.py                           # CycloneDX SBOM from Cargo.lock
+BUDDY_SIGNING_KEY=KEY scripts/sign-release.sh dist/release  # optional detached GPG signature
 buddy name "پشمک"                              # choose the name he answers to
 buddy call                                    # call him by that name
 ```
@@ -129,6 +131,8 @@ spikes/claude-code/run.sh         # historical: the Claude Code boundary was rem
   locations.
 - `BUDDY_CAMERA_PIPELINE` — a full GStreamer pipeline with `{out}`, for hardware-free
   camera-look tests. `buddy look --camera` pauses the presence helper and deletes the frame.
+- `BUDDY_UPDATE_REPO` / `BUDDY_UPDATE_API` — override the release repository and API base
+  for update/upgrade tests; point them at a local HTTP server, never at production.
 
 ## Architecture
 
