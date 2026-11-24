@@ -90,7 +90,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - run: dnf install -y cargo rust rpm-build cpio git tar gzip findutils zstd sqlite-devel
+      - run: dnf install -y --setopt=install_weak_deps=False --setopt=tsflags=nodocs cargo rust rpm-build cpio git tar gzip findutils zstd sqlite-devel
       - run: scripts/package.sh rpm
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
