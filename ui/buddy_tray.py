@@ -17,6 +17,7 @@ import threading
 import time
 from pathlib import Path
 
+import cairo
 import gi
 
 gi.require_version("Gtk", "4.0")
@@ -46,7 +47,7 @@ NEEDS = {
     "thirst": ("A fresh bowl of water?", "My tongue is getting a little dry.", "weather-showers-symbolic", 0.66, 15 * 60, "water_out", "water", "Fresh water"),
     "boredom": ("I could use a game", "I have been good. Could we play for a minute?", "media-playback-start-symbolic", 0.70, 20 * 60, None, "play", "Let's play"),
     "social": ("Do you have a minute?", "I would like to be near you for a little while.", "emblem-favorite-symbolic", 0.72, 20 * 60, None, "pet", "Sit with him"),
-    "fatigue": ("My eyes are getting heavy", "I might curl up for a little while.", "weather-clear-night-symbolic", 0.78, 60 * 60, None, "sleep", "Let him nap"),
+    "fatigue": ("My eyes are getting heavy", "I might curl up for a little while.", "weather-clear-night-symbolic", 0.78, 60 * 60, None, None, "Okay"),
 }
 
 
@@ -357,6 +358,7 @@ class PanelWindow(Gtk.Window):
             self.present()
         else:
             self.present()
+        self._set_input(True)
         self.grab_focus()
         self._place()
         self.set_opacity(0.0)
@@ -379,10 +381,21 @@ class PanelWindow(Gtk.Window):
     def hide_panel(self):
         # Keep the window mapped (moved off-screen) rather than unmapping the only
         # Gtk.Application window: unmapping it lets the application exit after a
-        # short idle period even though the SNI itself has no window.
+        # short idle period even though the SNI itself has no window. An empty
+        # input region is essential: an invisible window at the screen origin must
+        # never intercept clicks meant for the desktop.
         self._open = False
         self.set_opacity(0.0)
+        self._set_input(False)
         self._move_offscreen()
+
+    def _set_input(self, on: bool):
+        try:
+            surface = self.get_surface()
+            if surface is not None:
+                surface.set_input_region(None if on else cairo.Region())
+        except Exception:
+            pass
 
     def _move_offscreen(self):
         try:

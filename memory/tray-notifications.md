@@ -17,8 +17,8 @@ daemon.
   information-only and auto-closes. Quiet mode records the message but does not pop the
   panel open.
 - **Actions:** every button is a normal daemon command. `feed`, `water`, `pet`,
-  `sleep`, `approve`/`deny`, and the new `play` command. `play` makes him bow, lowers
-  boredom and lifts mood.
+  `approve`/`deny`, and the new `play` command. `play` makes him bow, lowers boredom and
+  lifts mood. Fatigue offers a "Let him nap" action (`sleep`) rather than forcing rest.
 - **Presentation:** cards in a warm, opaque panel with a per-notice action row,
   dismiss/clear, a small Buddy avatar and status line. Interactive notices remain in
   the panel until answered/dismissed; the panel auto-hides after twelve seconds when the
