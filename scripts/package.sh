@@ -37,11 +37,20 @@ BUDDY_BIN="$here/buddy"; export BUDDY_BIN
 exec python3 "$here/../share/buddy/ui/buddy_ui.py" "$@"
 WRAPPER
 chmod 755 "$stage/usr/bin/buddy-ui"
+cat > "$stage/usr/bin/buddy-tray" <<'WRAPPER'
+#!/bin/sh
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+export GDK_BACKEND=x11
+BUDDY_UI_BIN="$here/buddy-ui"; export BUDDY_UI_BIN
+exec python3 "$here/../share/buddy/ui/buddy_tray.py" "$@"
+WRAPPER
+chmod 755 "$stage/usr/bin/buddy-tray"
 for part in ui perception renderer tools shell-extension kde; do
     cp -r "$repo/$part" "$stage/usr/share/buddy/$part"
     find "$stage/usr/share/buddy/$part" -type d -name __pycache__ -prune -exec rm -rf {} +
 done
 cp "$repo/README.md" "$repo/LICENSE" "$stage/usr/share/doc/buddy/"
+install -m 644 "$repo/dist/buddy-tray.service" "$stage/usr/lib/systemd/user/buddy-tray.service"
 cp "$repo/ui/buddy.svg" "$stage/usr/share/icons/hicolor/scalable/apps/buddy.svg"
 sed 's|@BUDDY_UI@|/usr/bin/buddy-ui|g' "$repo/dist/buddy-ui.desktop" > "$stage/usr/share/applications/buddy.desktop"
 cat > "$stage/usr/lib/systemd/user/buddy.service" <<'UNIT'
@@ -116,10 +125,12 @@ tar -xzf %{SOURCE0} -C %{buildroot}
 %files
 /usr/bin/buddy
 /usr/bin/buddy-ui
+/usr/bin/buddy-tray
 /usr/share/buddy
 /usr/share/applications/buddy.desktop
 /usr/share/icons/hicolor/scalable/apps/buddy.svg
 /usr/lib/systemd/user/buddy.service
+/usr/lib/systemd/user/buddy-tray.service
 /usr/share/doc/buddy
 %changelog
 * $(date +'%a %b %d %Y') Buddy project <noreply@example.invalid> - $version
@@ -176,6 +187,7 @@ export BUDDY_PERCEPTION_DIR="$APPDIR/usr/share/buddy/perception"
 if ! "$APPDIR/usr/bin/buddy" status >/dev/null 2>&1; then
     "$APPDIR/usr/bin/buddy" daemon >/dev/null 2>&1 &
 fi
+"$APPDIR/usr/bin/buddy-tray" >/dev/null 2>&1 &
 exec "$APPDIR/usr/bin/buddy-ui" "$@"
 APPRUN
         chmod 755 "$appdir/AppRun"

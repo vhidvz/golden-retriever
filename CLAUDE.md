@@ -33,7 +33,7 @@ The invariants that matter most:
 
 ```sh
 cargo build --release
-cargo test                                    # 118 tests, under 30 s on the dev machine
+cargo test                                    # 119 tests, under 30 s on the dev machine
 cargo test -p buddy-core <test_name>          # one unit test
 cargo test -p buddy --test lifecycle          # daemon persistence/lifecycle integration test
 cargo fmt --check                             # rustfmt.toml: max_width 150 (currently reports pre-existing diffs)
@@ -53,6 +53,8 @@ scripts/verify-package.sh dist/release/FILE       # check the full installed pay
 scripts/checksums.sh dist/release                 # regenerate SHA256SUMS
 python3 scripts/sbom.py                           # CycloneDX SBOM from Cargo.lock
 BUDDY_SIGNING_KEY=KEY scripts/sign-release.sh dist/release  # optional detached GPG signature
+buddy play                                     # offer a game; he bows and settles
+buddy-tray                                     # OS tray icon + custom message panel (session service)
 buddy name "پشمک"                              # choose the name he answers to
 buddy call                                    # call him by that name
 ```
@@ -161,10 +163,13 @@ Two crates, one long-running process, a replaceable renderer, and an optional na
   implement the first-run hardware assessment and model choice. Claude Code was removed.
   `baker.rs` runs the offline sprite bake only while the user is away. `system.rs` polls
   idle time, lock and load.
-- `ui/` — the optional GTK4/libadwaita control panel (`buddy-ui`). It is a socket client
-  like the CLI: it stores no state, never touches the database, and its actions go through
-  the daemon. `ui/buddy.svg` is the installed application icon; `dist/buddy-ui.desktop`
-  is the launcher. `scripts/install.sh` installs the launcher, icons and desktop entry.
+- `ui/` — the optional GTK4/libadwaita control panel (`buddy-ui`) and the tray client
+  (`buddy-tray`). Both are socket clients like the CLI: they store no state, never touch
+  the database, and their actions go through the daemon. The tray icon is a standard
+  StatusNotifierItem hosted by GNOME's AppIndicator extension or KDE; its custom panel
+  uses no native notification service. `ui/buddy.svg` is the installed application icon;
+  `dist/buddy-ui.desktop` is the launcher and `dist/buddy-tray.service` starts the tray
+  with the session. `scripts/install.sh` installs both.
 - `renderer/` — the Godot overlay. `main.gd` connects to the socket and draws the state
   it is sent. `dog.gd` is the older procedural stand-in; `retriever.gd` loads the skinned
   model from `renderer/dog/retriever.json` and extends it. `sprites.gd` uses pre-drawn

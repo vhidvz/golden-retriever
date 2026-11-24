@@ -308,6 +308,32 @@ implementation. The evidence, options and recommendation are in
   required before any implementation.
 
 
+## Tray icon and custom notifications (2026-11-24)
+
+- **OS tray first, custom UI second.** The icon is a standard StatusNotifierItem hosted
+  by the desktop (GNOME AppIndicator extension / KDE), so the OS decides where it lives.
+  The panel opened from it is Buddy's own GTK4 UI; no `org.freedesktop.Notifications`
+  daemon or native toast is used.
+- **Messages come from his state, not a second brain.** His existing `waiting` offers
+  (including habit/pattern offers) are shown as interactive cards; hunger, thirst,
+  boredom, company and tiredness cross thresholds with per-need cooldowns. A returning
+  user gets an information-only "You're back" card that closes itself; quiet mode keeps
+  cards but does not auto-open the panel.
+- **Every action is a daemon command.** Feed, water, pet, sleep, approve/deny and the new
+  `play` command go through the same socket and permission rules as the CLI. `play` is a
+  short bow that settles boredom and lifts mood.
+- **Presentation stays non-intrusive.** Interactive cards stay until answered; a small
+  badge/attention state marks unread messages; the panel has a close button and Escape,
+  and a notice-only panel closes itself after a short time. The tray also exports the
+  standard DBusMenu expected by GNOME's AppIndicator extension, so a single click has a
+  useful result even though GNOME reserves double-click for activation. The tray is a
+  normal client and can die without affecting his life.
+- **Host dependency is explicit.** GNOME requires the AppIndicator extension; KDE has
+  the host natively. The tray service retries registration if the watcher starts later.
+  `scripts/install.sh` installs/enables it by default; `--no-tray` opts out.
+- **No global input or screen capture was added.** The tray reads `status`/`waiting`
+  over the same socket and never touches raw keyboard or pointer content.
+
 ## Named helpers (Phase 7 Stage 1, 2026-11-23)
 
 - **Owner-registered, argv-only helpers are implemented.** Manifests live in the Buddy

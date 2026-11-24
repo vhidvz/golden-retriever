@@ -1,0 +1,13 @@
+[Unit]
+Description=Buddy tray icon and custom notifications
+PartOf=graphical-session.target
+After=graphical-session.target buddy.service
+
+[Service]
+ExecStart=%h/.local/bin/buddy-tray
+Restart=on-failure
+RestartSec=3
+EnvironmentFile=-%h/.config/buddy/env
+
+[Install]
+WantedBy=graphical-session.target

@@ -384,10 +384,12 @@ install_ui() {
     fi
     rm -rf "$share/ui"
     mkdir -p "$share/ui"
-    cp "$repo"/ui/buddy_ui.py "$repo"/ui/buddy.css "$repo"/ui/buddy.svg "$share/ui/"
-    chmod 644 "$share"/ui/buddy_ui.py "$share"/ui/buddy.css "$share"/ui/buddy.svg
+    cp "$repo"/ui/buddy_ui.py "$repo"/ui/buddy.css "$repo"/ui/buddy.svg "$repo"/ui/buddy_tray.py "$repo"/ui/buddy_tray.css "$share/ui/"
+    chmod 644 "$share"/ui/buddy_ui.py "$share"/ui/buddy.css "$share"/ui/buddy.svg "$share"/ui/buddy_tray.py "$share"/ui/buddy_tray.css
     printf '#!/bin/sh\nBUDDY_BIN="%s/buddy"\nexport BUDDY_BIN\nexec python3 "%s/ui/buddy_ui.py" "$@"\n' "$bin" "$share" > "$bin/buddy-ui"
     chmod 755 "$bin/buddy-ui"
+    printf '#!/bin/sh\nexport GDK_BACKEND=x11\nBUDDY_UI_BIN="%s/buddy-ui"\nexport BUDDY_UI_BIN\nexec python3 "%s/ui/buddy_tray.py" "$@"\n' "$bin" "$share" > "$bin/buddy-tray"
+    chmod 755 "$bin/buddy-tray"
 
     icons="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor"
     mkdir -p "$icons/scalable/apps"
@@ -416,7 +418,8 @@ install_ui() {
 uninstall_ui() {
     applications="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
     icons="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor"
-    rm -f "$bin/buddy-ui" "$applications/buddy.desktop" "$icons/scalable/apps/buddy.svg"
+    systemctl --user disable --now buddy-tray.service 2>/dev/null || true
+    rm -f "$bin/buddy-ui" "$bin/buddy-tray" "$units/buddy-tray.service" "$applications/buddy.desktop" "$icons/scalable/apps/buddy.svg"
     for size in 16 24 32 48 64 128 256 512; do
         rm -f "$icons/${size}x${size}/apps/buddy.png"
     done
@@ -432,7 +435,7 @@ uninstall_ui() {
 remove_buddy() {
     systemctl --user disable --now buddy.service 2>/dev/null || true
     systemctl --user disable --now buddy-ollama.service 2>/dev/null || true
-    rm -f "$units/buddy.service" "$units/buddy-ollama.service" "$units/buddy.service.d/data-dir.conf" "$bin/buddy"
+    rm -f "$units/buddy.service" "$units/buddy-tray.service" "$units/buddy-ollama.service" "$units/buddy.service.d/data-dir.conf" "$bin/buddy"
     rmdir "$units/buddy.service.d" 2>/dev/null || true
     rm -rf "$share/renderer" "$share/perception" "$share/tools" "$share/godot" "$share/ui" "$extensions/$extension"
     uninstall_ui
@@ -443,6 +446,7 @@ remove_buddy() {
 }
 
 no_ai=0
+no_tray=0
 case "${1:-}" in
     --remove)
         remove_buddy
@@ -451,10 +455,13 @@ case "${1:-}" in
     --no-ai)
         no_ai=1
         ;;
+    --no-tray)
+        no_tray=1
+        ;;
     "")
         ;;
     *)
-        echo "usage: scripts/install.sh [--no-ai|--remove]" >&2
+        echo "usage: scripts/install.sh [--no-ai] [--no-tray] | --remove" >&2
         exit 2
         ;;
 esac
@@ -467,6 +474,7 @@ command -v blender >/dev/null 2>&1 || [ -n "${BUDDY_BLENDER:-}" ] ||
 (cd "$repo" && cargo build --release)
 mkdir -p "$bin" "$share" "$units"
 systemctl --user stop buddy.service 2>/dev/null || true
+systemctl --user stop buddy-tray.service 2>/dev/null || true
 install -m 755 "$repo/target/release/buddy" "$bin/buddy"
 rm -rf "$share/renderer"
 mkdir "$share/renderer"
@@ -487,6 +495,20 @@ install_godot
 # ordinary user-readable application data.
 umask 022
 install_ui
+if [ "$no_tray" -eq 0 ]; then
+    if [ -x "$bin/buddy-tray" ]; then
+        install -m 644 "$repo/dist/buddy-tray.service" "$units/buddy-tray.service"
+        systemctl --user daemon-reload
+        systemctl --user enable --now buddy-tray.service 2>/dev/null || warn "the tray panel could not be started; it needs a graphical session"
+        if [ "${XDG_CURRENT_DESKTOP:-}" = "GNOME" ] && command -v gnome-extensions >/dev/null 2>&1; then
+            if ! gnome-extensions list 2>/dev/null | grep -q 'appindicatorsupport'; then
+                warn "GNOME needs the AppIndicator and KStatusNotifierItem Support extension for the tray icon"
+            fi
+        fi
+    else
+        warn "the tray panel launcher was not installed (the GTK4 Python dependencies are missing)"
+    fi
+fi
 install_kde_sense
 install_kde_click_effect
 

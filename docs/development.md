@@ -94,7 +94,7 @@ Create the directory when needed; it is not part of the repository.
 
 ## Testing and runtime traps
 
-- `cargo test` currently runs 118 tests in under 30 seconds. Unit tests sit beside their
+- `cargo test` currently runs 119 tests in under 30 seconds. Unit tests sit beside their
   modules; the daemon lifecycle test is `crates/buddy/tests/lifecycle.rs`.
 - **Wall-clock time:** tests must not depend on the hour. The lifecycle sandbox sets
   `BUDDY_HOUR=12` because a sleeping dog answers differently; a test that passes at noon
@@ -151,6 +151,22 @@ Create the directory when needed; it is not part of the repository.
   when the project has measurements.
 - **Claude Code:** removed on 2026-11-22. The historical spike remains under
   `spikes/claude-code/` for the record; it is not part of Buddy's runtime.
+- **Tray:** `ui/buddy_tray.py` registers a StatusNotifierItem and shows a custom GTK
+  panel; it needs a watcher (GNOME AppIndicator extension or KDE). Test with
+  `systemctl --user status buddy-tray.service`, `gdbus introspect --session --dest
+  org.kde.StatusNotifierWatcher --object-path /StatusNotifierWatcher`, and
+  `org.kde.StatusNotifierItem.Activate X Y`. The tray is a socket client like the panel;
+  every action is a daemon command. `scripts/install.sh --no-tray` opts out.
+- **Tray client:** `ui/buddy_tray.py` registers a StatusNotifierItem on the session bus
+  and opens its own GTK panel from `Activate`/the native `com.canonical.dbusmenu` item.
+  GNOME needs the AppIndicator extension; KDE has SNI natively. It polls `status` and
+  `waiting` every 1.25 s, never uses `org.freedesktop.Notifications`, and sends every
+  action through the daemon socket. `scripts/install.sh` installs
+  `dist/buddy-tray.service`; use `--no-tray` to skip it. Test the registration with
+  `gdbus call --session --dest org.kde.StatusNotifierWatcher --object-path
+  /StatusNotifierWatcher --method org.freedesktop.DBus.Properties.Get
+  org.kde.StatusNotifierWatcher RegisteredStatusNotifierItems` and then call
+  `Activate` on the `org.kde.StatusNotifierItem-<pid>-1` name.
 - **Control panel:** `ui/buddy_ui.py` is a GTK4/libadwaita client installed as
   `buddy-ui`, with `dist/buddy-ui.desktop` and `ui/buddy.svg` for the application list.
   It needs Python 3, PyGObject, GTK 4 and libadwaita; the daemon and CLI do not. Check it

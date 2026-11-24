@@ -18,3 +18,4 @@
 - [Helper registry (Phase 7 Stage 1)](helper-registry.md) — owner-registered argv-only helpers with dry-run, timeout, approved cwd and always-ask execution; model selection/synthetic input remain
 - [Phase 6 body refinement](phase6-body-refinement.md) — measured-skeleton-preserving cheek/lip/ear/tail surface pass; sprite bakes invalidated; KDE focus/pointer/overview/titles added; native click source and more craft remain
 - [Phase 8 realism spike](phase8-realism-spike.md) — first measured stills baseline: 72.2 s/frame at 150k/24, still visibly CG; full photoreal acceptance remains
+- [Tray icon and custom notifications](tray-notifications.md) — StatusNotifierItem icon in the OS tray, custom GTK panel, needs/offers, no native notification daemon

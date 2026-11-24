@@ -39,11 +39,13 @@ case "$file" in
         exit 2
         ;;
 esac
-required="usr/bin/buddy usr/bin/buddy-ui usr/share/buddy/ui/buddy_ui.py usr/share/buddy/renderer/project.godot usr/share/buddy/perception/camera_watch.py usr/share/buddy/tools/bake_sprites.py usr/lib/systemd/user/buddy.service usr/share/applications/buddy.desktop usr/share/icons/hicolor/scalable/apps/buddy.svg"
+required="usr/bin/buddy usr/bin/buddy-ui usr/bin/buddy-tray usr/share/buddy/ui/buddy_ui.py usr/share/buddy/ui/buddy_tray.py usr/share/buddy/ui/buddy_tray.css usr/share/buddy/renderer/project.godot usr/share/buddy/perception/camera_watch.py usr/share/buddy/tools/bake_sprites.py usr/lib/systemd/user/buddy.service usr/lib/systemd/user/buddy-tray.service usr/share/applications/buddy.desktop usr/share/icons/hicolor/scalable/apps/buddy.svg"
 for path in $required; do
     [ -e "$root/$path" ] || { echo "missing from package: $path" >&2; exit 1; }
 done
 [ -x "$root/usr/bin/buddy" ] || { echo "the daemon is not executable" >&2; exit 1; }
 [ -x "$root/usr/bin/buddy-ui" ] || { echo "the control panel launcher is not executable" >&2; exit 1; }
+[ -x "$root/usr/bin/buddy-tray" ] || { echo "the tray launcher is not executable" >&2; exit 1; }
 grep -q '../share/buddy/ui/buddy_ui.py' "$root/usr/bin/buddy-ui" || { echo "the UI launcher does not use a relocatable path" >&2; exit 1; }
+grep -q '../share/buddy/ui/buddy_tray.py' "$root/usr/bin/buddy-tray" || { echo "the tray launcher does not use a relocatable path" >&2; exit 1; }
 echo "verified $file"
