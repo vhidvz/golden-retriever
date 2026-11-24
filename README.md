@@ -423,11 +423,13 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
 ## Known gaps
 
 - Everything he does has pictures with a real coat; until they are drawn for his
-  age, he is the stylised live body (see "Pictures with a real coat"). Pictures are drawn only while the computer is left
-  alone, about five hours for each stage of his growth; on a computer that is
-  switched off whenever its user leaves, they may take days to appear. The live body
-  was refined on 2026-11-24 (head, ears, eyes, feathering and motion smoothing) but is
-  still an illustration, not a photograph.
+  age, he is the stylised live body (see "Pictures with a real coat"). Pictures are
+  drawn only while the computer is left alone; the measured production bake is about
+  35 hours per growth stage on CPU (roughly 12 hours on the GTX 1650 CUDA path, which
+  is memory-limited when the local model is loaded). On a computer that is switched off
+  whenever its user leaves, they may take days to appear. The live body was refined on
+  2026-11-24 (head, ears, eyes, feathering and motion smoothing) but is still an
+  illustration, not a photograph.
 - In the pictures he looks in one of five drawn directions, not anywhere at all.
 - When the graphics card runs out of memory (other programs had 1.8 of its 2 GB
   during testing), a frame can come out empty; this showed up as occasional blank
