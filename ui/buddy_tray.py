@@ -17,7 +17,10 @@ import threading
 import time
 from pathlib import Path
 
-import cairo
+try:
+    import cairo
+except ImportError:  # the panel already moves off-screen; this is an extra guard
+    cairo = None
 import gi
 
 gi.require_version("Gtk", "4.0")
@@ -392,7 +395,7 @@ class PanelWindow(Gtk.Window):
     def _set_input(self, on: bool):
         try:
             surface = self.get_surface()
-            if surface is not None:
+            if surface is not None and cairo is not None:
                 surface.set_input_region(None if on else cairo.Region())
         except Exception:
             pass
