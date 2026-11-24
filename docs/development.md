@@ -207,4 +207,6 @@ Create the directory when needed; it is not part of the repository.
   effect source in `kde/kwin-effect` uses `startMousePolling` and
   `EffectsHandler::mouseChanged`. Build it only where KWin headers/CMake exist with
   `scripts/build-kwin-effect.sh`; it was not compiled or runtime-tested on this GNOME
-  machine.
+  machine. The KWin script also sends `window.caption` with focus; the daemon drops it
+  unless the `window_titles` sense is on, and never journals it. Test both states with
+  `gdbus ... Focus APP TITLE` and `buddy senses`.

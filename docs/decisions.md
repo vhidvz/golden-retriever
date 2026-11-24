@@ -318,7 +318,11 @@ implementation. The evidence, options and recommendation are in
   `EffectsHandler::mouseChanged`; it calls the existing `Click` bridge. The installer
   builds/installs it only when KWin headers, CMake and KDE tools are present. This host
   has no Plasma/KWin development stack and Docker Hub is blocked, so the effect was not
-  compiled or runtime-tested here; it is not claimed as verified. Window titles on KDE
-  remain outside the script path.
-- **Still open for Phase 6:** KDE native click runtime verification, KDE titles and the
-  remaining fur/model craft (surface detail, coat response, puppy-specific polish).
+  compiled or runtime-tested here; it is not claimed as verified.
+- **KDE window titles implemented 2026-11-24.** The KWin script sends
+  `Focus(app, caption)` through the same bridge. The daemon keeps the title only when
+  `window_titles` is allowed, drops it when the sense is off or privacy is on, and never
+  journals it or sends it to a model. `buddy senses` and the panel show the last title
+  while the sense is on. The bridge was tested with `gdbus` Focus calls both off and on.
+- **Still open for Phase 6:** KDE native click runtime verification and the remaining
+  fur/model craft (surface detail, coat response, puppy-specific polish).

@@ -9,7 +9,7 @@ function appOf(window) {
 function focus(window) {
     const app = appOf(window);
     if (app)
-        callDBus("local.buddy.Sense", "/Sense", "local.buddy.Sense", "Focus", app);
+        callDBus("local.buddy.Sense", "/Sense", "local.buddy.Sense", "Focus", app, window.caption || "");
 }
 
 let last = null;

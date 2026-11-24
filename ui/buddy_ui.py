@@ -1708,6 +1708,13 @@ class BuddyWindow(Adw.ApplicationWindow):
                 what.add_css_class("field-hint")
                 info.append(title)
                 info.append(what)
+                if item.get("title"):
+                    title_label = Gtk.Label(label=f"title: {item['title']}")
+                    title_label.set_xalign(0)
+                    title_label.set_wrap(True)
+                    title_label.add_css_class("tiny")
+                    title_label.set_opacity(0.6)
+                    info.append(title_label)
                 reporting = item.get("reporting")
                 if reporting:
                     label = Gtk.Label(label=str(reporting))

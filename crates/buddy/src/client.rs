@@ -159,6 +159,9 @@ pub fn senses() -> Result<()> {
         if let Some(reporting) = sense["reporting"].as_str() {
             println!("  {:<14}      {}", "", reporting);
         }
+        if let Some(title) = sense["title"].as_str() {
+            println!("  {:<14}      title: {title}", "");
+        }
     }
     Ok(())
 }

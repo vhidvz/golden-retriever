@@ -25,11 +25,11 @@ impl Bridge {
 
 #[interface(name = "local.buddy.Sense")]
 impl Bridge {
-    /// The application that came to the front. KWin scripting has no trustworthy window
-    /// title permission of its own, so titles stay disabled on this path.
-    fn focus(&self, app: String) {
+    /// The application that came to the front. The title travels with it; the daemon
+    /// keeps it only while the window_titles sense is allowed, and never journals it.
+    fn focus(&self, app: String, title: String) {
         if !app.trim().is_empty() {
-            self.report("focus", json!({ "app": app }));
+            self.report("focus", json!({ "app": app, "title": title }));
         }
     }
 

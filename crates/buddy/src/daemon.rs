@@ -393,6 +393,8 @@ struct Daemon {
     permissions: Permissions,
     waiting: Vec<assist::Waiting>,
     current_app: Option<String>,
+    /// Last focused window title, kept only while the window_titles sense allows it.
+    last_title: Option<String>,
     replay: Option<Replay>,
     next_id: u64,
     last_undo: Option<(String, Undo)>,
@@ -881,10 +883,13 @@ impl Daemon {
             }
             return;
         }
-        let Some(stimulus) = Stimulus::parse(kind, data) else { return };
-        if let Stimulus::Focus { app } = &stimulus {
-            self.current_app = Some(app.clone());
+        if kind == "focus" {
+            if let Some(app) = data["app"].as_str() {
+                self.current_app = Some(app.to_string());
+            }
+            self.last_title = if senses.window_titles { data["title"].as_str().filter(|title| !title.is_empty()).map(str::to_string) } else { None };
         }
+        let Some(stimulus) = Stimulus::parse(kind, data) else { return };
         let source = stimulus.source();
         if senses.get(source) != Some(true) {
             return;
@@ -926,7 +931,12 @@ impl Daemon {
                 let reporting = trouble.or_else(|| {
                     self.reporting.get(*source).map(|r| format!("{} reports this session, the last {:.0} s ago", r.reports, at - r.last))
                 });
-                json!({ "source": source, "allowed": self.sim.settings.senses.get(source), "what": describe(source), "reporting": reporting })
+                let title = if *source == "window_titles" && self.sim.settings.senses.window_titles && !self.sim.settings.privacy_mode {
+                    self.last_title.clone()
+                } else {
+                    None
+                };
+                json!({ "source": source, "allowed": self.sim.settings.senses.get(source), "what": describe(source), "reporting": reporting, "title": title })
             })
             .collect();
         json!({ "privacy_mode": self.sim.settings.privacy_mode, "senses": list })
@@ -1399,6 +1409,7 @@ pub fn run(no_renderer: bool) -> Result<()> {
         permissions,
         waiting: Vec::new(),
         current_app: None,
+        last_title: None,
         replay: None,
         next_id: 0,
         last_undo: None,

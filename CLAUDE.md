@@ -160,8 +160,9 @@ Two crates, one long-running process, a replaceable renderer, and an optional na
   `export_poses.gd` records poses for the Blender bake.
 - `kde/kwin/buddy/` — an optional KWin script; it calls the daemon's session D-Bus sense
   bridge (`crates/buddy/src/kde.rs`) for focused application, pointer position and polled
-  overview state. `kde/kwin-effect` is a native C++ click effect source, built only where
-  KWin headers exist; it is not runtime-tested here. KDE titles are not covered.
+  overview state. The KWin script sends `window.caption`; the daemon keeps it only while
+  `window_titles` is allowed and never journals it. `kde/kwin-effect` is a native C++
+  click effect source, built only where KWin headers exist; it is not runtime-tested here.
 - `shell-extension/` and `perception/` — his senses. The GNOME Shell extension also
   registers the guided-capture shortcut (`Super+Shift+B` by default) from its compiled
   schema, and reports
