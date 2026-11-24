@@ -319,9 +319,10 @@ implementation. The evidence, options and recommendation are in
   boredom, company and tiredness cross thresholds with per-need cooldowns. A returning
   user gets an information-only "You're back" card that closes itself; quiet mode keeps
   cards but does not auto-open the panel.
-- **Every action is a daemon command.** Feed, water, pet, sleep, approve/deny and the new
-  `play` command go through the same socket and permission rules as the CLI. `play` is a
-  short bow that settles boredom and lifts mood.
+- **Every action is a daemon command.** Feed, water, pet, approve/deny and the new `play`
+  command go through the same socket and permission rules as the CLI. `play` is a short
+  bow that settles boredom and lifts mood. Tiredness is information-only; he chooses
+  whether to nap.
 - **Presentation stays non-intrusive.** Interactive cards stay until answered; a small
   badge/attention state marks unread messages; the panel has a close button and Escape,
   and a notice-only panel closes itself after a short time. The tray also exports the

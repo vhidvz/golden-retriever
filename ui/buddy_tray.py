@@ -46,7 +46,7 @@ NEEDS = {
     "thirst": ("A fresh bowl of water?", "My tongue is getting a little dry.", "weather-showers-symbolic", 0.66, 15 * 60, "water_out", "water", "Fresh water"),
     "boredom": ("I could use a game", "I have been good. Could we play for a minute?", "media-playback-start-symbolic", 0.70, 20 * 60, None, "play", "Let's play"),
     "social": ("Do you have a minute?", "I would like to be near you for a little while.", "emblem-favorite-symbolic", 0.72, 20 * 60, None, "pet", "Sit with him"),
-    "fatigue": ("My eyes are getting heavy", "I might curl up for a little while.", "weather-clear-night-symbolic", 0.78, 60 * 60, None, "sleep", "Let him nap"),
+    "fatigue": ("My eyes are getting heavy", "I might curl up for a little while.", "weather-clear-night-symbolic", 0.78, 60 * 60, None, None, "Okay"),
 }
 
 
@@ -659,6 +659,7 @@ class StatusNotifier:
         self._status = "Active"
         self._unread = 0
         self._registered = False
+        self._tries = 0
         self.menu = DBusMenu(self.connection, app)
         self._register()
 
@@ -697,8 +698,12 @@ class StatusNotifier:
             proxy.call_sync("RegisterStatusNotifierItem", GLib.Variant("(s)", (self.bus_name,)), Gio.DBusCallFlags.NONE, 3000, None)
             self._registered = True
         except Exception as error:
-            print(f"buddy-tray: no StatusNotifierWatcher yet: {error}", file=sys.stderr)
-            GLib.timeout_add_seconds(2, self._retry)
+            self._tries += 1
+            if self._tries <= 15:
+                print(f"buddy-tray: no StatusNotifierWatcher yet: {error}", file=sys.stderr)
+                GLib.timeout_add_seconds(2, self._retry)
+            elif self._tries == 16:
+                print("buddy-tray: no tray host; the icon will not appear (GNOME needs the AppIndicator extension)", file=sys.stderr)
 
     def _retry(self) -> bool:
         if self._registered:
