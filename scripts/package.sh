@@ -28,7 +28,11 @@ binary="$repo/target/release/buddy"
 mkdir -p "$stage/usr/bin" "$stage/usr/share/buddy" "$stage/usr/share/applications" \
     "$stage/usr/share/icons/hicolor/scalable/apps" "$stage/usr/lib/systemd/user" "$stage/usr/share/doc/buddy"
 install -m 755 "$binary" "$stage/usr/bin/buddy"
-printf '#!/bin/sh\nexec python3 /usr/share/buddy/ui/buddy_ui.py "$@"\n' > "$stage/usr/bin/buddy-ui"
+cat > "$stage/usr/bin/buddy-ui" <<'WRAPPER'
+#!/bin/sh
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec python3 "$here/../share/buddy/ui/buddy_ui.py" "$@"
+WRAPPER
 chmod 755 "$stage/usr/bin/buddy-ui"
 for part in ui perception renderer tools shell-extension kde; do
     cp -r "$repo/$part" "$stage/usr/share/buddy/$part"
@@ -53,12 +57,16 @@ EnvironmentFile=-%h/.config/buddy/env
 WantedBy=graphical-session.target
 UNIT
 
+artifact=""
 case "$format" in
     tar)
         if command -v zstd >/dev/null 2>&1; then
-            tar -C "$stage" -cf - . | zstd -19 -T0 -o "$out/buddy-$version-linux-x86_64.tar.zst"
+            artifact="$out/buddy-$version-linux-x86_64.tar.zst"
+            rm -f "$artifact"
+            tar -C "$stage" -cf - . | zstd -19 -T0 -o "$artifact"
         else
-            tar -C "$stage" -czf "$out/buddy-$version-linux-x86_64.tar.gz" .
+            artifact="$out/buddy-$version-linux-x86_64.tar.gz"
+            tar -C "$stage" -czf "$artifact" .
         fi
         ;;
     deb)
@@ -76,7 +84,9 @@ Description: Buddy, a Golden Retriever who lives on your desktop
  Buddy is a local-first desktop dog: a daemon simulates his life, a Godot
  renderer draws him, and an optional local model helps him understand language.
 CONTROL
-        dpkg-deb --build --root-owner-group "$stage" "$out/buddy_${version}_amd64.deb" >/dev/null
+        artifact="$out/buddy_${version}_amd64.deb"
+        rm -f "$artifact"
+        dpkg-deb --build --root-owner-group "$stage" "$artifact" >/dev/null
         ;;
     rpm)
         command -v rpmbuild >/dev/null 2>&1 || { echo "rpmbuild is required" >&2; exit 1; }
@@ -112,13 +122,17 @@ tar -xzf %{SOURCE0} -C %{buildroot}
 - Release $version
 SPEC
         rpmbuild --define "_topdir $top" -bb "$top/SPECS/buddy.spec" >/dev/null
-        find "$top/RPMS" -type f -exec cp {} "$out/" \;
+        built=$(find "$top/RPMS" -type f | head -1)
+        [ -n "$built" ] || { echo "rpmbuild produced no package" >&2; exit 1; }
+        cp "$built" "$out/"
+        artifact="$out/$(basename "$built")"
         ;;
     arch)
         command -v makepkg >/dev/null 2>&1 || { echo "makepkg is required" >&2; exit 1; }
         work="$repo/target/package/arch"
         rm -rf "$work"; mkdir -p "$work"
         tar -C "$stage" -czf "$work/buddy-$version.tar.gz" .
+        source_sum=$(sha256sum "$work/buddy-$version.tar.gz" | cut -d' ' -f1)
         cat > "$work/PKGBUILD" <<ARCH
 pkgname=buddy
 pkgver=$version
@@ -128,14 +142,16 @@ arch=('x86_64')
 license=('MIT')
 depends=('python' 'python-gobject' 'gtk4' 'libadwaita' 'systemd')
 source=("buddy-$version.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('$source_sum')
 package() {
   cp -a "\$srcdir/." "\$pkgdir/"
   rm -f "\$pkgdir/buddy-$version.tar.gz"
 }
 ARCH
         (cd "$work" && makepkg --nodeps --noconfirm --cleanbuild)
-        cp "$work"/*.pkg.tar.zst "$out/"
+        built=$(ls -t "$work"/*.pkg.tar.zst | head -1)
+        cp "$built" "$out/"
+        artifact="$out/$(basename "$built")"
         ;;
     appimage)
         command -v appimagetool >/dev/null 2>&1 || { echo "appimagetool is required" >&2; exit 1; }
@@ -146,14 +162,24 @@ ARCH
         cp "$stage/usr/share/icons/hicolor/scalable/apps/buddy.svg" "$appdir/buddy.svg"
         cat > "$appdir/AppRun" <<'APPRUN'
 #!/bin/sh
+export BUDDY_RENDERER_DIR="$APPDIR/usr/share/buddy/renderer"
+export BUDDY_PERCEPTION_DIR="$APPDIR/usr/share/buddy/perception"
+if ! "$APPDIR/usr/bin/buddy" status >/dev/null 2>&1; then
+    "$APPDIR/usr/bin/buddy" daemon >/dev/null 2>&1 &
+fi
 exec "$APPDIR/usr/bin/buddy-ui" "$@"
 APPRUN
         chmod 755 "$appdir/AppRun"
-        ARCH=x86_64 appimagetool "$appdir" "$out/Buddy-$version-x86_64.AppImage"
+        artifact="$out/Buddy-$version-x86_64.AppImage"
+        rm -f "$artifact"
+        ARCH=x86_64 appimagetool "$appdir" "$artifact"
         ;;
     *)
         echo "usage: scripts/package.sh [tar|deb|rpm|arch|appimage]" >&2
         exit 2
         ;;
 esac
+[ -n "$artifact" ] || { echo "no artifact was produced" >&2; exit 1; }
+"$repo/scripts/verify-package.sh" "$artifact"
+"$repo/scripts/checksums.sh" "$out" >/dev/null
 echo "artifact written to $out"

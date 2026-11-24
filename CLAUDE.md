@@ -33,7 +33,7 @@ The invariants that matter most:
 
 ```sh
 cargo build --release
-cargo test                                    # 112 tests, under 30 s on the dev machine
+cargo test                                    # 118 tests, under 30 s on the dev machine
 cargo test -p buddy-core <test_name>          # one unit test
 cargo test -p buddy --test lifecycle          # daemon persistence/lifecycle integration test
 cargo fmt --check                             # rustfmt.toml: max_width 150 (currently reports pre-existing diffs)
@@ -44,9 +44,13 @@ scripts/install.sh                            # install for this user and start 
 scripts/install.sh --remove                   # stop and remove (keeps ~/.local/share/buddy)
 buddy-ui                                      # optional GTK4/libadwaita control panel
 python3 -m py_compile ui/buddy_ui.py          # check the panel
-buddy version | update check | update tools   # versions; network only on request
+buddy version | update check | update tools   # versions + git describe; network only on request
+buddy upgrade                                  # download/verify user-local artifact; no install
 buddy helpers | helper dry-run|run NAME       # owner-registered argv helpers; runs ask
-scripts/package.sh tar|deb|rpm|arch|appimage  # release artifacts
+scripts/package.sh tar|deb|rpm|arch|appimage  # verified release artifacts + SHA256SUMS
+scripts/verify-package.sh dist/release/FILE       # check the full installed payload
+scripts/checksums.sh dist/release                 # regenerate SHA256SUMS
+python3 scripts/sbom.py                           # CycloneDX SBOM from Cargo.lock
 buddy name "پشمک"                              # choose the name he answers to
 buddy call                                    # call him by that name
 ```

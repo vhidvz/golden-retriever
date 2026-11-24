@@ -1,10 +1,13 @@
-//! Version and update checks. Network access happens only when the user asks for it.
-//!
-//! Nothing here downloads or installs anything. A future guided upgrade can use the
-//! same verified release metadata, but the default remains: local-first, explicit check.
+//! Version, update and guided-download checks. Network access happens only when the user
+//! asks for it. `upgrade` downloads a user-local artifact and verifies its SHA-256; it
+//! never installs or overwrites anything, and it refuses system packages and checkouts.
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
+use std::fs::{self, File};
+use std::io::{Read, copy};
+use std::path::PathBuf;
 use std::time::Duration;
 
 pub const REPO: &str = "vhidvz/golden-retriever";
@@ -13,10 +16,25 @@ const OLLAMA_REPO: &str = "ollama/ollama";
 const USER_AGENT: &str = "buddy-update-check";
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct Asset {
+    pub name: String,
+    pub url: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Release {
     pub tag: String,
     pub name: String,
     pub url: String,
+    pub assets: Vec<Asset>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InstallMode {
+    System,
+    User,
+    Checkout,
+    Other,
 }
 
 fn agent(timeout: Duration) -> ureq::Agent {
@@ -25,6 +43,19 @@ fn agent(timeout: Duration) -> ureq::Agent {
 
 pub fn current_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
+}
+
+/// The git tag/commit recorded by the build script, or `unknown` outside a checkout.
+pub fn build_description() -> &'static str {
+    option_env!("BUDDY_GIT_DESCRIBE").unwrap_or("unknown")
+}
+
+pub fn format_version(version: &str, describe: &str) -> String {
+    if describe.is_empty() || describe == "unknown" { format!("buddy {version}") } else { format!("buddy {version} ({describe})") }
+}
+
+pub fn version_text() -> String {
+    format_version(current_version(), build_description())
 }
 
 fn tag_number(tag: &str) -> &str {
@@ -56,11 +87,48 @@ pub fn is_newer(current: &str, latest: &str) -> bool {
 
 pub fn parse_release(value: &Value) -> Result<Release> {
     let tag = value["tag_name"].as_str().context("the release has no tag")?.to_string();
+    let assets = value["assets"]
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| Some(Asset { name: item["name"].as_str()?.to_string(), url: item["browser_download_url"].as_str()?.to_string() }))
+                .collect()
+        })
+        .unwrap_or_default();
     Ok(Release {
         name: value["name"].as_str().unwrap_or(&tag).to_string(),
         url: value["html_url"].as_str().unwrap_or("https://github.com").to_string(),
         tag,
+        assets,
     })
+}
+
+pub fn release_asset<'a>(release: &'a Release, suffix: &str) -> Option<&'a Asset> {
+    release.assets.iter().find(|asset| asset.name.ends_with(suffix))
+}
+
+/// Reads one `sha256sum`-style line. A leading `*` (binary mode) is accepted.
+pub fn checksum_from_manifest<'a>(manifest: &'a str, name: &str) -> Option<&'a str> {
+    manifest.lines().find_map(|line| {
+        let mut parts = line.split_whitespace();
+        let checksum = parts.next()?;
+        let listed = parts.next()?.trim_start_matches('*');
+        (listed == name).then_some(checksum)
+    })
+}
+
+pub fn install_mode(exe: &std::path::Path) -> InstallMode {
+    let path = exe.to_string_lossy();
+    if path.starts_with("/usr/bin/") || path.starts_with("/usr/local/bin/") {
+        InstallMode::System
+    } else if path.contains("/.local/") {
+        InstallMode::User
+    } else if path.contains("/target/") {
+        InstallMode::Checkout
+    } else {
+        InstallMode::Other
+    }
 }
 
 pub fn latest(repo: &str) -> Result<Release> {
@@ -76,6 +144,103 @@ pub fn latest(repo: &str) -> Result<Release> {
 
 pub fn repository() -> String {
     std::env::var("BUDDY_UPDATE_REPO").unwrap_or_else(|_| REPO.to_string())
+}
+
+fn cache_dir() -> PathBuf {
+    let base = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache"));
+    base.join("buddy").join("updates")
+}
+
+fn fetch_text(asset: &Asset) -> Result<String> {
+    let mut response = agent(Duration::from_secs(20))
+        .get(&asset.url)
+        .header("User-Agent", USER_AGENT)
+        .call()
+        .with_context(|| format!("could not download {}", asset.name))?;
+    response.body_mut().read_to_string().with_context(|| format!("could not read {}", asset.name))
+}
+
+fn download_asset(asset: &Asset, path: &std::path::Path) -> Result<()> {
+    let mut response = agent(Duration::from_secs(120))
+        .get(&asset.url)
+        .header("User-Agent", USER_AGENT)
+        .call()
+        .with_context(|| format!("could not download {}", asset.name))?;
+    let mut file = File::create(path).with_context(|| format!("could not create {}", path.display()))?;
+    let mut reader = response.body_mut().as_reader();
+    copy(&mut reader, &mut file).with_context(|| format!("could not save {}", path.display()))?;
+    Ok(())
+}
+
+fn sha256_file(path: &std::path::Path) -> Result<String> {
+    let mut file = File::open(path).with_context(|| format!("could not open {}", path.display()))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer).with_context(|| format!("could not read {}", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// Download and verify the latest user-local artifact. This never installs it and never
+/// touches a system-package or checkout copy.
+pub fn upgrade() -> Result<String> {
+    let exe = std::env::current_exe().context("could not find the running buddy binary")?;
+    let mode = install_mode(&exe);
+    let repo = repository();
+    let release_page = format!("https://github.com/{repo}/releases");
+    match mode {
+        InstallMode::System => {
+            return Ok(format!(
+                "Buddy {} is installed at {}, by a system package manager.\nNothing was downloaded or checked. Update it with your package manager; releases are at {}\n",
+                version_text(),
+                exe.display(),
+                release_page
+            ));
+        }
+        InstallMode::Checkout => {
+            return Ok(format!("This is a development checkout.\nNothing was downloaded. Update it with git; releases are at {}\n", release_page));
+        }
+        InstallMode::Other => {
+            return Ok(format!(
+                "I cannot tell how this copy of Buddy was installed, so I did not download anything.\nReleases are at {}\n",
+                release_page
+            ));
+        }
+        InstallMode::User => {}
+    }
+    let release = latest(&repo)?;
+    if !is_newer(current_version(), &release.tag) {
+        return Ok(format!("Buddy {} is already the newest release I can see ({}).", version_text(), release.tag));
+    }
+
+    let asset = release_asset(&release, "linux-x86_64.tar.zst").with_context(|| format!("release {} has no portable Linux artifact", release.tag))?;
+    let manifest = release_asset(&release, "SHA256SUMS").with_context(|| format!("release {} has no SHA256SUMS", release.tag))?;
+    let checksums = fetch_text(manifest)?;
+    let expected = checksum_from_manifest(&checksums, &asset.name).with_context(|| format!("{} is not listed in SHA256SUMS", asset.name))?;
+    let dir = cache_dir();
+    fs::create_dir_all(&dir).with_context(|| format!("could not create {}", dir.display()))?;
+    let file_name =
+        std::path::Path::new(&asset.name).file_name().with_context(|| format!("the release has an invalid asset name: {}", asset.name))?;
+    let path = dir.join(file_name);
+    download_asset(asset, &path)?;
+    let actual = sha256_file(&path)?;
+    if actual != expected {
+        let _ = fs::remove_file(&path);
+        bail!("the downloaded artifact did not match SHA256SUMS; it was deleted");
+    }
+    Ok(format!(
+        "Downloaded {} and verified SHA-256 {}.\nNothing was installed.\n\nTo install this user-local copy, inspect the archive and then replace only Buddy's files:\n  tmp=$(mktemp -d)\n  tar -C \"$tmp\" -xf \"{}\"\n  install -d \"$HOME/.local/bin\" \"$HOME/.local/share/buddy\"\n  install -m 755 \"$tmp/usr/bin/buddy\" \"$tmp/usr/bin/buddy-ui\" \"$HOME/.local/bin/\"\n  for part in renderer perception tools ui; do rm -rf \"$HOME/.local/share/buddy/$part\"; cp -a \"$tmp/usr/share/buddy/$part\" \"$HOME/.local/share/buddy/\"; done\n  systemctl --user restart buddy.service 2>/dev/null || true\n  rm -rf \"$tmp\"\n",
+        asset.name,
+        actual,
+        path.display()
+    ))
 }
 
 pub fn check_buddy() -> Result<String> {
@@ -94,7 +259,11 @@ pub fn check_buddy() -> Result<String> {
         release.tag,
         release.name,
         release.url,
-        if newer { "A newer release is available. Download it from the release page; nothing was installed." } else { "This is the newest release I can see." }
+        if newer {
+            "A newer release is available. From a user-local install, run `buddy upgrade`; otherwise download it from the release page. Nothing was installed."
+        } else {
+            "This is the newest release I can see."
+        }
     ))
 }
 
@@ -174,5 +343,53 @@ mod tests {
         assert_eq!(release.tag, "v0.2.0");
         assert_eq!(release.name, "Buddy 0.2.0");
         assert!(parse_release(&json!({})).is_err());
+    }
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::*;
+
+    #[test]
+    fn version_reports_a_commit_when_one_is_known() {
+        assert_eq!(format_version("0.1.0", "v0.1.0-2-gabc123"), "buddy 0.1.0 (v0.1.0-2-gabc123)");
+        assert_eq!(format_version("0.1.0", "unknown"), "buddy 0.1.0");
+    }
+}
+
+#[cfg(test)]
+mod upgrade_tests {
+    use super::*;
+    use serde_json::json;
+    use std::path::Path;
+
+    #[test]
+    fn checksum_manifest_finds_the_named_artifact() {
+        let manifest = "abc123  buddy-0.1.0-linux-x86_64.tar.zst\ndef456 *SHA256SUMS\n";
+        assert_eq!(checksum_from_manifest(manifest, "buddy-0.1.0-linux-x86_64.tar.zst"), Some("abc123"));
+        assert_eq!(checksum_from_manifest(manifest, "missing.tar.zst"), None);
+    }
+
+    #[test]
+    fn system_and_checkout_installs_are_not_self_replaced() {
+        assert_eq!(install_mode(Path::new("/usr/bin/buddy")), InstallMode::System);
+        assert_eq!(install_mode(Path::new("/opt/buddy/bin/buddy")), InstallMode::Other);
+        assert_eq!(install_mode(Path::new("/home/u/.local/bin/buddy")), InstallMode::User);
+        assert_eq!(install_mode(Path::new("/home/u/golden-retriever/target/release/buddy")), InstallMode::Checkout);
+    }
+
+    #[test]
+    fn update_asset_is_chosen_by_suffix() {
+        let release = parse_release(&json!({
+            "tag_name": "v0.2.0",
+            "assets": [
+                {"name": "buddy-0.2.0-linux-x86_64.tar.zst", "browser_download_url": "https://example.test/buddy.tar.zst"},
+                {"name": "SHA256SUMS", "browser_download_url": "https://example.test/SHA256SUMS"}
+            ]
+        }))
+        .unwrap();
+        assert_eq!(release_asset(&release, "linux-x86_64.tar.zst").unwrap().name, "buddy-0.2.0-linux-x86_64.tar.zst");
+        assert_eq!(release_asset(&release, "SHA256SUMS").unwrap().name, "SHA256SUMS");
+        assert!(release_asset(&release, "windows.exe").is_none());
     }
 }

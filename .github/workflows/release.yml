@@ -1,33 +1,62 @@
 name: release
 
 on:
+  pull_request:
   push:
     tags: ['v*']
   workflow_dispatch:
 
+# Every job reads the repository. Only the publish job may write a release.
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
       - run: sudo apt-get update && sudo apt-get install -y desktop-file-utils
+      - name: Check that the tag names the crate version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          test "v$version" = "$GITHUB_REF_NAME" || {
+            echo "tag $GITHUB_REF_NAME does not match Cargo.toml version $version" >&2
+            exit 1
+          }
       - run: cargo test --all
-      - run: python3 -m py_compile ui/buddy_ui.py perception/*.py
-      - run: sh -n scripts/install.sh scripts/package.sh
+      - run: python3 -m py_compile ui/buddy_ui.py perception/*.py scripts/sbom.py
+      - run: sh -n scripts/install.sh scripts/package.sh scripts/checksums.sh scripts/verify-package.sh
       - run: desktop-file-validate dist/buddy-ui.desktop
+      - run: python3 scripts/sbom.py --out "$RUNNER_TEMP/buddy-sbom.cdx.json"
+      - run: python3 -m json.tool "$RUNNER_TEMP/buddy-sbom.cdx.json" >/dev/null
 
   tarball:
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+      - run: sudo apt-get update && sudo apt-get install -y zstd
       - run: scripts/package.sh tar
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: buddy-linux-tar
           path: dist/release/*
@@ -35,12 +64,18 @@ jobs:
   deb:
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: sudo apt-get update && sudo apt-get install -y dpkg-dev
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+      - run: sudo apt-get update && sudo apt-get install -y dpkg-dev zstd
       - run: scripts/package.sh deb
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: buddy-deb
           path: dist/release/*
@@ -48,12 +83,16 @@ jobs:
   rpm:
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     container: fedora:latest
     steps:
-      - uses: actions/checkout@v4
-      - run: dnf install -y cargo rust rpm-build git tar gzip findutils
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: dnf install -y cargo rust rpm-build cpio git tar gzip findutils zstd
       - run: scripts/package.sh rpm
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: buddy-rpm
           path: dist/release/*
@@ -61,16 +100,20 @@ jobs:
   arch:
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     container: archlinux:latest
     steps:
-      - uses: actions/checkout@v4
-      - run: pacman -Syu --noconfirm --needed base-devel rust cargo git tar gzip
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: pacman -Syu --noconfirm --needed base-devel rust cargo git tar gzip zstd
       - run: |
           useradd -m builder
           echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
       - run: chown -R builder:builder .
       - run: runuser -u builder -- scripts/package.sh arch
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: buddy-arch
           path: dist/release/*
@@ -78,16 +121,22 @@ jobs:
   appimage:
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
       - run: |
-          sudo apt-get update && sudo apt-get install -y librsvg2-bin
+          sudo apt-get update && sudo apt-get install -y librsvg2-bin zstd
           curl -L -o /tmp/appimagetool https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x /tmp/appimagetool
           sudo mv /tmp/appimagetool /usr/local/bin/appimagetool
       - run: scripts/package.sh appimage
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: buddy-appimage
           path: dist/release/*
@@ -96,12 +145,26 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     needs: [tarball, deb, rpm, arch, appimage]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: artifacts
           merge-multiple: true
-      - uses: softprops/action-gh-release@v2
+      - name: Add the SBOM and one checksum manifest
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          find artifacts -name SHA256SUMS -delete
+          python3 scripts/sbom.py --out "artifacts/buddy-$version-sbom.cdx.json"
+          python3 -m json.tool "artifacts/buddy-$version-sbom.cdx.json" >/dev/null
+          scripts/checksums.sh artifacts
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: artifacts/*
           generate_release_notes: true

@@ -1,9 +1,10 @@
 # Release engineering and updates
 
-**Status:** Linux foundation implemented 2026-11-23; Windows, signing and bundled-runtime
-policy remain open. The GitHub Actions workflow has not yet run in Actions, so the
-release pipeline is not yet proven end to end. This is not a claim that Phase 9 is fully
-complete.
+**Status:** Linux foundation implemented 2026-11-23 and hardened 2026-11-24 with
+relocatable package paths, SHA-256 manifests, a CycloneDX SBOM, package payload
+verification and commit-pinned Actions. Windows is explicitly unsupported for now;
+signing remains unsigned checksums, guided upgrade downloads/verifies but does not
+install, and the workflow has not yet run in Actions. This is not a claim that Phase 9 is fully complete.
 
 ## Goal
 
@@ -21,8 +22,8 @@ no background network polling, no silent self-update, no paid signing service as
 | Arch and other rolling distributions | `PKGBUILD` / `.pkg.tar.zst` | maintain a real package recipe, not only a tarball |
 | Portable Linux | AppImage | decide whether Godot/Ollama are bundled or fetched on first run |
 | Generic Linux | `.tar.zst` | checksummed fallback |
-| Windows | installer (MSI/EXE) | **blocked on a daemon port**: Unix sockets, systemd, GNOME extension and the managed Ollama service are Linux-specific today |
-| Release metadata | `SHA256SUMS`, release notes, SBOM, optional signature | artifacts and checksums attached to the GitHub Release |
+| Windows | — | **not built**: Unix sockets, systemd, GNOME extension and the managed Ollama service are Linux-specific. This release line explicitly does not ship Windows; a native port is a separate project. |
+| Release metadata | `SHA256SUMS`, release notes, SBOM, optional signature | `scripts/checksums.sh` and `scripts/sbom.py` generate the manifest and CycloneDX SBOM; signatures are not implemented yet |
 
 The current installer's model is user-local (`~/.local/bin`, `~/.local/share/buddy`, a
 systemd user unit). System packages must not silently take over that data; package
@@ -36,21 +37,30 @@ maintainer scripts need an explicit migration/coexistence policy.
   port exists). Each job runs `cargo test`, the UI/static checks documented in
   `docs/development.md`, builds the release profile, packages, and uploads artifacts.
 - Pin every action by commit SHA, grant least privilege, and keep signing credentials in
-  environment-protected secrets. Do not run untrusted PR code with write tokens.
+  environment-protected secrets. Do not run untrusted PR code with write tokens. The
+  current workflow pins every `uses:` reference and gives only the publish job
+  `contents: write`.
 - Use one reproducible packaging layer (for example `cargo-deb`/`nfpm`, `makepkg`,
   `appimagetool`, Inno Setup or WiX) and verify the installed payload in a clean
   container. A package that only contains the binary is not complete.
-- Decide whether the AppImage bundles the pinned Godot renderer and Ollama runtime or
-  fetches them on first run. The project already downloads Godot and Ollama at install
-  time; the package must preserve checksums and the "unavailable" states.
+- `scripts/verify-package.sh` extracts each format and checks the daemon, UI launcher,
+  renderer project, perception helpers, baker tools, systemd unit, desktop entry and
+  icon. `scripts/package.sh` runs it before writing an artifact.
+- The AppImage does **not** bundle the pinned Godot renderer or Ollama runtime; the
+  decision is recorded below. They are supplied separately on first run, preserving the
+  existing checksums and the "unavailable" states.
 
 ## Version and update checks
 
-- Embed the crate version and the git tag/commit in `buddy version` and the panel.
+- `buddy version` embeds the crate version and the git tag/commit (or `unknown` when
+  built from a source tarball without `.git`). The panel still shows its own UI version;
+  surfacing the daemon build string there remains open.
 - `buddy update check` (name open) queries the GitHub Releases API only when the user
   asks; it prints current/latest version and the release URL. No background polling.
-- `buddy upgrade` is guided: download the correct artifact, verify checksum and optional
-  signature, show the commands, and never overwrite a package-managed install.
+- `buddy upgrade` downloads the portable user-local artifact for a user-local install,
+  verifies it against the release's `SHA256SUMS`, and prints the manual replacement
+  commands. It never installs, never touches a system-package copy, and refuses a
+  development checkout. Signatures remain unimplemented.
 - Managed tools get their own checks: the pinned Godot version, the managed Ollama
   version, and installed model digests. Existing `buddy ai status`, `buddy ai doctor`
   and the runtime manifest are the starting point; add a `--check` path rather than
@@ -58,17 +68,25 @@ maintainer scripts need an explicit migration/coexistence policy.
 - Data compatibility: schema migrations and the daily database backup stay authoritative;
   an upgrade refuses to proceed if the data directory cannot be backed up.
 
-## Open decisions
+## Decisions taken (2026-11-24)
 
-1. Windows: a native port (Unix socket/IPC, services, no GNOME extension, Windows audio
-   and camera) or an explicitly unsupported target. A Windows installer alone cannot make
-   the current daemon work.
-2. AppImage: bundle Godot/Ollama, fetch them on first run, or make them optional peers.
-3. Signing: unsigned checksums first, or a free/open signing arrangement; do not assume a
-   paid certificate.
-4. Arch: AUR recipe maintained by the project, an official repository, or both.
-5. Update channels: stable only, or opt-in beta; no telemetry.
-6. Package ownership of `~/.local/share/buddy` versus a system data directory.
+1. **Windows is explicitly unsupported for this release line.** A Windows installer
+   cannot make the Unix-socket/systemd/GNOME daemon work; a native port is a separate
+   project, not a packaging task. No MSI/EXE is produced.
+2. **AppImage does not bundle Godot or Ollama.** It carries the daemon, UI, renderer
+   project, helpers and tools; the managed runtimes are fetched/installed on first run
+   through the existing installer or supplied with `BUDDY_GODOT`. This keeps the
+   AppImage small and the managed-runtime checksum policy in one place.
+3. **Signing starts with unsigned SHA-256 manifests.** No paid certificate or signing
+   service is assumed. A detached signature can be added later without changing the
+   artifact layout.
+4. **Arch uses the project-generated PKGBUILD** with a real source checksum. AUR
+   maintenance and an official repository are future distribution work, not done here.
+5. **Stable channel only; no telemetry and no self-update.** Update commands are explicit
+   and report; they do not install.
+6. **System packages install under `/usr`; user data stays in `~/.local/share/buddy`.**
+   Package manager files and the user-local installer must not overwrite each other.
+   There is no automatic data migration.
 
 ## Why this is a separate phase
 
@@ -78,20 +96,29 @@ The project rule is still: spike results, written plan, explicit approval, then
 implementation. This record is the durable input to that plan.
 
 
-## Current implementation (2026-11-23)
+## Current implementation (2026-11-24)
 
 - `scripts/package.sh tar|deb|rpm|arch|appimage` stages the release binary, renderer
   project, perception helpers, control panel, systemd user unit, desktop entry, icon and
-  docs, then produces the requested artifact. The portable tar build was run locally.
-- `.github/workflows/release.yml` runs the test suite and the five Linux packaging jobs
-  on a `v*` tag or manual dispatch, uploads artifacts, and publishes them to the GitHub
-  Release when the trigger is a tag.
-- `buddy version`, `buddy update check` (GitHub latest release) and `buddy update tools`
-  (managed Godot/Ollama vs GitHub releases) exist. They only contact the network when
-  invoked and never install or update anything.
-- Still blocked/open: Windows (daemon port required), signing, checksum manifest/SBOM,
-  AppImage Godot/Ollama bundling policy, and an actual Actions run. The workflow uses
-  versioned actions; pin them to commit SHAs before treating the supply chain as hardened.
+  docs, then produces the requested artifact. It verifies the payload with
+  `scripts/verify-package.sh` and writes a `SHA256SUMS` beside it. The portable tar and
+  Arch packages were built and verified locally on 2026-11-24.
+- The installed binary now finds `/usr/share/buddy/renderer` and
+  `/usr/share/buddy/perception` from `/usr/bin/buddy`; the `buddy-ui` launcher uses a
+  path relative to itself, so the same wrapper works in `/usr` and in an AppImage.
+  `scripts/verify-package.sh` checks the full payload, including the renderer project,
+  helper scripts and baker tools.
+- `.github/workflows/release.yml` runs tests and the five Linux packaging jobs on a `v*`
+  tag or manual dispatch. Every action is pinned by commit SHA, the default token is
+  read-only, and only the publish job receives `contents: write`. The publish job
+  regenerates a single `SHA256SUMS`, generates a CycloneDX SBOM with
+  `scripts/sbom.py`, and uploads both to the GitHub Release.
+- `buddy version` now includes the git tag/commit from `crates/buddy/build.rs`.
+  `buddy update check` and `buddy update tools` still only report.
+- Still open: an actual Actions run (the workflow is unproven end to end), signing,
+  AppImage's first-run managed-runtime UX, and the Windows native port if it is ever
+  undertaken. `buddy upgrade` is download/verify only; there is no self-install. The workflow now uses pinned actions, but a
+  real tagged run is still required before calling the pipeline proven.
 - The existing installer remains the supported way to install Godot/Ollama and the
   systemd user service on Linux; packages include the daemon/UI but not those managed
   runtimes.

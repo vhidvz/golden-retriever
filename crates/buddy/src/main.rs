@@ -26,6 +26,7 @@ Usage:
   buddy version                  show the installed Buddy version
   buddy update check             ask GitHub for the latest release (no install)
   buddy update tools             check the managed Godot/Ollama versions
+  buddy upgrade                  download and verify the latest user-local artifact (no install)
   buddy status [--json]          how he is, what is running, what is being observed
   buddy hide [MINUTES]           hide him, for a while or until `buddy show`
   buddy show                     bring him back
@@ -97,6 +98,7 @@ fn main() -> Result<()> {
         (Some("version"), _) | (Some("--version"), _) => return client::version(),
         (Some("update"), Some("check")) => return client::update_check(),
         (Some("update"), Some("tools")) => return client::update_tools(),
+        (Some("upgrade"), _) => return client::upgrade(),
         (Some("status"), flag) => return client::status(flag == Some("--json")),
         (Some("hide"), minutes) => ("hide", json!({ "minutes": minutes.and_then(|m| m.parse::<f64>().ok()) })),
         (Some("show"), _) => ("show", Value::Null),

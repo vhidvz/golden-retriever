@@ -246,21 +246,39 @@ implementation. The evidence, options and recommendation are in
   is not used for a user's camera.
 
 
-## Release engineering and updates (requirements, 2026-11-23)
+## Release engineering and updates (Phase 9 started 2026-11-24)
 
-- **Phase 9 is recorded, not approved.** The owner asked for a release phase covering
-  GitHub Actions artifacts (AppImage, DEB, RPM, Arch package, Windows after a daemon
-  port) and opt-in version/update checks for Buddy and its managed tools. The full
-  requirements, blockers and open decisions are in `docs/release-direction.md`.
-- **Local-first still applies.** Update checks run only on request; there is no
-  background poll, silent self-update or model auto-update. Checksums and signatures are
-  verified; package-managed and user-local installs must not overwrite each other.
-- **Linux foundation implemented 2026-11-23.** `scripts/package.sh` builds tar, DEB, RPM,
-  Arch and AppImage; `.github/workflows/release.yml` runs tests and packages on a tag or
-  manually; `buddy version`, `buddy update check` and `buddy update tools` exist.
-  Windows remains blocked by the daemon port, signing and bundled-runtime policy are open,
-  and the workflow has not yet been run in GitHub Actions. This does not approve silent
-  self-update.
+- **Phase 9 is approved to start; it is not complete.** The Linux foundation from
+  2026-11-23 is hardened: packages find their assets under `/usr/share/buddy`, the UI
+  launcher is relocatable, `scripts/verify-package.sh` checks the complete payload,
+  `scripts/checksums.sh` writes SHA-256 manifests, `scripts/sbom.py` writes a CycloneDX
+  1.5 SBOM, and every GitHub Action is pinned by commit SHA with a read-only default
+  token. Tar and Arch packages were built and verified locally.
+- **Windows is explicitly unsupported for this release line.** Unix sockets, systemd,
+  the GNOME/KDE bridges and the managed Ollama service are Linux-specific. An MSI/EXE
+  cannot make the current daemon work; a native port is a separate project.
+- **AppImage does not bundle managed runtimes.** It carries the daemon, UI, renderer
+  project, helpers and tools, but not Godot or Ollama. The existing installer or
+  `BUDDY_GODOT` supplies those on first run; checksums and the unavailable state stay
+  authoritative.
+- **Signing starts unsigned.** `SHA256SUMS` is generated and attached; no paid
+  certificate or signing service is assumed. A detached signature can be added later.
+- **Arch is a project-generated PKGBUILD with a real source checksum**, not an AUR or
+  official-repository package yet.
+- **Stable channel only.** No telemetry, background polling, silent self-update or model
+  auto-update. `buddy update check`/`update tools` report only. `buddy upgrade`
+  downloads a user-local artifact, verifies it against the release's `SHA256SUMS`, and
+  prints manual replacement commands; it refuses system packages and checkouts and never
+  installs or overwrites anything itself. Signatures remain unimplemented.
+- **Package ownership is split by design.** System packages own `/usr`; user data stays
+  in `~/.local/share/buddy`. Package-managed and user-local installs must not overwrite
+  each other, and no automatic data migration is attempted.
+- **Build identity is embedded.** `crates/buddy/build.rs` records the git
+  tag/commit/dirty state (`unknown` outside a checkout); `buddy version` prints it.
+- **Still open:** an actual Actions run proves the workflow end to end; signatures,
+  AppImage first-run UX and any Windows port remain. Guided upgrade exists as
+  download/verify only. Do not call Phase 9 complete before a tagged run and the
+  remaining decisions are verified.
 
 
 ## Context and companionship (pointer/click foundation, 2026-11-23)

@@ -43,7 +43,7 @@ pub fn run(name: &str, args: Value) -> Result<()> {
 }
 
 pub fn version() -> Result<()> {
-    println!("buddy {}", crate::update::current_version());
+    println!("{}", crate::update::version_text());
     Ok(())
 }
 
@@ -54,6 +54,11 @@ pub fn update_check() -> Result<()> {
 
 pub fn update_tools() -> Result<()> {
     println!("{}", crate::update::check_tools()?);
+    Ok(())
+}
+
+pub fn upgrade() -> Result<()> {
+    println!("{}", crate::update::upgrade()?);
     Ok(())
 }
 

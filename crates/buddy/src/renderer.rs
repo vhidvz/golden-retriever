@@ -26,14 +26,29 @@ pub fn find_godot() -> Option<PathBuf> {
     std::env::split_paths(&path).flat_map(|dir| ["godot", "godot4"].map(|name| dir.join(name))).find(|p| p.is_file())
 }
 
+/// Where the renderer project may live, in precedence order. A checkout has
+/// `target/<profile>/buddy` and the project at the repository root; a system package has
+/// `/usr/bin/buddy` and `/usr/share/buddy/renderer`; a user-local install keeps it in the
+/// data directory.
+fn project_candidates(exe: Option<&Path>) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(exe) = exe {
+        for ancestor in exe.ancestors() {
+            candidates.push(ancestor.join("renderer"));
+            candidates.push(ancestor.join("share/buddy/renderer"));
+        }
+    }
+    candidates.push(paths::data_dir().join("renderer"));
+    candidates
+}
+
 pub fn find_project() -> Option<PathBuf> {
     let is_project = |dir: &Path| dir.join("project.godot").is_file();
     if let Some(dir) = std::env::var_os("BUDDY_RENDERER_DIR").map(PathBuf::from) {
         return is_project(&dir).then_some(dir);
     }
-    // Running from a checkout: target/<profile>/buddy sits two levels below the repository root.
-    let exe = std::env::current_exe().ok()?;
-    exe.ancestors().map(|a| a.join("renderer")).chain([paths::data_dir().join("renderer")]).find(|dir| is_project(dir))
+    let exe = std::env::current_exe().ok();
+    project_candidates(exe.as_deref()).into_iter().find(|dir| is_project(dir))
 }
 
 impl Renderer {
@@ -120,5 +135,18 @@ impl Renderer {
             let _ = child.kill();
             let _ = child.wait();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn packaged_prefix_and_checkout_are_searched_for_the_project() {
+        let prefix = project_candidates(Some(Path::new("/usr/bin/buddy")));
+        assert!(prefix.contains(&PathBuf::from("/usr/share/buddy/renderer")), "a packaged binary must find /usr/share/buddy/renderer");
+        let checkout = project_candidates(Some(Path::new("/work/golden-retriever/target/release/buddy")));
+        assert!(checkout.contains(&PathBuf::from("/work/golden-retriever/renderer")), "a checkout must still find its renderer");
     }
 }

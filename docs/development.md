@@ -94,7 +94,7 @@ Create the directory when needed; it is not part of the repository.
 
 ## Testing and runtime traps
 
-- `cargo test` currently runs 112 tests in under 30 seconds. Unit tests sit beside their
+- `cargo test` currently runs 118 tests in under 30 seconds. Unit tests sit beside their
   modules; the daemon lifecycle test is `crates/buddy/tests/lifecycle.rs`.
 - **Wall-clock time:** tests must not depend on the hour. The lifecycle sandbox sets
   `BUDDY_HOUR=12` because a sleeping dog answers differently; a test that passes at noon
@@ -190,11 +190,18 @@ Create the directory when needed; it is not part of the repository.
 
 - **Release artifacts:** `scripts/package.sh FORMAT` builds tar/deb/rpm/arch/AppImage
   from the release binary, the renderer project, perception helpers, UI, systemd user
-  unit and desktop/icon files. `.github/workflows/release.yml` runs the tests and package
-  jobs on a `v*` tag or manually, then uploads artifacts to the GitHub Release. Windows
-  is not built yet because the daemon is Unix-specific. `buddy version`,
+  unit and desktop/icon files. It runs `scripts/verify-package.sh` and writes a
+  `SHA256SUMS` before returning. `scripts/checksums.sh DIR` regenerates the manifest and
+  `scripts/sbom.py` writes a CycloneDX SBOM from `Cargo.lock`. The release workflow pins
+  every action by commit SHA, gives only the publish job `contents: write`, verifies
+  each package, and attaches one checksum manifest plus the SBOM. It has not yet run in
+  Actions, so treat it as unproven until a tagged run passes. Windows is not built
+  because the daemon is Unix-specific; this release line explicitly does not support it.
+  `buddy version` includes the git describe string from `crates/buddy/build.rs`;
   `buddy update check` and `buddy update tools` are network-only-on-request checks; no
-  updater or installer runs automatically.
+  updater or installer runs automatically. `buddy upgrade` downloads a user-local
+  artifact and verifies it against `SHA256SUMS`, then prints manual replacement commands;
+  it refuses system packages and checkouts and never installs.
 
 - **Helpers:** manifests live in `$BUDDY_DATA_DIR/helpers/*.json`; `crates/buddy/src/helpers.rs`
   resolves argv arrays, placeholders, approved cwd and timeouts. `run_helper` is a

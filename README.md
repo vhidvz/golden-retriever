@@ -57,9 +57,10 @@ skills and workflows, read the journal and change his settings. Closing the wind
 not stop him. If the daemon is not running, the panel says so and offers to start him or retry.
 
 ```sh
-buddy version           # installed Buddy version
+buddy version           # installed Buddy version and git tag/commit
 buddy update check      # ask GitHub for the latest release; nothing is installed
 buddy update tools      # compare managed Godot/Ollama versions with their releases
+buddy upgrade           # download/verify a user-local artifact; never self-installs
 buddy status            # how he is, what is running, what is being observed
 buddy hide [MINUTES]    # stops the renderer entirely; `buddy show` brings him back
 buddy why               # what he is doing, why, how he feels, what else he considered
@@ -440,6 +441,11 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
   still have the system sense.
 - The managed Ollama runtime is Linux/systemd only. The model catalogue marks
   unevaluated models; only `gemma4:e4b` has measurements from this project.
+- Release artifacts are verified locally for the portable tar and Arch package; DEB,
+  RPM and AppImage depend on external packaging tools and the GitHub Actions workflow
+  has not yet run, so the full release matrix is not proven. Windows is explicitly
+  unsupported for this release line. `buddy upgrade` downloads and checksum-verifies a
+  user-local artifact but never installs it; system packages and checkouts are refused.
 - Looking at the screen is on request only (`buddy look`), sees the whole monitor
   at reduced size, and has no OCR, so small text is beyond it.
 - The camera sense itself detects presence only (64×48 greyscale motion) and never sends
@@ -497,11 +503,16 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
    non-commercial dependencies; photo-puppet and diffusion experiments remain optional
    future research, not adopted. The current sprite bake stays. See
    `docs/realism-direction.md`, `docs/decisions.md` and `spikes/realism/RESULTS.md`.
-9. Release engineering and updates — Linux foundation implemented 2026-11-23. GitHub
-   Actions on release tags now builds tar, DEB, RPM, Arch and AppImage artifacts, and
-   `buddy version`, `buddy update check` and `buddy update tools` report and compare
-   versions without installing anything. A Windows installer still needs a daemon port;
-   signing and AppImage/Godot bundling remain open. See `docs/release-direction.md`.
+9. Release engineering and updates — **Phase 9 started 2026-11-24; Linux foundation
+   hardened, not complete.** GitHub Actions builds tar, DEB, RPM, Arch and AppImage
+   artifacts with commit-pinned actions; packages are payload-verified, shipped with a
+   `SHA256SUMS` manifest and a CycloneDX SBOM, and `buddy version` includes the git
+   tag/commit. The AppImage carries Buddy's own files but not Godot or Ollama; those are
+   supplied separately on first run. Signing remains unsigned checksums. Windows is explicitly unsupported for this
+   release line because the daemon still depends on Unix sockets, systemd and the Linux
+   desktop bridges. `buddy upgrade` now downloads and verifies a user-local artifact but
+   does not install it. An actual tagged Actions run remains open. See
+   `docs/release-direction.md`.
 10. Context and companionship — pointer/click foundation implemented 2026-11-23. The
    Shell sense now reports a click by button, application and coarse screen region, with
    no content or click history; semantic text changes in accessible controls (not raw

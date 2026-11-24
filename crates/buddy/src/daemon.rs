@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -173,12 +173,26 @@ fn now() -> f64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64())
 }
 
-/// Where the perception helpers live: next to a checkout's binary, or installed with his data.
+/// Where the perception helpers live: next to a checkout's binary, in a system package's
+/// `/usr/share/buddy`, or installed with his data.
+fn perception_candidates(exe: Option<&Path>) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(dir) = std::env::var_os("BUDDY_PERCEPTION_DIR").map(PathBuf::from) {
+        candidates.push(dir);
+    }
+    if let Some(exe) = exe {
+        for ancestor in exe.ancestors() {
+            candidates.push(ancestor.join("share/buddy/perception"));
+            candidates.push(ancestor.join("perception"));
+        }
+    }
+    candidates.push(paths::data_dir().join("perception"));
+    candidates
+}
+
 fn perception_helper(name: &str) -> Option<PathBuf> {
-    let from_env = std::env::var_os("BUDDY_PERCEPTION_DIR").map(PathBuf::from);
     let exe = std::env::current_exe().ok();
-    let near_exe = exe.iter().flat_map(|e| e.ancestors()).map(|a| a.join("perception"));
-    from_env.into_iter().chain(near_exe).chain([paths::data_dir().join("perception")]).map(|dir| dir.join(name)).find(|p| p.is_file())
+    perception_candidates(exe.as_deref()).into_iter().map(|dir| dir.join(name)).find(|p| p.is_file())
 }
 
 /// One look, start to finish: get an image, ask the local model what it shows, and
@@ -1499,4 +1513,16 @@ pub fn run(no_renderer: bool) -> Result<()> {
     daemon.persist(end)?;
     let _ = fs::remove_file(paths::socket_path());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn packaged_perception_helpers_are_found_under_usr_share() {
+        let candidates = perception_candidates(Some(Path::new("/usr/bin/buddy")));
+        assert!(candidates.contains(&PathBuf::from("/usr/share/buddy/perception")));
+    }
 }
