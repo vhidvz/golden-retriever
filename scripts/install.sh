@@ -379,8 +379,8 @@ remove_kde_sense() {
 
 install_ui() {
     command -v python3 >/dev/null 2>&1 || { warn "python3 is missing; the control panel was not installed"; return 0; }
-    if ! python3 -c 'import gi; gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1")' >/dev/null 2>&1; then
-        warn "the control panel needs python-gobject, GTK 4 and libadwaita; it may not start"
+    if ! python3 -c 'import gi; gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1"); import cairo' >/dev/null 2>&1; then
+        warn "the control panel needs python-gobject, python-cairo, GTK 4 and libadwaita; it may not start"
     fi
     rm -rf "$share/ui"
     mkdir -p "$share/ui"

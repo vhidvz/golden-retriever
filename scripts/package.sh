@@ -91,7 +91,7 @@ Section: misc
 Priority: optional
 Architecture: amd64
 Maintainer: Buddy project <noreply@example.invalid>
-Depends: python3, python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1, systemd
+Depends: python3, python3-gi, python3-cairo, gir1.2-gtk-4.0, gir1.2-adw-1, systemd
 Description: Buddy, a Golden Retriever who lives on your desktop
  Buddy is a local-first desktop dog: a daemon simulates his life, a Godot
  renderer draws him, and an optional local model helps him understand language.
@@ -113,7 +113,7 @@ Release: 1%{?dist}
 Summary: Buddy, a Golden Retriever who lives on your desktop
 License: MIT
 Source0: buddy-$version.tar.gz
-Requires: python3 python3-gobject gtk4 libadwaita systemd
+Requires: python3 python3-gobject python3-cairo gtk4 libadwaita systemd
 %description
 Buddy is a local-first desktop dog: a daemon simulates his life, a Godot renderer draws him, and an optional local model helps him understand language.
 %prep
@@ -156,7 +156,7 @@ pkgdesc='Buddy, a Golden Retriever who lives on your desktop'
 arch=('x86_64')
 license=('MIT')
 options=('!debug')
-depends=('python' 'python-gobject' 'gtk4' 'libadwaita' 'systemd')
+depends=('python' 'python-gobject' 'python-cairo' 'gtk4' 'libadwaita' 'systemd')
 source=("buddy-$version.tar.gz")
 sha256sums=('$source_sum')
 package() {
