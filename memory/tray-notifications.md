@@ -17,8 +17,8 @@ daemon.
   information-only and auto-closes. Quiet mode records the message but does not pop the
   panel open.
 - **Actions:** every button is a normal daemon command. `feed`, `water`, `pet`,
-  `approve`/`deny`, and the new `play` command. `play` makes him bow, lowers boredom
-  and lifts mood.
+  `sleep`, `approve`/`deny`, and the new `play` command. `play` makes him bow, lowers
+  boredom and lifts mood.
 - **Presentation:** cards in a warm, opaque panel with a per-notice action row,
   dismiss/clear, a small Buddy avatar and status line. Interactive notices remain in
   the panel until answered/dismissed; the panel auto-hides after twelve seconds when the
@@ -28,9 +28,8 @@ daemon.
 - **Host requirement:** GNOME needs the AppIndicator/KStatusNotifierItem extension
   (enabled on the development machine); KDE provides the host natively. On hosts with
   no SNI watcher the app retries registration. The icon is not a floating window.
-  GNOME's extension uses single-click-for-menu/double-click-for-activate, so the tray
-  also exports a small standard DBusMenu ("Open Buddy messages", Quiet, Privacy, Quit);
-  KDE activates directly according to its own tray settings.
+  GNOME's extension uses single-click-for-menu/double-click-for-activate; KDE activates
+  directly according to its own tray settings.
 - **Install:** `scripts/install.sh` installs `buddy-tray`, its user service and the UI
   files; `--no-tray` opts out. Packaging includes the launcher and unit; a system
   package user enables `buddy-tray.service` explicitly. The AppImage starts the tray

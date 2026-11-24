@@ -224,6 +224,7 @@ class PanelWindow(Gtk.Window):
         self._anchor = (0, 0)
         self._fade_source = None
         self._ever_active = False
+        self._open = False
 
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         outer.set_vexpand(True)
@@ -331,11 +332,11 @@ class PanelWindow(Gtk.Window):
     def _on_active(self, *_):
         if self.is_active():
             self._ever_active = True
-        elif self._ever_active and self.get_visible():
+        elif self._ever_active and self.is_open():
             GLib.timeout_add(120, self._hide_if_inactive)
 
     def _hide_if_inactive(self) -> bool:
-        if self.get_visible() and not self.is_active():
+        if self.is_open() and not self.is_active():
             self.hide_panel()
         return False
 
@@ -345,16 +346,24 @@ class PanelWindow(Gtk.Window):
             return True
         return False
 
+    def is_open(self) -> bool:
+        return self._open
+
     def show_at(self, x: int, y: int):
         self._anchor = (int(x), int(y))
-        self.present()
+        self._open = True
+        if self.get_visible():
+            self.set_visible(True)
+            self.present()
+        else:
+            self.present()
         self.grab_focus()
         self._place()
         self.set_opacity(0.0)
         steps = [0.15, 0.35, 0.6, 0.82, 1.0]
 
         def fade(index=0):
-            if not self.get_visible():
+            if not self._open:
                 return False
             self.set_opacity(steps[index])
             if index + 1 < len(steps):
@@ -368,8 +377,33 @@ class PanelWindow(Gtk.Window):
         fade()
 
     def hide_panel(self):
+        # Keep the window mapped (moved off-screen) rather than unmapping the only
+        # Gtk.Application window: unmapping it lets the application exit after a
+        # short idle period even though the SNI itself has no window.
+        self._open = False
         self.set_opacity(0.0)
-        self.set_visible(False)
+        self._move_offscreen()
+
+    def _move_offscreen(self):
+        try:
+            surface = self.get_surface()
+            if isinstance(surface, GdkX11.X11Surface):
+                self._x11_move(surface.get_xid(), -10000, -10000)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _x11_move(xid: int, x: int, y: int):
+        try:
+            from Xlib import display
+        except Exception:
+            return
+        try:
+            xd = display.Display()
+            xd.create_resource_object("window", xid).configure(x=x, y=y)
+            xd.flush()
+        except Exception:
+            pass
 
     def _place(self):
         try:
@@ -817,7 +851,7 @@ class TrayApp(Gtk.Application):
         return False
 
     def _auto_hide_panel(self) -> bool:
-        if self.panel and self.panel.get_visible() and not self.panel._hover:
+        if self.panel and self.panel.is_open() and not self.panel._hover:
             self.panel.hide_panel()
         return False
 
@@ -846,7 +880,7 @@ class TrayApp(Gtk.Application):
         self.panel.show_at(x, y)
 
     def toggle_panel(self, x: int = 0, y: int = 0):
-        if self.panel and self.panel.get_visible():
+        if self.panel and self.panel.is_open():
             self.panel.hide_panel()
         else:
             self.open_panel(x, y)
@@ -903,7 +937,7 @@ class TrayApp(Gtk.Application):
         self.model.add(notice)
         if self.panel:
             self.panel.refresh()
-            if not self.panel.get_visible():
+            if not self.panel.is_open():
                 self.open_panel(*self._last_xy)
         if self.sni:
             self.sni.update()
