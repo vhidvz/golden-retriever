@@ -50,7 +50,22 @@ for part in ui perception renderer tools shell-extension kde; do
     find "$stage/usr/share/buddy/$part" -type d -name __pycache__ -prune -exec rm -rf {} +
 done
 cp "$repo/README.md" "$repo/LICENSE" "$stage/usr/share/doc/buddy/"
-install -m 644 "$repo/dist/buddy-tray.service" "$stage/usr/lib/systemd/user/buddy-tray.service"
+# The user-local unit points at ~/.local/bin; a system package must use /usr/bin.
+cat > "$stage/usr/lib/systemd/user/buddy-tray.service" <<'UNIT'
+[Unit]
+Description=Buddy tray icon and custom notifications
+PartOf=graphical-session.target
+After=graphical-session.target buddy.service
+
+[Service]
+ExecStart=/usr/bin/buddy-tray
+Restart=on-failure
+RestartSec=3
+EnvironmentFile=-%h/.config/buddy/env
+
+[Install]
+WantedBy=graphical-session.target
+UNIT
 cp "$repo/ui/buddy.svg" "$stage/usr/share/icons/hicolor/scalable/apps/buddy.svg"
 sed 's|@BUDDY_UI@|/usr/bin/buddy-ui|g' "$repo/dist/buddy-ui.desktop" > "$stage/usr/share/applications/buddy.desktop"
 cat > "$stage/usr/lib/systemd/user/buddy.service" <<'UNIT'
