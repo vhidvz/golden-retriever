@@ -326,3 +326,15 @@ implementation. The evidence, options and recommendation are in
   while the sense is on. The bridge was tested with `gdbus` Focus calls both off and on.
 - **Still open for Phase 6:** KDE native click runtime verification and the remaining
   fur/model craft (surface detail, coat response, puppy-specific polish).
+
+
+## Phase 8 realism baseline (started 2026-11-24)
+
+- **The first Phase 8 step is a measured spike, not a photoreal rewrite.** The current
+  offline bake costs about 72 s per stand frame at 150k strands/24 samples on the CPU
+  path (28–33 s at 60k/12). The committed stills in `spikes/realism/` show the quality
+  ceiling: better than the live body, still visibly CG at the edges/head/paws.
+- **No photoreal claim.** Blind A/B against real Goldens, head close-ups at 800 px,
+  500k/1M-strand and 32/64-sample runs, GPU/VRAM and motion/foot-slide measurements remain.
+  The recommendation is still option A (upgrade the bake), not neural/splat avatars;
+  this is a baseline, not approval of the full phase.

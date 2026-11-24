@@ -489,11 +489,13 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
    sandbox, timeout, approved cwd and verification, and always ask first. Synthetic
    mouse/keyboard input was deliberately not adopted after the portal/security research.
    See [`docs/helpers.md`](docs/helpers.md) and `docs/automation-direction.md`.
-8. Photoreal body and motion — researched 2026-11-23, not yet approved. The
-   recommendation is to keep the offline sprite bake and raise its body, coat, light
-   and motion quality, with real dog mocap as an optional separate download.
-   Splat-based neural avatars need 24-48 GB of VRAM and non-commercial models, so they
-   are not a path on this machine. See `docs/realism-direction.md`.
+8. Photoreal body and motion — spike started 2026-11-24. The current bake costs
+   **72.2 s per stand frame** at 150k strands/24 samples on this CPU path; a quick
+   60k/12 baseline is 28–33 s per frame. The pictures are better than the live body but
+   still clearly CG; a blind A/B, head close-up, 500k/1M strands and GPU/VRAM measurements
+   remain. The recommendation is still to upgrade the offline bake, not a neural/splat
+   avatar (24–48 GB VRAM and non-commercial dependencies). See
+   `docs/realism-direction.md` and `spikes/realism/RESULTS.md`.
 9. Release engineering and updates — Linux foundation implemented 2026-11-23. GitHub
    Actions on release tags now builds tar, DEB, RPM, Arch and AppImage artifacts, and
    `buddy version`, `buddy update check` and `buddy update tools` report and compare

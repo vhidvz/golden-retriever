@@ -1,9 +1,10 @@
 # Body realism direction: a Golden Retriever that passes for a photograph
 
-**Status:** research record, 2026-11-23. This is not an approved decision and no
-implementation has begun. The owner asked for the research to be kept as part of
-Buddy's completion roadmap; the choice between the options below, and the target
-on-screen size, are still open. Binding decisions live in `docs/decisions.md`.
+**Status:** research record (2026-11-23) plus a measured stills baseline
+(2026-11-24). This is not an approved photoreal implementation. The owner asked for the
+research to be kept as part of Buddy's completion roadmap; the choice between the options
+below, and the target on-screen size, are still open. The baseline is in
+`spikes/realism/RESULTS.md`.
 
 ## The question
 
@@ -289,3 +290,16 @@ Project files this record relies on:
 - `docs/development.md` — the hardware baseline, the 10 seconds per frame and the
   away-only bake rule.
 - `docs/decisions.md` — decisions 1, 5 and 6, which bound this direction.
+
+
+## Measured baseline (2026-11-24)
+
+The first stills spike exported stand/sit/walk, trimmed one frame per clip and baked at
+the exact 420 px window. It measured **28–33 s per frame** at 60k strands/12 samples and
+**72.2 s** at 150k/24. Extrapolated naively, the production setting is about 34 hours per
+growth stage and roughly 12.75 days for all nine stages on this CPU path. The 150k frame
+is better than the 60k one but still visibly CG, especially the head, paws and coat edges.
+The committed evidence and the reproducible harness are under `spikes/realism/`.
+
+This does not decide the photoreal option. It establishes the cost/quality starting point
+and the next measurements needed before any implementation plan.
