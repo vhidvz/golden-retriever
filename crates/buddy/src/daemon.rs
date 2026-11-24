@@ -1066,6 +1066,7 @@ impl Daemon {
             "praise" => Command::Praise,
             "feed" => Command::Feed,
             "water" => Command::Water,
+            "play" => Command::Play,
             "quiet" => Command::Quiet(args["on"].as_bool().context("quiet needs {\"on\": true|false}")?),
             "drag" => Command::DragTo { x_frac: args["x_frac"].as_f64().context("drag needs x_frac")? },
             "drag_end" => Command::DragEnd,

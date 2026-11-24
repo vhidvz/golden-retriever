@@ -31,8 +31,8 @@ Usage:
   buddy hide [MINUTES]           hide him, for a while or until `buddy show`
   buddy show                     bring him back
   buddy sleep | wake             send him to sleep / wake him
-  buddy feed | water | praise | treat
-                                 put food out, put water out, tell him he is good, give a treat
+  buddy feed | water | praise | treat | play
+                                 put food out, put water out, tell him he is good, give a treat, offer a game
   buddy say 'WORDS'              say something to him, in English or Persian
   buddy teach 'WORD' TRICK       tell him outright what a new word means
   buddy knows                    the words he knows and how well
@@ -109,7 +109,7 @@ fn main() -> Result<()> {
         (Some("look"), Some("--file")) => return client::look(arg(2), false),
         (Some("look"), _) => return client::look(None, false),
         (Some("sense"), Some(source)) if matches!(arg(2), Some("on" | "off")) => ("sense", json!({ "source": source, "on": arg(2) == Some("on") })),
-        (Some(simple @ ("feed" | "water" | "praise" | "treat")), _) => (simple, Value::Null),
+        (Some(simple @ ("feed" | "water" | "praise" | "treat" | "play")), _) => (simple, Value::Null),
         (Some("say"), Some(_)) => return client::say(&args[1..].join(" ")),
         (Some("name"), Some(name)) => return client::set_name(name),
         (Some("call"), _) => return client::call_name(),

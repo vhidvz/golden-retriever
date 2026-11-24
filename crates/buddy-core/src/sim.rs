@@ -47,6 +47,7 @@ pub enum Command {
     Praise,
     Feed,
     Water,
+    Play,
     DragTo {
         x_frac: f64,
     },
@@ -923,6 +924,15 @@ impl Sim {
                 self.reconsider(now);
                 self.out.push(journal("watered", Value::Null));
             }
+            Command::Play => {
+                self.perform_as(Activity::PlayBow, 0, 4.0, "you offered to play", now);
+                self.needs.boredom = (self.needs.boredom - 0.55).max(0.0);
+                self.needs.social = (self.needs.social - 0.10).max(0.0);
+                self.mood.lift(0.18, 0.25);
+                self.attended = 1.0;
+                self.ask_patience = 1.0;
+                self.out.push(journal("played", Value::Null));
+            }
             Command::DragTo { x_frac } => {
                 if !self.dragging && matches!(self.activity, Activity::Walk | Activity::Zoomies) {
                     self.finish(now);
@@ -1535,6 +1545,16 @@ mod tests {
         // A different monitor width keeps the same relative position.
         s.apply(Command::SetScreen { walk_px: 4000.0 }, now + 0.1);
         assert!((s.body().x_frac - 0.25).abs() < 1e-9);
+    }
+
+    #[test]
+    fn play_settles_boredom_and_bows() {
+        let mut s = sim(0);
+        s.needs.boredom = 0.9;
+        s.tick(1.0, 12.0);
+        s.apply(Command::Play, 1.0);
+        assert_eq!(s.activity(), Activity::PlayBow, "a play invitation is a bow");
+        assert!(s.needs.boredom < 0.7, "playing should settle the urge: {}", s.needs.boredom);
     }
 
     #[test]
