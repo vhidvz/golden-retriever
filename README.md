@@ -65,14 +65,8 @@ you talk to him, train him, switch each sense, choose the local model and voice,
 skills and workflows, read the journal and change his settings. Closing the window does
 not stop him. If the daemon is not running, the panel says so and offers to start him or retry.
 
-The tray icon is placed by the operating system, like any other tray item. Clicking it
-opens a small native tray menu on GNOME; choose **Open Buddy messages**, or double-click
-the icon, to open Buddy's own cream-coloured panel. The panel shows offers of help,
-hunger/thirst, boredom and company in his own words. Action buttons send ordinary daemon
-commands (`feed`, `water`, `play`, `pet`, `approve`, `deny`); **Later** dismisses a card.
-Quiet mode suppresses the automatic panel, and the tray count remains available. It never
-uses the desktop notification daemon. The panel closes on Escape, the close button, or
-after twelve seconds when the pointer is not over it.
+The tray icon is placed by the operating system; its panel and notification behaviour
+are described under **Tray icon and custom notifications** below.
 
 ```sh
 buddy version           # installed Buddy version and git tag/commit
@@ -450,8 +444,8 @@ window.
 Click it and choose **Open Buddy messages**, or double-click the icon, to open Buddy's
 own panel. The panel is part of his UI, not the system notification service: it can show
 his offers ("I could open the browser for your next step"), hunger, thirst, boredom,
-company and tiredness, with buttons that go straight to the daemon. Quiet mode keeps the messages in
-the panel but does not open it. A one-line "You're back" message is information-only and
+company and tiredness, with buttons that go straight to the daemon. Quiet mode keeps the
+messages in the panel but does not open it. A one-line "You're back" message is information-only and
 closes itself.
 
 ```sh
