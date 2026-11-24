@@ -342,11 +342,35 @@ install_kde_sense() {
     say "Buddy's KDE desktop sense is installed; focus and pointer are reported."
 }
 
+install_kde_click_effect() {
+    # Optional native effect. It needs KWin headers and a C++ toolchain; never fail the
+    # whole install because a distribution split those out.
+    [ -f /usr/lib/cmake/KWin/KWinConfig.cmake ] || return 0
+    command -v cmake >/dev/null 2>&1 || { warn "KWin headers are present but cmake is missing; the click effect was not built"; return 0; }
+    if ! "$repo/scripts/build-kwin-effect.sh" >/tmp/buddy-kwin-effect.log 2>&1; then
+        warn "the native KWin click effect could not be built; see /tmp/buddy-kwin-effect.log"
+        return 0
+    fi
+    effects="${XDG_DATA_HOME:-$HOME/.local/share}/kwin/effects/plugins"
+    mkdir -p "$effects"
+    install -m 755 "$repo/target/kwin-effect/buddy_click.so" "$effects/buddy_click.so"
+    if command -v kwriteconfig6 >/dev/null 2>&1; then
+        kwriteconfig6 --file kwinrc --group Plugins --key buddy_clickEnabled true 2>/dev/null || true
+    fi
+    if command -v qdbus6 >/dev/null 2>&1; then
+        qdbus6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+    fi
+    say "Buddy's native KDE click effect is installed."
+}
+
 remove_kde_sense() {
     scripts="${XDG_DATA_HOME:-$HOME/.local/share}/kwin/scripts"
+    effects="${XDG_DATA_HOME:-$HOME/.local/share}/kwin/effects/plugins"
     rm -rf "$scripts/buddy-sense"
+    rm -f "$effects/buddy_click.so"
     if command -v kwriteconfig6 >/dev/null 2>&1; then
         kwriteconfig6 --file kwinrc --group Plugins --key buddy-senseEnabled false 2>/dev/null || true
+        kwriteconfig6 --file kwinrc --group Plugins --key buddy_clickEnabled false 2>/dev/null || true
     fi
     if command -v qdbus6 >/dev/null 2>&1; then
         qdbus6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
@@ -464,6 +488,7 @@ install_godot
 umask 022
 install_ui
 install_kde_sense
+install_kde_click_effect
 
 # The desktop sense is a GNOME Shell extension. On Wayland a newly installed extension
 # is only loaded at the next login, so it is switched on now and starts working then.

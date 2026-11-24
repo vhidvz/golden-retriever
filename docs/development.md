@@ -203,6 +203,8 @@ Create the directory when needed; it is not part of the repository.
   `~/.local/share/kwin/scripts/buddy-sense` and enabled in `kwinrc` when KDE tools exist.
   Test the bridge with `gdbus call ... local.buddy.Sense.Focus APP`, `.Pointer X Y` and
   `.Overview true|false`. Overview is polled by the KWin script with `QTimer` because
-  KWin has no overview signal. Normal KWin scripts cannot report clicks; the JS effect
-  `mouseChanged` path cannot call `startMousePolling()`, so a native effect is needed and
-  is not implemented.
+  KWin has no overview signal. Normal KWin scripts cannot report clicks; the native C++
+  effect source in `kde/kwin-effect` uses `startMousePolling` and
+  `EffectsHandler::mouseChanged`. Build it only where KWin headers/CMake exist with
+  `scripts/build-kwin-effect.sh`; it was not compiled or runtime-tested on this GNOME
+  machine.

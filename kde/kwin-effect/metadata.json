@@ -1,0 +1,13 @@
+{
+  "KPlugin": {
+    "Authors": [{"Name": "Buddy project"}],
+    "Category": "Misc",
+    "Description": "Report content-free mouse clicks to Buddy over its local session-bus bridge.",
+    "Id": "buddy_click",
+    "License": "MIT",
+    "Name": "Buddy click sense",
+    "ServiceTypes": ["KWin/Effect"],
+    "Version": "1.0.0"
+  },
+  "X-KWin-Exclusive": false
+}

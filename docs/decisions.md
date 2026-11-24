@@ -313,10 +313,12 @@ implementation. The evidence, options and recommendation are in
   state to a session D-Bus bridge in the daemon. The bridge was tested with real `gdbus`
   Focus/Pointer/Overview calls. Overview has no signal, so the script polls
   `workspace.isEffectActive("overview")` with a `QTimer`.
-- **KDE clicks are not implemented.** Normal KWin scripts cannot see button events, and
-  KWin's JS effect `mouseChanged` path is effectively dead because `startMousePolling()`
-  is not scriptable. A native C++ (or a carefully designed QML) effect would be needed;
-  it is not claimed and was not testable on this GNOME machine. Window titles on KDE are
-  also not exposed by the script path.
-- **Still open for Phase 6:** KDE native click/title coverage and the remaining fur/model
-  craft (surface detail, coat response, puppy-specific polish).
+- **KDE native click effect source added 2026-11-24.** `kde/kwin-effect` is a C++ KWin
+  effect using `KWIN_EFFECT_FACTORY`, `startMousePolling` and
+  `EffectsHandler::mouseChanged`; it calls the existing `Click` bridge. The installer
+  builds/installs it only when KWin headers, CMake and KDE tools are present. This host
+  has no Plasma/KWin development stack and Docker Hub is blocked, so the effect was not
+  compiled or runtime-tested here; it is not claimed as verified. Window titles on KDE
+  remain outside the script path.
+- **Still open for Phase 6:** KDE native click runtime verification, KDE titles and the
+  remaining fur/model craft (surface detail, coat response, puppy-specific polish).
