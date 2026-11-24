@@ -347,6 +347,17 @@ implementation. The evidence, options and recommendation are in
   `window_titles` is allowed, drops it when the sense is off or privacy is on, and never
   journals it or sends it to a model. `buddy senses` and the panel show the last title
   while the sense is on. The bridge was tested with `gdbus` Focus calls both off and on.
+- **Live body refinement (2026-11-24).** The head was broadened at the skull and
+  muzzle, the ears/eyes/nose were enlarged and the coat gained chest, leg and tail
+  feathering. The live renderer now uses a procedural iris/pupil/limbal shader instead
+  of a black pupil ball, and the coat gets high-frequency lighting variation. All adult
+  and puppy proportion checks still pass. This is an artistic improvement, not a
+  photoreal claim; the measured no-go in Phase 8 stands.
+- **Motion smoothing (2026-11-24).** The renderer caps how far the window and leg phase
+  may travel in one frame, so a new activity or a large `x_frac` change cannot advance
+  the stride by a whole cycle. Sprite pace selection has hysteresis at the walk/trot and
+  trot/gallop boundaries, and the 3D body is hidden once the sprite fade has enough
+  weight, avoiding a ghost/doll overlap.
 - **Still open for Phase 6:** KDE native click runtime verification and the remaining
   fur/model craft (surface detail, coat response, puppy-specific polish).
 

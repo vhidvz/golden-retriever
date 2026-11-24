@@ -18,6 +18,7 @@ extends "res://dog.gd"
 const MODEL := "res://dog/retriever.json"
 const COAT := preload("res://coat.gdshader")
 const SKIN := preload("res://skin.gdshader")
+const EYE := preload("res://eye.gdshader")
 const STEP_HEIGHT := 0.06          # how high a paw lifts in a stride, in units
 
 static var _model := {}            # the parsed model file, shared by every instance
@@ -30,6 +31,7 @@ var _joint := {}                   # bone name -> where it is at rest, in the do
 var _leg_scale := 1.0              # kept at 1: the puppy's short legs come from his own bones now
 var _sole := {}                    # "front"/"hind" -> how far along the body each sole meets the ground
 var _lids: Array[Node3D] = []      # per eye: the upper lid, the lower lid, the glint
+var _eye_mats: Array[ShaderMaterial] = []
 var _wag_trail: Array[float] = []  # recent tail swings, so the tip follows the root late
 
 
@@ -50,6 +52,7 @@ func _build() -> void:
 	_eyes.clear()
 	_lids.clear()
 	_pupils.clear()
+	_eye_mats.clear()
 	if _model.is_empty():
 		_model = JSON.parse_string(FileAccess.get_file_as_string(MODEL))
 	# How much of the puppy is left in him: every bone and every point of the body is
@@ -113,9 +116,25 @@ func _build() -> void:
 		var facing := Vector3(seat["gaze"][0], seat["gaze"][1], seat["gaze"][2]).normalized()
 		eye.quaternion = Quaternion(Vector3.RIGHT, facing)
 		var radius: float = lerpf(seat["radius"], puppy["eyes"][i]["radius"], young)
-		_smooth(eye, Vector3.ZERO, radius, Color(0.27, 0.14, 0.055))
-		_pupils.append(_smooth(eye, Vector3.RIGHT * radius * 0.6, radius * 0.46, Color(0.012, 0.01, 0.01)))
-		var glint := _smooth(eye, Vector3(0.62, 0.62, -0.3 if i == 0 else 0.5).normalized() * radius * 0.92, radius * 0.17, Color.WHITE)
+		# The iris, pupil and limbal ring are one shader: a brown ball with a black
+		# sphere stuck on it reads as a plastic bead at desktop size.
+		var ball := MeshInstance3D.new()
+		var sphere := SphereMesh.new()
+		sphere.radius = radius
+		sphere.height = radius * 2.0
+		sphere.radial_segments = 32
+		sphere.rings = 18
+		var eye_material := ShaderMaterial.new()
+		eye_material.shader = EYE
+		ball.mesh = sphere
+		ball.material_override = eye_material
+		eye.add_child(ball)
+		_eye_mats.append(eye_material)
+		# The base class still animates two pupil nodes; keep them as invisible anchors.
+		var anchor := Node3D.new()
+		eye.add_child(anchor)
+		_pupils.append(anchor)
+		var glint := _smooth(eye, Vector3(0.62, 0.62, -0.3 if i == 0 else 0.5).normalized() * radius * 0.95, radius * 0.13, Color.WHITE)
 		(glint.material_override as StandardMaterial3D).shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		# Lids: two pieces of a slightly larger ball around the eye. Open, they are out of
 		# sight under the skin above and below the socket; to blink or sleep they turn
@@ -152,7 +171,11 @@ func advance(delta: float, travelled: float) -> void:
 	_copy("ear_r", _ears[1])
 
 	# The stand-in blinks by flattening its eyes. Here that amount closes the lids instead.
+	var head_basis := _head.global_transform.basis.orthonormalized()
+	var look := (head_basis.inverse() * _gaze_target).lerp(Vector3.RIGHT, 1.0 - _attention).normalized()
 	for i in 2:
+		var eye_basis := _eyes[i].global_transform.basis.orthonormalized()
+		_eye_mats[i].set_shader_parameter("pupil_dir", (eye_basis.inverse() * (head_basis * look)).normalized())
 		var open := clampf((_eyes[i].scale.y - 0.08) / 0.92, 0.0, 1.0)
 		_eyes[i].scale = Vector3.ONE
 		_lids[i * 3].rotation.z = deg_to_rad(lerpf(-70.0, 0.0, open))

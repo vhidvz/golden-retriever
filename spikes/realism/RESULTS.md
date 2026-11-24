@@ -63,6 +63,13 @@ The committed pictures are:
 3. A photo-puppet or diffusion experiment only with a permissive asset and a new owner
    request.
 
+## Later live-body pass (2026-11-24)
+
+After these measurements the live mesh was refined (wider head/muzzle, larger ears,
+eyes and nose, coat feathering, procedural iris shader). The committed stills above are
+from the pre-pass model and remain the measured evidence; the pass does not change the
+no-go or make a photoreal claim.
+
 ## Decision
 
 **No-go for photoreal on this hardware.** The 1M/64 800 px close-up still reads as CG,

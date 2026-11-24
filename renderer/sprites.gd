@@ -46,6 +46,7 @@ const POSTURE := {
 	"lie_side": "sleep_side",
 }
 var _facing := 1
+var _pace := "walk"              # with hysteresis, so a stride never flickers between clips
 var _decoded := {}               # frame key -> Image: the few pictures decoded last, so none is decoded twice
 var _images := {}                # slot -> the Image last put there (reading a texture back loses its colour)
 var _extra := ""                 # a set given for a test
@@ -94,6 +95,12 @@ func find_sets(extra := "") -> void:
 
 func has_sets() -> bool:
 	return not _sets.is_empty()
+
+
+## True once the pictures have enough weight that showing the 3D body underneath
+## would read as a second, doll-like dog rather than as a crossfade.
+func showing() -> bool:
+	return _rect.visible and _visible > 0.35
 
 
 ## His growth, as the daemon says it is now.
@@ -149,9 +156,22 @@ func _choose(dog, activity: String, variant: int, facing: int) -> String:
 	var clips: Dictionary = _set["clips"]
 	var stride: Vector2 = dog.stride()
 	if stride.y > 0.25:
-		# The drawn stride nearest his pace: a walk, a trot, a gallop.
-		var pace := "walk" if stride.y < 1.5 else ("trot" if stride.y < 2.7 else "gallop")
-		return pace if clips.has(pace) else ""
+		# The drawn stride nearest his pace, with hysteresis at each boundary: a stride
+		# hovering at 1.5 or 2.7 must not switch clips every few frames (which reads as a jump).
+		if _pace == "gallop":
+			if stride.y < 2.45:
+				_pace = "trot" if stride.y > 1.25 else "walk"
+		elif _pace == "trot":
+			if stride.y > 2.80:
+				_pace = "gallop"
+			elif stride.y < 1.25:
+				_pace = "walk"
+		else:
+			if stride.y > 2.80:
+				_pace = "gallop"
+			elif stride.y > 1.55:
+				_pace = "trot"
+		return _pace if clips.has(_pace) else ""
 	var base := ""
 	match activity:
 		"stand", "sit", "eat", "drink", "play_bow":

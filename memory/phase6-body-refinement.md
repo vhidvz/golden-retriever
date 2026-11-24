@@ -32,3 +32,19 @@ so do not disturb the skeleton while improving the surface.
 
 **How to apply:** change body geometry only alongside a preview and `measure_dog.py`;
 expect a sprite rebake. Related: [[realism-direction]], [[phase5-completion]].
+
+## Live body and motion pass (2026-11-24)
+
+- The live mesh was refined in Blender: wider skull and muzzle, larger ears, eyes and
+  nose, and longer feathering on the chest, backs of the legs and tail. `retriever.json`
+  was rebuilt. Adult and puppy proportion checks still pass.
+- The live renderer now uses `renderer/eye.gdshader` for a brown iris, pupil, limbal ring
+  and wet highlight instead of a black sphere, and the coat shader perturbs the lighting
+  normal at fur scale.
+- Motion: `main.gd` caps window travel per frame (2 units/s at the current scale), so an
+  activity or `x_frac` jump cannot step the leg phase by a whole stride; `sprites.gd`
+  adds walk/trot/gallop hysteresis, and the 3D body is hidden once the sprite fade passes
+  35%, removing the doll ghost during crossfades.
+- This is still not photoreal; the Phase 8 800 px evidence and no-go decision stand.
+- Existing pre-pass sprite sets may be used until a new set is complete; the baker
+  fingerprints the body and will rebuild. A changed body invalidates old bakes by design.

@@ -321,7 +321,12 @@ func _process(delta: float) -> void:
 		_shown_x = target_x
 		previous = target_x
 	else:
-		_shown_x = lerpf(_shown_x, target_x, 1.0 - exp(-18.0 * delta))
+		# A new activity can move the daemon's target a long way at once. Smooth the
+		# window position, but also cap its speed: without this the first frame of a
+		# walk can advance the leg phase by a whole stride and the legs visibly jump.
+		var wanted := lerpf(_shown_x, target_x, 1.0 - exp(-18.0 * delta))
+		var max_step := 2.0 * _pixels_per_unit * _layout_key.x * delta
+		_shown_x = previous + clampf(wanted - previous, -max_step, max_step)
 	var window := get_window()
 	if _state.get("ducked", false):
 		# Out of the way (lock screen, overview, something fullscreen): off the screen and barely ticking.
@@ -339,9 +344,10 @@ func _process(delta: float) -> void:
 	_dog.advance(delta, travelled if _selftest_speed == 0.0 else _selftest_speed * minf(delta, 0.05))
 	# Where there are drawn pictures of what he is doing, they are shown instead of the 3D body,
 	# which keeps moving unseen underneath and decides which pictures fit.
-	var pictures := _sprites.update(delta, _dog, _state["activity"], int(_state["variant"]), int(_state["facing"]))
-	_dog.visible = not pictures
-	_shadow.visible = not pictures
+	_sprites.update(delta, _dog, _state["activity"], int(_state["variant"]), int(_state["facing"]))
+	var drawn := _sprites.showing()
+	_dog.visible = not drawn
+	_shadow.visible = not drawn
 	_bowl.visible = activity_has_bowl() and not _sprites.shows_bowl()
 
 	# Draw only as often as what he is doing needs.

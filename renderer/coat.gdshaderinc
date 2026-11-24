@@ -88,6 +88,11 @@ void fragment() {
 	vec3 albedo = tone * mix(1.0, mix(0.86, 1.12, lock), locks) * mix(1.0, mix(0.93, 1.06, fine), furred) * depth;
 
 	vec3 n = normalize(NORMAL);
+	// A coat is not a painted surface: break up the lighting normal at the scale of
+	// locks and individual hairs so the form does not read as a smooth plastic shell.
+	float nap = noise3(vec3(grain.x * 620.0, grain.y * 260.0, grain.z * 260.0) + shell * 7.0) - 0.5;
+	float nap2 = noise3(vec3(grain.x * 170.0, grain.y * 90.0, grain.z * 90.0) + 11.0) - 0.5;
+	n = normalize(n + vec3(nap * 0.075 + nap2 * 0.045, nap2 * 0.055, nap * 0.035) * furred);
 	vec3 to_sun = normalize((VIEW_MATRIX * vec4(sun, 0.0)).xyz);
 	vec3 up = normalize((VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
 	float open = mix(COLOR.a, 1.0, 0.35 * shell);
@@ -96,6 +101,8 @@ void fragment() {
 	float lit = clamp((dot(n, to_sun) + wrap) / (1.0 + wrap), 0.0, 1.0);
 	vec3 ambient = mix(ground_color, sky_color, dot(n, up) * 0.5 + 0.5);
 	vec3 colour = albedo * (sun_color * lit * 1.15 * mix(0.55, 1.0, open) + ambient * 0.62 * open);
+	// A little more depth between locks, so the coat reads as layers rather than paint.
+	colour *= mix(0.82, 1.08, smoothstep(0.25, 0.85, lock * 0.7 + fine * 0.3));
 
 	vec3 half_way = normalize(to_sun + VIEW);
 	// The sheen of hair: brightest where the light glances along the strands.
