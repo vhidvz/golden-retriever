@@ -47,7 +47,7 @@ NEEDS = {
     "thirst": ("A fresh bowl of water?", "My tongue is getting a little dry.", "weather-showers-symbolic", 0.66, 15 * 60, "water_out", "water", "Fresh water"),
     "boredom": ("I could use a game", "I have been good. Could we play for a minute?", "media-playback-start-symbolic", 0.70, 20 * 60, None, "play", "Let's play"),
     "social": ("Do you have a minute?", "I would like to be near you for a little while.", "emblem-favorite-symbolic", 0.72, 20 * 60, None, "pet", "Sit with him"),
-    "fatigue": ("My eyes are getting heavy", "I might curl up for a little while.", "weather-clear-night-symbolic", 0.78, 60 * 60, None, None, "Okay"),
+    "fatigue": ("My eyes are getting heavy", "I might curl up for a little while.", "weather-clear-night-symbolic", 0.78, 60 * 60, None, "sleep", "Let him nap"),
 }
 
 
