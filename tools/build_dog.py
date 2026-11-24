@@ -448,7 +448,8 @@ PARTS = [trunk(), neck(), skull(), jaw(), tail(), ear(1), ear(-1)] + front_leg(1
 LUMPS = [((0.305, 0.525, 0.0), (0.045, 0.055, 0.055), False)]            # the breastbone
 for _s in (1, -1):
     LUMPS += [
-        (front(0.215, 0.520) + (0.078 * _s,), (0.060, 0.085, 0.030), False),      # shoulder
+        (front(0.215, 0.520) + (0.078 * _s,), (0.065, 0.090, 0.034), False),      # shoulder
+        ((-0.300, 0.515, 0.074 * _s), (0.075, 0.095, 0.040), False),      # thigh mass
         ((0.505, 0.818, 0.056 * _s), (0.045, 0.032, 0.026), True),       # cheek
         ((0.542, 0.900, 0.040 * _s), (0.024, 0.012, 0.021), True),       # brow
         ((0.600, 0.792, 0.043 * _s), (0.048, 0.017, 0.012), True),       # the upper lip hanging over the jaw

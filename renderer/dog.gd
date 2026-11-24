@@ -26,7 +26,7 @@ const NEUTRAL := {
 	"hip": 1.0, "lift": 0.0, "pitch": 0.0, "roll": 0.0, "spine_yaw": 0.0, "spine_pitch": 0.0,
 	"front_l": 0.0, "front_r": 0.0, "hind_l": 0.0, "hind_r": 0.0,
 	"neck": 0.0, "head": 0.0, "head_yaw": 0.0, "head_tilt": 0.0,
-	"tail": 35.0, "tail_yaw": 0.0, "jaw": 0.0, "eyes": 1.0, "ears": 0.0, "face_viewer": 0.0,
+	"tail": 18.0, "tail_yaw": 0.0, "jaw": 0.0, "eyes": 1.0, "ears": 0.0, "face_viewer": 0.0,
 }
 const SIT := {"hip": 0.45, "pitch": 28.0, "front_l": -28.0, "front_r": -28.0, "hind_l": 57.0, "hind_r": 57.0, "neck": -8.0, "head": -20.0, "tail": 10.0}
 const SPHINX := {"hip": 0.24, "front_l": 80.0, "front_r": 80.0, "hind_l": 75.0, "hind_r": 75.0, "neck": 6.0, "head": -4.0, "tail": 15.0}
