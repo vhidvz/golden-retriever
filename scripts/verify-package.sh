@@ -48,4 +48,5 @@ done
 [ -x "$root/usr/bin/buddy-tray" ] || { echo "the tray launcher is not executable" >&2; exit 1; }
 grep -q '../share/buddy/ui/buddy_ui.py' "$root/usr/bin/buddy-ui" || { echo "the UI launcher does not use a relocatable path" >&2; exit 1; }
 grep -q '../share/buddy/ui/buddy_tray.py' "$root/usr/bin/buddy-tray" || { echo "the tray launcher does not use a relocatable path" >&2; exit 1; }
+grep -q 'ExecStart=/usr/bin/buddy-tray' "$root/usr/lib/systemd/user/buddy-tray.service" || { echo "the packaged tray unit does not start /usr/bin/buddy-tray" >&2; exit 1; }
 echo "verified $file"
