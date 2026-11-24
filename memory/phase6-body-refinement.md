@@ -45,6 +45,8 @@ expect a sprite rebake. Related: [[realism-direction]], [[phase5-completion]].
   activity or `x_frac` jump cannot step the leg phase by a whole stride; `sprites.gd`
   adds walk/trot/gallop hysteresis, and the 3D body is hidden once the sprite fade passes
   35%, removing the doll ghost during crossfades.
+- A second small pass added thigh mass and raised the neutral tail from 35° to 18°,
+  giving a more level, friendly side silhouette. Adult proportions still pass.
 - This is still not photoreal; the Phase 8 800 px evidence and no-go decision stand.
 - Existing pre-pass sprite sets may be used until a new set is complete; the baker
   fingerprints the body and will rebuild. A changed body invalidates old bakes by design.
