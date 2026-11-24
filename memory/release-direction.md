@@ -1,6 +1,6 @@
 ---
 name: release-direction
-description: Phase 9 Linux implementation complete locally 2026-11-24; all five formats, SHA-256/SBOM, optional GPG signing, pinned Actions and download-only upgrade; Windows unsupported, actual Actions run/AppImage UX open
+description: Phase 9 Linux implementation complete and CI-verified 2026-11-24; all five formats, SHA-256/SBOM, optional GPG signing, pinned Actions and download-only upgrade; Windows unsupported, tag publish/AppImage UX open
 metadata:
   type: project
 ---
@@ -15,9 +15,10 @@ on 2026-11-24 at the owner's request. The durable record is
   separate project, so no MSI/EXE is produced.
 - CI: tag/manual GitHub Actions workflow; every action is pinned by commit SHA; the
   default token is read-only and only `publish` gets `contents: write`; each package job
-  runs `scripts/verify-package.sh`; publish regenerates one checksum manifest and the
-  SBOM, and signs it only if a GPG key secret is configured. The workflow has still not
-  run in GitHub Actions, so it is not proven end to end.
+  runs `scripts/verify-package.sh`; the metadata job builds one checksum manifest and the
+  SBOM and signs only if a GPG key secret is configured. Manual run 45322812499 passed
+  tests, all five package jobs and metadata; the tag-only publish/upload path is still
+  unexercised.
 - All five Linux formats (tar, DEB, RPM, Arch, AppImage) were built and payload-verified
   locally. Packaging fixes: system packages install under `/usr`; the binary now finds
   `/usr/share/buddy/renderer` and `/usr/share/buddy/perception` from `/usr/bin/buddy`,

@@ -248,8 +248,10 @@ implementation. The evidence, options and recommendation are in
 
 ## Release engineering and updates (Phase 9 Linux implementation, 2026-11-24)
 
-- **The Linux implementation is complete and locally verified; the actual GitHub
-  Actions run is still pending.** Packages find their assets under `/usr/share/buddy`,
+- **The Linux implementation is complete and CI-verified.** Manual GitHub Actions run
+  45322812499 passed tests, tar, DEB, RPM, Arch, AppImage and the merged metadata job;
+  the tag-only publish job was skipped because no tag was created. Packages find their
+  assets under `/usr/share/buddy`,
   the UI launcher is relocatable, `scripts/verify-package.sh` checks the complete
   payload, `scripts/checksums.sh` writes SHA-256 manifests, `scripts/sbom.py` writes a
   CycloneDX 1.5 SBOM, and every GitHub Action is pinned by commit SHA with a read-only
@@ -279,11 +281,11 @@ implementation. The evidence, options and recommendation are in
   each other, and no automatic data migration is attempted.
 - **Build identity is embedded.** `crates/buddy/build.rs` records the git
   tag/commit/dirty state (`unknown` outside a checkout); `buddy version` prints it.
-- **Still open:** an actual GitHub Actions run proves the workflow end to end; the
-  AppImage first-run UX beyond the env/status path remains. Windows is not an open Phase 9
-  task because this release line explicitly does not target it. Guided upgrade exists as
-  download/verify only; detached signatures are optional and not yet checked by it. The
-  local release rehearsal is not a substitute for a tagged CI run.
+- **Still open:** the tag-only publish/upload path has not been exercised; the manual
+  workflow skips it by design. The AppImage first-run UX beyond the env/status path
+  remains. Windows is not an open Phase 9 task because this release line explicitly does
+  not target it. Guided upgrade exists as download/verify only; detached signatures are
+  optional and not yet checked by it.
 
 
 ## Context and companionship (pointer/click foundation, 2026-11-23)

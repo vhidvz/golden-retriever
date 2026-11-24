@@ -198,8 +198,9 @@ Create the directory when needed; it is not part of the repository.
   `BUDDY_SIGNING_KEY` is set. `scripts/release-rehearsal.sh` builds every locally
   available format and generates the same metadata; use it before a tag. The release workflow pins
   every action by commit SHA, gives only the publish job `contents: write`, verifies
-  each package, and attaches one checksum manifest plus the SBOM. It has not yet run in
-  Actions, so treat it as unproven until a tagged run passes. Windows is not built
+  each package, and attaches one checksum manifest plus the SBOM. A manual run on
+  2026-11-24 passed tests, all five package jobs and metadata; the tag-only publish path
+  is still unexercised. Windows is not built
   because the daemon is Unix-specific; this release line explicitly does not support it.
   `buddy version` includes the git describe string from `crates/buddy/build.rs`;
   `buddy update check` and `buddy update tools` are network-only-on-request checks; no

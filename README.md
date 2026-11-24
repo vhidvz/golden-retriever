@@ -445,11 +445,11 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
   still have the system sense.
 - The managed Ollama runtime is Linux/systemd only. The model catalogue marks
   unevaluated models; only `gemma4:e4b` has measurements from this project.
-- All five Linux release formats were built and payload-verified locally (tar, DEB,
-  RPM, Arch, AppImage), but the GitHub Actions workflow has not yet run; the full release
-  matrix is not proven end to end. Windows is explicitly unsupported for this release
-  line. `buddy upgrade` downloads and checksum-verifies a user-local artifact but never
-  installs it; system packages and checkouts are refused.
+- All five Linux release formats were built and payload-verified locally and in a manual
+  GitHub Actions run (tests, tar, DEB, RPM, Arch, AppImage, metadata). The tag-only
+  publish/upload job was not exercised because no tag was created. Windows is explicitly
+  unsupported for this release line. `buddy upgrade` downloads and checksum-verifies a
+  user-local artifact but never installs it; system packages and checkouts are refused.
 - Looking at the screen is on request only (`buddy look`), sees the whole monitor
   at reduced size, and has no OCR, so small text is beyond it.
 - The camera sense itself detects presence only (64×48 greyscale motion) and never sends
@@ -507,18 +507,18 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
    non-commercial dependencies; photo-puppet and diffusion experiments remain optional
    future research, not adopted. The current sprite bake stays. See
    `docs/realism-direction.md`, `docs/decisions.md` and `spikes/realism/RESULTS.md`.
-9. Release engineering and updates — **Linux implementation complete locally
-   (2026-11-24); the actual GitHub Actions run is still pending.** The workflow builds
-   tar, DEB, RPM, Arch and AppImage artifacts with commit-pinned actions; packages are
-   payload-verified, shipped with a
-   `SHA256SUMS` manifest and a CycloneDX SBOM, and `buddy version` includes the git
-   tag/commit. The AppImage carries Buddy's own files but not Godot or Ollama; those are
-   supplied separately on first run. Signing is optional: releases carry `SHA256SUMS`,
-   plus a detached GPG signature when a key is configured. Windows is explicitly
-   unsupported for this release line because the daemon still depends on Unix sockets,
-   systemd and the Linux desktop bridges. `buddy upgrade` downloads and verifies a
-   user-local artifact but does not install it. An actual tagged Actions run remains
-   open. See `docs/release-direction.md`.
+9. Release engineering and updates — **Linux implementation complete and CI-verified
+   (2026-11-24).** Manual GitHub Actions run 45322812499 passed tests, tar, DEB, RPM,
+   Arch, AppImage and the merged metadata job; the tag-only publish job was skipped
+   because no tag was created. The workflow builds artifacts with commit-pinned actions;
+   packages are payload-verified, shipped with a `SHA256SUMS` manifest and a CycloneDX
+   SBOM, and `buddy version` includes the git tag/commit. The AppImage carries Buddy's
+   own files but not Godot or Ollama; those are supplied separately on first run. Signing
+   is optional: releases carry `SHA256SUMS`, plus a detached GPG signature when a key is
+   configured. Windows is explicitly unsupported for this release line because the
+   daemon still depends on Unix sockets, systemd and the Linux desktop bridges. `buddy
+   upgrade` downloads and verifies a user-local artifact but does not install it. The
+   tag-only Release upload remains unexercised. See `docs/release-direction.md`.
 10. Context and companionship — pointer/click foundation implemented 2026-11-23. The
    Shell sense now reports a click by button, application and coarse screen region, with
    no content or click history; semantic text changes in accessible controls (not raw

@@ -1,11 +1,12 @@
 # Release engineering and updates
 
-**Status:** Linux implementation complete and locally verified 2026-11-24 with
-relocatable package paths, all five formats, SHA-256 manifests, a CycloneDX SBOM,
-package payload verification, optional GPG signing and commit-pinned Actions. Windows is
-explicitly unsupported for now; guided upgrade downloads/verifies but does not install.
-The workflow has not yet run in GitHub Actions, so this is not a full end-to-end release
-claim.
+**Status:** Linux implementation complete and verified locally and in GitHub Actions on
+2026-11-24 with relocatable package paths, all five formats, SHA-256 manifests, a
+CycloneDX SBOM, package payload verification, optional GPG signing and commit-pinned
+Actions. The manual workflow run (45322812499) passed tests and every Linux package job
+plus the metadata job; the tag-only publish job was skipped because no tag/release was
+created. Windows is explicitly unsupported for now; guided upgrade downloads/verifies
+but does not install.
 
 ## Goal
 
@@ -124,11 +125,10 @@ implementation. This record is the durable input to that plan.
   the SBOM/checksum/signature metadata in one command. The RPM spec disables the
   debuginfo package and uses a valid changelog date; the AppImage sources the
   managed-runtime env file and starts the daemon before the panel.
-- Still open: an actual Actions run (the workflow is unproven end to end) and
-  AppImage's first-run managed-runtime UX beyond the env/status path. Windows is not an
-  open Phase 9 task because this release line explicitly does not target it. `buddy
-  upgrade` is download/verify only; there is no self-install. The workflow uses pinned
-  actions, but a real tagged run is still required before calling the pipeline proven.
+- Still open: the tag-only publish/upload path has not been exercised (the manual run
+  skips it by design), and AppImage's first-run managed-runtime UX beyond the env/status
+  path. Windows is not an open Phase 9 task because this release line explicitly does not
+  target it. `buddy upgrade` is download/verify only; there is no self-install.
 - The existing installer remains the supported way to install Godot/Ollama and the
   systemd user service on Linux; packages include the daemon/UI but not those managed
   runtimes.
