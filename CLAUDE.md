@@ -95,7 +95,7 @@ headless with `--factory-startup`:
 
 ```sh
 blender -b --factory-startup --python tools/build_dog.py
-blender -b --factory-startup --python tools/build_dog.py -- --preview /tmp/dog
+blender -b --factory-startup --python tools/build_dog.py -- --preview "$HOME/.cache/buddy-spikes/work/dog"
 python3 tools/measure_dog.py [--age puppy] [--picture out.png]
 blender -b --factory-startup --python tools/bake_sprites.py -- \
         POSES.json OUT_DIR [--samples 24] [--strands 150000] [--only stand,walk]

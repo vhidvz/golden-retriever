@@ -325,7 +325,7 @@ of the mouth) and how much light reaches it. Nothing is drawn by hand, bought,
 or taken from another model:
 
     blender -b --factory-startup --python tools/build_dog.py
-    blender -b --factory-startup --python tools/build_dog.py -- --preview /tmp/dog   # also plain pictures of the bare body
+    blender -b --factory-startup --python tools/build_dog.py -- --preview "$HOME/.cache/buddy-spikes/work/dog"   # also plain pictures of the bare body
 
 It takes a few seconds and writes `renderer/dog/retriever.json`. That file is in
 the repository, so Blender is only needed to change the dog, never to run him.
