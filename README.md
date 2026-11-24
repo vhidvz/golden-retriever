@@ -489,13 +489,14 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
    sandbox, timeout, approved cwd and verification, and always ask first. Synthetic
    mouse/keyboard input was deliberately not adopted after the portal/security research.
    See [`docs/helpers.md`](docs/helpers.md) and `docs/automation-direction.md`.
-8. Photoreal body and motion — spike started 2026-11-24. The current bake costs
-   **72.2 s per stand frame** at 150k strands/24 samples on this CPU path; a quick
-   60k/12 baseline is 28–33 s per frame. The pictures are better than the live body but
-   still clearly CG; a blind A/B, head close-up, 500k/1M strands and GPU/VRAM measurements
-   remain. The recommendation is still to upgrade the offline bake, not a neural/splat
-   avatar (24–48 GB VRAM and non-commercial dependencies). See
-   `docs/realism-direction.md` and `spikes/realism/RESULTS.md`.
+8. Photoreal body and motion — **closed as a no-go on this hardware (2026-11-24)**. The
+   production bake is 72.2 s/frame on CPU and 25.4 s on the GTX 1650 CUDA path, but the
+   800 px close-up at 1M strands/64 samples still reads as CG; denser groom and more
+   samples did not fix the head, eyes or muzzle. The 500k close-up already peaked at
+   3725 MiB of the 4 GB card. A neural or splat avatar is excluded by VRAM and
+   non-commercial dependencies; photo-puppet and diffusion experiments remain optional
+   future research, not adopted. The current sprite bake stays. See
+   `docs/realism-direction.md`, `docs/decisions.md` and `spikes/realism/RESULTS.md`.
 9. Release engineering and updates — Linux foundation implemented 2026-11-23. GitHub
    Actions on release tags now builds tar, DEB, RPM, Arch and AppImage artifacts, and
    `buddy version`, `buddy update check` and `buddy update tools` report and compare

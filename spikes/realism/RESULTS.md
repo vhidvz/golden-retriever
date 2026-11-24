@@ -1,8 +1,9 @@
-# Phase 8 realism spike — first stills baseline
+# Phase 8 realism spike — measured stills and no-go
 
-Measured 2026-11-24 on the development machine (GeForce GTX 1650 4 GB, but Blender
-Cycles is configured for CPU by `tools/bake_sprites.py`; no GPU bake was measured).
-The harness is [`run.sh`](run.sh).
+Measured 2026-11-24 on the development machine (GeForce GTX 1650 4 GB). CPU and Cycles
+CUDA were both measured. The GPU is about 2.8× faster for the production 150k full-body
+frame, but slower than the CPU for dense 500k/1M close-ups and leaves little VRAM
+headroom. The harness is [`run.sh`](run.sh).
 
 ## What was measured
 
@@ -11,38 +12,61 @@ The Godot pose exporter recorded `stand`, `sit` and `walk` at adult growth, 420 
 measured without a full movement bake. Blender then baked those frames with the current
 body/coat and the exact window camera.
 
-| Setting | Strands | Samples | Time per frame | Quality observation |
-|---|---:|---:|---:|---|
-| quick | 60,000 | 12 | 28.5 s (stand), 32.8 s (sit), 32.3 s (walk) | Coat visibly stringy; useful as a lower bound |
-| production default | 150,000 | 24 | 72.2 s (stand) | Better, but still reads as a CG dog; head/paws/coat need work |
+| Setting | Strands | Samples | Device | Time per frame | Observation |
+| --- | ---: | ---: | --- | ---: | --- |
+| quick | 60,000 | 12 | CPU | 28.5 s (stand), 32.8 s (sit), 32.3 s (walk) | Coat visibly stringy; lower bound |
+| production default | 150,000 | 24 | CPU | 72.2 s (stand) | Better, still reads as CG |
+| production default | 150,000 | 24 | CUDA | 25.4 s (stand) | 2.8× faster; peak 1027 MiB; same quality |
+| 800 px head close-up | 150,000 | 24 | CPU | 34.3 s (36 s total) | Eyes/muzzle/coat still CG |
+| 800 px head close-up | 500,000 | 32 | CPU | 64.9 s (69 s total) | Denser coat; still CG |
+| 800 px head close-up | 500,000 | 32 | CUDA | 76.8 s (81 s total) | GPU slower here; peak 3725 MiB |
+| 800 px head close-up | 1,000,000 | 64 | CPU | 143.3 s (151 s total) | Denser coat; still CG |
+| 800 px head close-up | 1,000,000 | 64 | CUDA | 183.2 s (191 s total) | GPU slower here; peak 3639 MiB |
 
-The two stand pictures are committed as evidence:
+The close-ups used the head focus at `--size 2400x1600 --super 1`, then a centred
+800×800 crop; `run.sh --focus 0.4 --size 2400x1600 --crop 800` reproduces them. The
+production images keep the real 908×572 window and the 1.6× supersample.
+
+The committed pictures are:
 
 - [`stand-60k-12s.webp`](stand-60k-12s.webp)
 - [`stand-150k-24s.webp`](stand-150k-24s.webp)
+- [`stand-150k-24s-gpu.webp`](stand-150k-24s-gpu.webp)
+- [`head-800px-150k-24s.webp`](head-800px-150k-24s.webp)
+- [`head-800px-500k-32s.webp`](head-800px-500k-32s.webp)
+- [`head-800px-1m-64s.webp`](head-800px-1m-64s.webp)
 
 ## What this means
 
-- The current pipeline can produce usable desktop stills, but the quality is not
-  photoreal and the cost is high: 72 s × roughly 1,700 frames per growth stage is about
-  **34 hours per stage** on this CPU path, or roughly **306 hours (12.75 days) for all
-  nine stages** before retries. The existing away-only scheduler can absorb that in
-  principle, but the budget must be measured against the user's actual away time.
-- This baseline does **not** satisfy the Phase 8 acceptance test. It has no real Golden
-  photographs beside it, no blind A/B, no head close-up at 800 px, no 500k/1M-strand or
-  32/64-sample run, and no GPU/VRAM measurement.
-- The first quality gaps visible at this size are the head/eyes, the silhouette of the
-  paws, and the coat's stringiness at the edges. More strands alone may not fix the
-  shape; the next run must include a head crop and a denser groom.
+- The CPU production setting needs about **34 hours per growth stage**, or roughly
+  **306 hours (12.8 days) for all nine stages** before retries. A working CUDA path cuts
+  the production frame to 25.4 s, about **108 hours (4.5 days)** for all nine stages.
+  The existing away-only scheduler can absorb some of that, but the budget must be
+  measured against the user's actual away time.
+- Denser groom improves the coat, but the 1M/64 800 px close-up still fails: the eye
+  shape, muzzle, lip line and coat edges read as CG. The problem is the model and
+  materials, not only strand count or samples. This is the decisive negative result.
+- The GPU does not rescue dense close-ups on this machine: 500k/32 is slower than CPU
+  and peaks at 3725 MiB of the 4096 MiB card, leaving almost no headroom. A full-body
+  1M-strand production bake is not practical at this VRAM. The 150k production setting
+  remains the only viable GPU bake.
+- The Phase 8 stills acceptance test is not met. A blind A/B with freely licensed Golden
+  photographs was not run because the 1M/64 close-up is already clearly CG; the MANN
+  walk/foot-slide comparison was not run either. Motion work cannot rescue a body that
+  fails the close-up test.
 
-## Next Phase 8 measurements
+## If Phase 8 is reopened
 
-1. Head close-up at the actual display size and 800 px, using `FOCUS` and a real Golden
-   reference.
-2. 500k and 1M strands at 32 and 64 samples; CPU and Cycles GPU; peak VRAM.
-3. A MANN walk retarget beside the procedural walk, with foot-slide measurement.
-4. A blind A/B with freely licensed Golden photographs; record confusion rate.
+1. A blind A/B of the 800 px close-up beside at least ten freely licensed Golden
+   photographs; record the confusion rate.
+2. A MANN walk retarget beside the procedural walk, with foot-slide measurement.
+3. A photo-puppet or diffusion experiment only with a permissive asset and a new owner
+   request.
 
-The research recommendation remains option A (upgrade the offline bake), not a neural
-avatar. This spike is the first measured cost baseline, not an approved photoreal
-implementation.
+## Decision
+
+**No-go for photoreal on this hardware.** The 1M/64 800 px close-up still reads as CG,
+the GPU cannot make dense production bakes faster within 4 GB, and neural/splat avatars
+need 24–48 GB VRAM and non-commercial dependencies. The current sprite bake stays.
+Photo-puppet and diffusion work remain optional future research, not adopted. Phase 8 is
+closed as a **no-go decision**, not as a photoreal success.

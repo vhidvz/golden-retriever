@@ -104,9 +104,15 @@ Create the directory when needed; it is not part of the repository.
   on that.
 - **Renderer is disposable:** it can crash, be hidden or be missing. The daemon restarts
   it with backoff and keeps simulating. Do not put life-critical logic in Godot.
-- **Sprite bakes are expensive:** roughly 10 seconds per frame and about 1,700 frames per
-  growth stage. The daemon runs them only while the user is away, pauses them when the
-  user returns, and resumes rather than restarting. Use `--only` for a targeted test.
+- **Sprite bakes are expensive:** measured 72.2 s/frame on CPU and 25.4 s on the GTX
+  1650 CUDA path at 150k strands/24 samples, with about 1,700 frames per growth stage.
+  The daemon runs them only while the user is away, pauses them when the user returns,
+  and resumes rather than restarting. Use `--only` for a targeted test.
+- **Cycles GPU needs an explicit device, not just `scene.cycles.device = "GPU"`.** Set
+  `compute_device_type` (`CUDA` or `OPTIX`) and enable that device, or Blender silently
+  renders on CPU; `nvidia-smi` peaking at ~126 MiB is the tell. `spikes/realism/run.sh
+  --device GPU` does this. Production 150k peaks at 1027 MiB; a 500k-strand close-up
+  peaks at 3725 MiB of the 4 GB card, so dense full-body bakes have no headroom.
 - **Desktop sense test:** `tests/shell-sense/run.sh` starts an isolated headless GNOME
   Shell in its own D-Bus session. It needs `gnome-shell`, `dbus-run-session` and a
   writable runtime directory. `BUDDY_TRACE_SENSES=1` makes the daemon log what it hears.

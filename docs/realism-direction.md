@@ -1,10 +1,10 @@
 # Body realism direction: a Golden Retriever that passes for a photograph
 
-**Status:** research record (2026-11-23) plus a measured stills baseline
-(2026-11-24). This is not an approved photoreal implementation. The owner asked for the
-research to be kept as part of Buddy's completion roadmap; the choice between the options
-below, and the target on-screen size, are still open. The baseline is in
-`spikes/realism/RESULTS.md`.
+**Status:** research record (2026-11-23) plus a measured stills baseline and a no-go
+decision for this hardware (2026-11-24). The owner asked for the research to be kept as
+part of Buddy's completion roadmap; the choice between the options below, and the target
+on-screen size, are still open for future hardware or an optional experiment. The baseline
+is in `spikes/realism/RESULTS.md`.
 
 ## The question
 
@@ -296,10 +296,24 @@ Project files this record relies on:
 
 The first stills spike exported stand/sit/walk, trimmed one frame per clip and baked at
 the exact 420 px window. It measured **28–33 s per frame** at 60k strands/12 samples and
-**72.2 s** at 150k/24. Extrapolated naively, the production setting is about 34 hours per
-growth stage and roughly 12.75 days for all nine stages on this CPU path. The 150k frame
-is better than the 60k one but still visibly CG, especially the head, paws and coat edges.
-The committed evidence and the reproducible harness are under `spikes/realism/`.
+**72.2 s** at 150k/24 on CPU. A real Cycles CUDA run of the production frame took
+**25.4 s** (peak 1027 MiB). Extrapolated naively, the CPU production setting is about
+34 hours per growth stage and roughly 12.8 days for all nine stages; the GPU path is
+about 108 hours (4.5 days). The 150k frame is better than the 60k one but still visibly
+CG. The committed evidence and the reproducible harness are under `spikes/realism/`.
 
-This does not decide the photoreal option. It establishes the cost/quality starting point
-and the next measurements needed before any implementation plan.
+This establishes the cost/quality starting point. The measured decision below closes
+the option for this hardware; the list above is what a future experiment would need.
+
+
+## Phase 8 decision (2026-11-24)
+
+The 800 px close-up still reads as CG at 1M strands/64 samples; denser coat and more
+samples did not fix the eye shape, muzzle or lip line. The 500k/32 run already peaked at
+3725 MiB of the 4 GB card, and the GPU was slower than the CPU for these dense close-ups.
+Neural/splat avatars are excluded by VRAM and non-commercial dependencies.
+
+**Decision:** close Phase 8 as a no-go for photoreal on this hardware. Keep the current
+sprite bake. Photo-puppet and diffusion refinement are optional future research, not
+adopted now. Revisit only with different hardware, a permissive asset, or an explicit
+owner request for an experiment.

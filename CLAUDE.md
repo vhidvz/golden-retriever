@@ -93,14 +93,18 @@ blender -b --factory-startup --python tools/build_dog.py -- --preview /tmp/dog
 python3 tools/measure_dog.py [--age puppy] [--picture out.png]
 blender -b --factory-startup --python tools/bake_sprites.py -- \
         POSES.json OUT_DIR [--samples 24] [--strands 150000] [--only stand,walk]
+DEVICE=GPU COMPUTE=CUDA blender -b --factory-startup --python tools/bake_sprites.py -- ...
+spikes/realism/run.sh --device GPU [--focus 0.4 --size 2400x1600 --crop 800]
 ```
 
 `tools/build_dog.py` writes `renderer/dog/retriever.json`; that file is committed, so
 Blender is needed only to change the body. `tools/bake_sprites.py` is normally driven by
-the daemon's `baker.rs` while the user is away; a full bake is expensive (seconds per
-frame, roughly 1,700 frames per growth stage). Changing the body, the bake script or the
-pose recorder invalidates existing sprite sets; changing only motion code invalidates
-the affected clips through the fingerprints in `manifest.json`.
+the daemon's `baker.rs` while the user is away; a full bake is expensive (72 s/frame CPU,
+25 s/frame CUDA measured, roughly 1,700 frames per growth stage). Setting
+`scene.cycles.device="GPU"` alone is not enough: `compute_device_type` must be `CUDA` or
+`OPTIX` and the device enabled, or Blender silently uses the CPU. Changing the body, the
+bake script or the pose recorder invalidates existing sprite sets; changing only motion
+code invalidates the affected clips through the fingerprints in `manifest.json`.
 
 ### Senses and evidence harnesses
 

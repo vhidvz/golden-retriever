@@ -43,7 +43,10 @@ LOOK = E("LOOK", "None")
 PALING = float(E("PALING", "0.25"))   # how far a puppy's coat is mixed towards cream
 SUPER = float(E("SUPER", "1.6"))      # drawn this much larger, then scaled down: hair stays crisp, not smeared
 KEY = E("KEY", "left")                # "left": light from the upper left (mirrored when he faces left); "front"
+DEVICE = E("DEVICE", "CPU")           # "CPU" or "GPU" (Cycles); GPU is a Phase 8 measurement
+COMPUTE = E("COMPUTE", "CUDA")         # Cycles GPU backend: "CUDA" or "OPTIX"
 FOCUS = float(E("FOCUS", "0"))        # tests only: render just this far (in units) around his eyes
+SIZE = E("SIZE", "")                  # tests only: "WIDTHxHEIGHT" render size for close-up evidence
 LID_TUCK = tuple(float(v) for v in E("LID_TUCK", "12,10").split(","))   # degrees the open lids are turned back into the head
 
 
@@ -498,6 +501,8 @@ def main():
     scene.collection.objects.link(cam)
     scene.camera = cam
     scene.render.resolution_x, scene.render.resolution_y = poses["window"]
+    if SIZE:
+        scene.render.resolution_x, scene.render.resolution_y = (int(v) for v in SIZE.lower().split("x", 1))
     scene.render.resolution_percentage = int(round(100 * SUPER))
     scene.view_settings.view_transform = VIEW
     try:
@@ -505,7 +510,19 @@ def main():
     except TypeError as err:
         print("look", err)
     scene.render.engine = "CYCLES"
-    scene.cycles.device = "CPU"
+    if DEVICE.upper() == "GPU":
+        prefs = bpy.context.preferences.addons["cycles"].preferences
+        prefs.compute_device_type = COMPUTE
+        prefs.refresh_devices()
+        for device in prefs.devices:
+            device.use = device.type == COMPUTE
+        if not any(device.type == COMPUTE for device in prefs.devices):
+            raise SystemExit(f"no Cycles {COMPUTE} device was found")
+        scene.cycles.device = "GPU"
+        print(f"BAKE device GPU ({COMPUTE})", flush=True)
+    else:
+        scene.cycles.device = "CPU"
+        print("BAKE device CPU", flush=True)
     scene.cycles.samples = samples
     scene.cycles.use_denoising = not E("NODENOISE", "")
     scene.cycles_curves.shape = "THICK"

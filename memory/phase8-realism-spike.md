@@ -1,6 +1,6 @@
 ---
 name: phase8-realism-spike
-description: Phase 8 started with a measured stills bake baseline; 72.2 s/frame at production defaults, still visibly CG; full photoreal acceptance untested
+description: Phase 8 closed as a no-go for photoreal on this hardware; measured bake cost and CG head close-up retained as evidence; current sprite bake stays
 metadata:
   type: project
 ---
@@ -8,23 +8,30 @@ metadata:
 Started 2026-11-24 at the owner's request. The first Phase 8 step is the measured stills
 spike recommended by `docs/realism-direction.md`, not a photoreal implementation.
 
-- Harness: `spikes/realism/run.sh`; evidence: `spikes/realism/RESULTS.md` and two tracked
-  stand stills.
+- Harness: `spikes/realism/run.sh`; evidence: `spikes/realism/RESULTS.md` and the tracked
+  stand and close-up stills.
 - Quick setting (60k strands, 12 samples, CPU Cycles): 28.5 s stand, 32.8 s sit, 32.3 s
-  walk per frame. Production default (150k, 24): 72.2 s stand.
-- Naive extrapolation: ~34 h per growth stage, ~12.75 days for all nine stages on this
-  CPU path. The existing away-only scheduler can absorb some of this; actual away time
-  and GPU/VRAM performance are still unmeasured.
-- Quality: the 150k frame is better than 60k but still visibly CG; head/eyes, paws and
-  coat edges are the visible gaps. No blind A/B, 800 px head close-up, 500k/1M strands,
-  32/64 samples, GPU test or MANN walk foot-slide test yet.
-- This is a baseline, not approval of photoreal. The recommendation remains option A
-  (upgrade the offline bake), with neural/splat avatars rejected for this hardware and
-  licence constraints.
+  walk per frame. Production default (150k, 24): 72.2 s CPU, 25.4 s CUDA (2.8x faster;
+  peak 1027 MiB).
+- Naive extrapolation: ~34 h per growth stage, ~12.8 days for all nine stages on CPU;
+  ~108 h (4.5 days) on the CUDA path. The existing away-only scheduler can absorb some
+  of this; actual away time remains unmeasured.
+- Quality: denser groom and more samples did not fix the CG look. At 800 px, 150k/24,
+  500k/32 and 1M/64 all still read as CG (eyes, muzzle, lip line, coat edges); the 1M/64
+  image is the decisive negative result. 500k/32 peaked at 3725 MiB of 4 GB, and the GPU
+  was slower than CPU for the dense close-ups. No blind A/B or MANN walk test was run;
+  the stills failure already closes the phase.
+- **Decision:** Phase 8 is closed as a no-go for photoreal on this hardware. The current
+  sprite bake stays; photo-puppet/diffusion/larger-GPU work is optional future research.
+  Neural/splat avatars are rejected for this hardware/licences. The measured close-ups
+  and costs are the evidence, not a photoreal success claim.
 
 **Why:** Phase 8 must be argued from measured quality and cost, not from a renderer
 rewrite or wishful settings.
 
-**How to apply:** use the harness for repeatable runs; add a head close-up and dense
-groom before proposing implementation. Related: [[realism-direction]],
-[[phase6-body-refinement]].
+**How to apply:** do not reopen photoreal implementation from this evidence alone;
+revisit only with different hardware, a permissive asset or an explicit owner request.
+Use the harness for any optional photo-puppet/diffusion/dense-groom experiment. Note:
+setting `scene.cycles.device = "GPU"` alone does not enable CUDA; `compute_device_type`
+must be set and the device enabled, or Blender silently renders on CPU. Related:
+[[realism-direction]], [[phase6-body-refinement]].

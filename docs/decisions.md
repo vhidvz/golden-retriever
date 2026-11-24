@@ -331,10 +331,23 @@ implementation. The evidence, options and recommendation are in
 ## Phase 8 realism baseline (started 2026-11-24)
 
 - **The first Phase 8 step is a measured spike, not a photoreal rewrite.** The current
-  offline bake costs about 72 s per stand frame at 150k strands/24 samples on the CPU
-  path (28–33 s at 60k/12). The committed stills in `spikes/realism/` show the quality
-  ceiling: better than the live body, still visibly CG at the edges/head/paws.
-- **No photoreal claim.** Blind A/B against real Goldens, head close-ups at 800 px,
-  500k/1M-strand and 32/64-sample runs, GPU/VRAM and motion/foot-slide measurements remain.
-  The recommendation is still option A (upgrade the bake), not neural/splat avatars;
-  this is a baseline, not approval of the full phase.
+  offline bake costs about 72 s per stand frame at 150k strands/24 samples on CPU
+  (28–33 s at 60k/12). A real Cycles CUDA run of the same frame took 25.4 s and peaked
+  at 1027 MiB. The committed stills in `spikes/realism/` show the quality ceiling:
+  better than the live body, still visibly CG at the edges/head/paws.
+- **No photoreal claim.** The 800 px close-up still reads as CG at 1M strands/64 samples,
+  so the acceptance bar is not met. Denser groom and more samples did not fix the eye
+  shape, muzzle or lip line; 500k/32 peaked at 3725 MiB of 4 GB. A blind A/B and the
+  MANN walk/foot-slide test remain unrun, but they cannot rescue a body that fails the
+  close-up test.
+
+## Phase 8 photoreal decision (2026-11-24)
+
+- **No-go for photoreal on this hardware.** The measured production bake is 72.2 s/frame
+  on CPU and 25.4 s on the GTX 1650 CUDA path; the 1M/64 800 px close-up still reads as
+  CG. Neural/splat avatars need 24–48 GB VRAM and non-commercial dependencies; the photo
+  puppet is limited to its source activities and share-alike terms. The current sprite
+  bake remains the product path.
+- **Phase 8 is closed as a decision, not as a photoreal success.** Optional future
+  experiments (photo puppet, diffusion refinement, a larger GPU) require a new owner
+  request; no runtime or data dependency was added.
