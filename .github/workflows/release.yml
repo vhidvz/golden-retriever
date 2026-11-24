@@ -143,13 +143,10 @@ jobs:
           name: buddy-appimage
           path: dist/release/*
 
-  publish:
-    if: startsWith(github.ref, 'refs/tags/')
+  metadata:
     needs: [tarball, deb, rpm, arch, appimage]
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -159,7 +156,7 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
-      - name: Add the SBOM and one checksum manifest
+      - name: Build one release directory with SBOM and checksums
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
           find artifacts -name SHA256SUMS -delete
@@ -172,6 +169,23 @@ jobs:
           BUDDY_SIGNING_PRIVATE_KEY: ${{ secrets.BUDDY_SIGNING_PRIVATE_KEY }}
           BUDDY_SIGNING_PASSPHRASE: ${{ secrets.BUDDY_SIGNING_PASSPHRASE }}
         run: scripts/sign-release.sh artifacts
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: buddy-release
+          path: artifacts/*
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: buddy-release
+          path: artifacts
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: artifacts/*
