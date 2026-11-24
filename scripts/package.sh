@@ -144,6 +144,7 @@ pkgrel=1
 pkgdesc='Buddy, a Golden Retriever who lives on your desktop'
 arch=('x86_64')
 license=('MIT')
+options=('!debug')
 depends=('python' 'python-gobject' 'gtk4' 'libadwaita' 'systemd')
 source=("buddy-$version.tar.gz")
 sha256sums=('$source_sum')
@@ -153,7 +154,10 @@ package() {
 }
 ARCH
         (cd "$work" && makepkg --nodeps --noconfirm --cleanbuild)
-        built=$(ls -t "$work"/*.pkg.tar.zst | head -1)
+        # makepkg can emit a buddy-debug split package as well. Pick the real package by
+        # name: the debug one has no /usr/bin/buddy and must never be the release artifact.
+        built=$(find "$work" -maxdepth 1 -type f -name "buddy-$version-*.pkg.tar.zst" ! -name 'buddy-debug-*' | head -1)
+        [ -n "$built" ] || { echo "makepkg produced no buddy package" >&2; exit 1; }
         cp "$built" "$out/"
         artifact="$out/$(basename "$built")"
         ;;
