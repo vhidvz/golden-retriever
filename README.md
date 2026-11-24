@@ -34,8 +34,10 @@ sent, so it can crash, be hidden or be replaced without him noticing.
 Requirements: Rust and an X11 or XWayland display. The installer downloads a pinned
 Godot 4.7.2 under `~/.local/share/buddy/godot` unless a suitable `godot`/`godot4` is on
 `PATH` or `BUDDY_GODOT` is set. The optional control panel needs Python 3 with
-PyGObject, GTK 4 and libadwaita; `scripts/install.sh` warns if they are missing. The
-daemon and CLI do not need them. Developed on Manjaro with GNOME 50.
+PyGObject, python-cairo, GTK 4 and libadwaita; `scripts/install.sh` warns if they are
+missing. The tray also needs the desktop's StatusNotifier host (GNOME AppIndicator
+extension or KDE). The daemon and CLI do not need any of them. Developed on Manjaro
+with GNOME 50.
 
 ```sh
 cargo test                      # brain and daemon tests
@@ -455,6 +457,7 @@ closes itself.
 ```sh
 buddy-tray                         # the tray client; the installer starts it with the session
 systemctl --user status buddy-tray.service
+systemctl --user enable --now buddy-tray.service   # system packages do not enable user units
 systemctl --user restart buddy-tray.service
 buddy play                         # feed/water/pet/play/sleep are also notification actions
 ```
