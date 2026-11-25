@@ -14,6 +14,7 @@ import Shell from 'gi://Shell';
 import St from 'gi://St';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 
 const RECONNECT_SECONDS = 5;
 const POINTER_MILLISECONDS = 200;
@@ -61,10 +62,20 @@ export default class BuddySense extends Extension {
 
     disable() {
         // Also runs when the screen locks: the daemon learns of the lock itself, from the session bus.
-        for (const [object, id] of this._signals)
-            object.disconnect(id);
-        for (const [source, id] of this._sources)
-            source.disconnect(id);
+        for (const [object, id] of this._signals) {
+            try {
+                object.disconnect(id);
+            } catch {
+                // A tray source may already have been disposed by the Shell.
+            }
+        }
+        for (const [source, id] of this._sources) {
+            try {
+                source.disconnect(id);
+            } catch {
+                // A tray source may already have been disposed by the Shell.
+            }
+        }
         this._signals = [];
         this._sources.clear();
         if (this._pointerTimer)
@@ -84,7 +95,11 @@ export default class BuddySense extends Extension {
             this._settings = null;
         }
         if (this._trayButton) {
-            this._trayButton.destroy();
+            try {
+                this._trayButton.destroy();
+            } catch {
+                // already disposed
+            }
             this._trayButton = null;
         }
     }
@@ -94,17 +109,21 @@ export default class BuddySense extends Extension {
     _addTrayButton() {
         if (this._trayButton)
             return;
-        const button = new St.Button({
-            style_class: 'panel-button',
-            reactive: true,
-            can_focus: true,
-            track_hover: true,
-            child: new St.Icon({
-                gicon: Gio.icon_new_for_string('buddy'),
-                style_class: 'system-status-icon',
-            }),
+        const button = new PanelMenu.Button(0.0, 'Buddy messages', false);
+        button.add_child(new St.Icon({
+            gicon: Gio.icon_new_for_string('buddy'),
+            style_class: 'system-status-icon',
+        }));
+        // PanelMenu.Button owns the click and opens its menu. Keep that menu
+        // empty and turn its opening into the direct panel action, so a single
+        // left click never shows a native menu.
+        button.menu.removeAll();
+        button.menu.connect('open-state-changed', (_menu, open) => {
+            if (!open)
+                return;
+            button.menu.close();
+            this._toggleTrayPanel();
         });
-        button.connect('clicked', () => this._toggleTrayPanel());
         Main.panel.addToStatusArea('buddy-tray', button, 0, 'right');
         this._trayButton = button;
     }
