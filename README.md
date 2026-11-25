@@ -35,8 +35,8 @@ Requirements: Rust and an X11 or XWayland display. The installer downloads a pin
 Godot 4.7.2 under `~/.local/share/buddy/godot` unless a suitable `godot`/`godot4` is on
 `PATH` or `BUDDY_GODOT` is set. The optional control panel needs Python 3 with
 PyGObject, python-cairo, GTK 4 and libadwaita; `scripts/install.sh` warns if they are
-missing. The tray also needs the desktop's StatusNotifier host (GNOME AppIndicator
-extension or KDE). The daemon and CLI do not need any of them. Developed on Manjaro
+missing. On GNOME the tray uses Buddy's Shell extension; KDE hosts the standard
+StatusNotifierItem natively. The daemon and CLI do not need any of them. Developed on Manjaro
 with GNOME 50.
 
 ```sh
@@ -49,10 +49,10 @@ scripts/install.sh --remove     # stop and remove (his memory is kept)
 ```
 
 `scripts/install.sh` also adds **Buddy** to your application list and starts the tray
-helper with your session, unless `--no-tray` is given. On GNOME the tray icon needs the
-**AppIndicator and KStatusNotifierItem Support** extension (already enabled on this
-machine); KDE Plasma hosts StatusNotifierItems natively. Launch the control panel from
-the application list or directly:
+helper with your session, unless `--no-tray` is given. On GNOME the icon is added by
+Buddy's own Shell extension (the same extension used for the desktop sense); KDE Plasma
+hosts the standard StatusNotifierItem natively. Launch the control panel from the
+application list or directly:
 
 ```sh
 buddy-ui                 # open the control panel
@@ -437,16 +437,15 @@ standing, sitting, lying and sleeping on his side. Every activity he has is draw
 ## Tray icon and custom notifications
 
 Buddy has a small tray icon that the desktop places with its other tray icons. On
-GNOME this uses the **AppIndicator and KStatusNotifierItem Support** extension; KDE
-provides the host natively. The icon is a standard StatusNotifierItem, not a floating
-window.
+GNOME Buddy's Shell extension adds a top-bar button that calls the tray client directly;
+on KDE the standard StatusNotifierItem is hosted by Plasma. The icon is never a floating
+window at coordinates of our choosing.
 
-Click it and choose **Open Buddy messages**, or double-click the icon, to open Buddy's
-own panel. The panel is part of his UI, not the system notification service: it can show
-his offers ("I could open the browser for your next step"), hunger, thirst, boredom,
-company and tiredness, with buttons that go straight to the daemon. Quiet mode keeps the
-messages in the panel but does not open it. A one-line "You're back" message is information-only and
-closes itself.
+Click it once: Buddy's own panel opens. The panel is part of his UI, not the system
+notification service: it can show his offers ("I could open the browser for your next
+step"), hunger, thirst, boredom, company and tiredness, with buttons that go straight to
+the daemon. Quiet mode keeps the messages in the panel but does not open it. A one-line
+"You're back" message is information-only and closes itself.
 
 ```sh
 buddy-tray                         # the tray client; the installer starts it with the session
@@ -456,8 +455,9 @@ systemctl --user restart buddy-tray.service
 buddy play                         # feed/water/pet/play/sleep are also notification actions
 ```
 
-If the tray icon is absent on GNOME, enable the AppIndicator extension; the app retries
-registration when the watcher appears.
+If the tray icon is absent on GNOME, enable Buddy's Shell extension
+(`buddy@buddy.local`); it is also what provides the desktop sense. On KDE the SNI host
+is native; the client retries registration if the watcher starts late.
 
 ## Known gaps
 
@@ -484,10 +484,11 @@ registration when the watcher appears.
   still have the system sense.
 - The managed Ollama runtime is Linux/systemd only. The model catalogue marks
   unevaluated models; only `gemma4:e4b` has measurements from this project.
-- The tray icon uses the StatusNotifierItem standard. GNOME needs the AppIndicator
-  extension; KDE Plasma has native support. There is no tray fallback on a desktop
-  without a StatusNotifier host. The custom panel is a normal GTK window, so a Wayland
-  compositor may place it itself; it is positioned below the tray on X11/XWayland.
+- The tray icon uses Buddy's GNOME Shell extension on GNOME and StatusNotifierItem on
+  KDE/other hosts; GNOME does not need the AppIndicator extension. There is no tray
+  fallback on a desktop without either. The custom panel is a normal GTK window, so a
+  native Wayland compositor may place it itself; it is positioned below the tray on
+  X11/XWayland.
 - All five Linux release formats were built and payload-verified locally and in a manual
   GitHub Actions run (tests, tar, DEB, RPM, Arch, AppImage, metadata). The tag-only
   publish/upload job was not exercised because no tag was created. Windows is explicitly

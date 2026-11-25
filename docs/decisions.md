@@ -310,10 +310,11 @@ implementation. The evidence, options and recommendation are in
 
 ## Tray icon and custom notifications (2026-11-24)
 
-- **OS tray first, custom UI second.** The icon is a standard StatusNotifierItem hosted
-  by the desktop (GNOME AppIndicator extension / KDE), so the OS decides where it lives.
-  The panel opened from it is Buddy's own GTK4 UI; no `org.freedesktop.Notifications`
-  daemon or native toast is used.
+- **OS tray first, custom UI second.** On GNOME Buddy's Shell extension adds a top-bar
+  button that calls the tray client directly on one click; on KDE/other hosts the icon is
+  a standard StatusNotifierItem hosted by the desktop. The OS decides where it lives. The
+  panel opened from it is Buddy's own GTK4 UI; no `org.freedesktop.Notifications` daemon
+  or native toast is used.
 - **Messages come from his state, not a second brain.** His existing `waiting` offers
   (including habit/pattern offers) are shown as interactive cards; hunger, thirst,
   boredom, company and tiredness cross thresholds with per-need cooldowns. A returning
@@ -325,12 +326,12 @@ implementation. The evidence, options and recommendation are in
   which sends the ordinary `sleep` command; he is never forced to rest automatically.
 - **Presentation stays non-intrusive.** Interactive cards stay until answered; a small
   badge/attention state marks unread messages; the panel has a close button and Escape,
-  and a notice-only panel closes itself after a short time. The tray also exports the
-  standard DBusMenu expected by GNOME's AppIndicator extension, so a single click has a
-  useful result even though GNOME reserves double-click for activation. The tray is a
-  normal client and can die without affecting his life.
-- **Host dependency is explicit.** GNOME requires the AppIndicator extension; KDE has
-  the host natively. The tray service retries registration if the watcher starts later.
+  and a notice-only panel closes itself after a short time. GNOME gets a direct
+  single-click top-bar button from the project extension; non-GNOME SNI hosts keep the
+  standard DBusMenu. The tray is a normal client and can die without affecting his life.
+- **Host dependency is explicit.** GNOME uses the project's Buddy Shell extension; KDE
+  has the StatusNotifier host natively. The tray service retries registration if the
+  watcher starts later.
   `scripts/install.sh` installs/enables it by default; `--no-tray` opts out.
 - **No global input or screen capture was added.** The tray reads `status`/`waiting`
   over the same socket and never touches raw keyboard or pointer content.

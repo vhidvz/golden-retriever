@@ -153,7 +153,8 @@ Create the directory when needed; it is not part of the repository.
   `spikes/claude-code/` for the record; it is not part of Buddy's runtime.
 - **Tray client:** `ui/buddy_tray.py` registers a StatusNotifierItem on the session bus
   and opens its own GTK panel from `Activate`/the native `com.canonical.dbusmenu` item.
-  GNOME needs the AppIndicator extension; KDE has SNI natively. It polls `status` and
+  GNOME uses the project's Shell extension top-bar button (direct single click);
+  KDE/other hosts use SNI. It polls `status` and
   `waiting` every 1.25 s, never uses `org.freedesktop.Notifications`, and sends every
   action through the daemon socket. `scripts/install.sh` installs
   `dist/buddy-tray.service`; use `--no-tray` to skip it. Test the registration with

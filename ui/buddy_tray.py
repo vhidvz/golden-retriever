@@ -500,7 +500,10 @@ class PanelWindow(Gtk.Window):
         self.app.model.unread = 0
         self._cards_signature = ()
         self.refresh()
-        self.app.sni.update()
+        if self.app.sni:
+            self.app.sni.update()
+        if self.app.control:
+            self.app.control.update()
 
     def open_buddy(self, page: str | None = None):
         self.app.open_buddy(page)
@@ -511,6 +514,58 @@ class PanelWindow(Gtk.Window):
 
     def toggle_privacy(self):
         self.app.toggle_privacy()
+
+
+class TrayControl:
+    """A tiny session D-Bus door for the GNOME panel button.
+
+    AppIndicator's GNOME host deliberately reserves double-click for Activate and
+    gives a single click to a native menu. The project's own Shell extension uses
+    this interface to open the custom panel on a single click instead.
+    """
+
+    XML = """<node>
+      <interface name="local.buddy.TrayControl">
+        <method name="TogglePanel"/>
+        <method name="OpenPanel"/>
+        <method name="ClosePanel"/>
+        <property name="Unread" type="u" access="read"/>
+      </interface>
+    </node>"""
+
+    def __init__(self, app: "TrayApp"):
+        self.app = app
+        self.connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        self.interface = Gio.DBusNodeInfo.new_for_xml(self.XML).interfaces[0]
+        self.registration = self.connection.register_object("/Control", self.interface, self._method_call, self._get_property, None)
+        Gio.bus_own_name_on_connection(self.connection, "local.buddy.TrayControl", Gio.BusNameOwnerFlags.NONE, None, None)
+
+    def _get_property(self, _connection, _sender, _path, _iface, prop):
+        if prop == "Unread":
+            return GLib.Variant("u", self.app.model.unread)
+        return None
+
+    def _method_call(self, _connection, _sender, _path, _iface, method, _parameters, invocation):
+        if method == "TogglePanel":
+            GLib.idle_add(self.app.toggle_panel, 0, 0)
+        elif method == "OpenPanel":
+            GLib.idle_add(self.app.open_panel, 0, 0)
+        elif method == "ClosePanel":
+            GLib.idle_add(self.app.panel.hide_panel if self.app.panel else lambda: None)
+        invocation.return_value(GLib.Variant("()", ()))
+
+    def update(self):
+        try:
+            self.connection.emit_signal(None, "/Control", "local.buddy.TrayControl", "PropertiesChanged", GLib.Variant("(sa{sv}as)", (
+                "local.buddy.TrayControl", {"Unread": GLib.Variant("u", self.app.model.unread)}, [])))
+        except Exception:
+            pass
+
+    def close(self):
+        try:
+            self.connection.unregister_object(self.registration)
+        except Exception:
+            pass
 
 
 class DBusMenu:
@@ -809,7 +864,9 @@ class TrayApp(Gtk.Application):
         super().__init__(application_id=APP_ID, flags=0)
         self.model = NoticeModel()
         self.panel: PanelWindow | None = None
+        self.control: TrayControl | None = None
         self.sni: StatusNotifier | None = None
+        self.is_gnome = (os.environ.get("XDG_CURRENT_DESKTOP") or "").lower().startswith("gnome")
         self.last_status: dict | None = None
         self._last_xy = (0, 0)
         self._stop = threading.Event()
@@ -831,8 +888,14 @@ class TrayApp(Gtk.Application):
         if self.panel is None:
             self.panel = PanelWindow(self)
             self.panel.set_visible(False)
-            self.sni = StatusNotifier(self)
-            self.sni.update()
+            self.control = TrayControl(self)
+            # GNOME's AppIndicator host gives single-click to a native menu and
+            # double-click to Activate. On GNOME the project's Shell extension
+            # calls TrayControl for a direct single click; KDE/other SNI hosts
+            # still get the standard tray item.
+            if not self.is_gnome:
+                self.sni = StatusNotifier(self)
+                self.sni.update()
             self._start_polling()
         else:
             self.toggle_panel(*self._last_xy)
@@ -841,6 +904,8 @@ class TrayApp(Gtk.Application):
         self._stop.set()
         if self.sni:
             self.sni.close()
+        if self.control:
+            self.control.close()
         self.release()
         Gtk.Application.do_shutdown(self)
 
@@ -870,6 +935,8 @@ class TrayApp(Gtk.Application):
             self.panel.refresh()
         if self.sni:
             self.sni.update()
+        if self.control:
+            self.control.update()
         if added and status and not status.get("state", {}).get("quiet", False):
             self.open_panel(*self._last_xy)
             GLib.timeout_add_seconds(12, self._auto_hide_panel)
@@ -902,6 +969,8 @@ class TrayApp(Gtk.Application):
         self.model.unread = 0
         if self.sni:
             self.sni.update()
+        if self.control:
+            self.control.update()
         self.panel.show_at(x, y)
 
     def toggle_panel(self, x: int = 0, y: int = 0):
@@ -918,6 +987,8 @@ class TrayApp(Gtk.Application):
             self.panel.refresh()
         if self.sni:
             self.sni.update()
+        if self.control:
+            self.control.update()
 
     def perform(self, notice: Notice, action: dict):
         if action.get("dismiss"):

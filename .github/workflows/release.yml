@@ -37,6 +37,7 @@ jobs:
           }
       - run: cargo test --all
       - run: python3 -m py_compile ui/buddy_ui.py ui/buddy_tray.py perception/*.py scripts/sbom.py
+      - run: node --check shell-extension/buddy@buddy.local/extension.js
       - run: sh -n scripts/install.sh scripts/package.sh scripts/checksums.sh scripts/verify-package.sh scripts/sign-release.sh scripts/release-rehearsal.sh
       - run: desktop-file-validate dist/buddy-ui.desktop
       - run: python3 scripts/sbom.py --out "$RUNNER_TEMP/buddy-sbom.cdx.json"

@@ -11,6 +11,7 @@ import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
+import St from 'gi://St';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
@@ -25,6 +26,7 @@ export default class BuddySense extends Extension {
         this._signals = [];
         this._sources = new Map();
         this._connect();
+        this._addTrayButton();
 
         this._watch(global.display, 'notify::focus-window', () => this._reportFocus());
         // Click context is content-free: button, current app and a coarse region.
@@ -80,6 +82,67 @@ export default class BuddySense extends Extension {
                 // the shell is already tearing down this extension
             }
             this._settings = null;
+        }
+        if (this._trayButton) {
+            this._trayButton.destroy();
+            this._trayButton = null;
+        }
+    }
+
+    // --- the single-click top-bar entry
+
+    _addTrayButton() {
+        if (this._trayButton)
+            return;
+        const button = new St.Button({
+            style_class: 'panel-button',
+            reactive: true,
+            can_focus: true,
+            track_hover: true,
+            child: new St.Icon({
+                gicon: Gio.icon_new_for_string('buddy'),
+                style_class: 'system-status-icon',
+            }),
+        });
+        button.connect('clicked', () => this._toggleTrayPanel());
+        Main.panel.addToStatusArea('buddy-tray', button, 0, 'right');
+        this._trayButton = button;
+    }
+
+    _toggleTrayPanel() {
+        this._callTray('TogglePanel', () => this._spawnTray());
+    }
+
+    _callTray(method, onError) {
+        try {
+            Gio.DBus.session.call(
+                'local.buddy.TrayControl', '/Control', 'local.buddy.TrayControl', method,
+                null, null, Gio.DBusCallFlags.NONE, -1, null,
+                (connection, result) => {
+                    try {
+                        connection.call_finish(result);
+                    } catch (error) {
+                        if (onError)
+                            onError();
+                    }
+                });
+        } catch (error) {
+            if (onError)
+                onError();
+        }
+    }
+
+    _spawnTray() {
+        try {
+            const path = GLib.find_program_in_path('buddy-tray') ??
+                GLib.build_filenamev([GLib.get_home_dir(), '.local', 'bin', 'buddy-tray']);
+            GLib.spawn_command_line_async(path);
+            GLib.timeout_add(700, () => {
+                this._callTray('OpenPanel');
+                return GLib.SOURCE_REMOVE;
+            });
+        } catch (error) {
+            logError(error, "Buddy's tray panel could not be started");
         }
     }
 
