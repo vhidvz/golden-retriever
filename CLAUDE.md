@@ -6,8 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Buddy is a Golden Retriever who lives on a Linux desktop: a long-running Rust daemon
 simulates his life, a Godot overlay draws him, and an optional local model helps him
-understand language and act on the computer. **Phase 5 (skills and helpers) is
-complete**; Phase 6 (refinement) continues with his body. `README.md` is the user-facing
+understand language and act on the computer. **Phase 5 (skills and helpers) is complete**
+and **Phase 10 (context and companionship) is complete on the safe path**; Phase 6
+(refinement) continues with his body. `README.md` is the user-facing
 specification and describes every command and behaviour. `docs/decisions.md` records the
 project owner's binding decisions; `docs/development.md` records the machine, tools and
 working agreements. `memory/MEMORY.md` is the durable, git-tracked project memory that
@@ -33,7 +34,7 @@ The invariants that matter most:
 
 ```sh
 cargo build --release
-cargo test                                    # 119 tests, under 30 s on the dev machine
+cargo test                                    # 129 tests, under 30 s on the dev machine
 cargo test -p buddy-core <test_name>          # one unit test
 cargo test -p buddy --test lifecycle          # daemon persistence/lifecycle integration test
 cargo fmt --check                             # rustfmt.toml: max_width 150 (currently reports pre-existing diffs)
@@ -65,7 +66,8 @@ toolchain; do not reformat unrelated files unless the task is formatting.
 `buddy` is both the daemon and its CLI; the CLI talks to the daemon over one Unix
 socket. `README.md` lists the full command set. The diagnostic commands worth knowing:
 `buddy why` (current decision and alternatives), `buddy status`, `buddy senses`,
-`buddy providers`, `buddy ai status` and `buddy ai doctor`, `buddy journal`,
+`buddy context` (the short-lived typing/screen summary), `buddy providers`,
+`buddy ai status` and `buddy ai doctor`, `buddy journal`,
 `buddy snapshot` (only Buddy's window, for drawing
 bugs), and `buddy simulate DAYS --user absent|attentive|office` (long-run behaviour
 check).
@@ -154,7 +156,11 @@ Two crates, one long-running process, a replaceable renderer, and an optional na
   run gated by the sensitive `run_helper` skill.
   `daemon.rs` also tracks the application in front and advances permissioned workflow
   replays; inside applications it uses `perception/a11y_focus.py`, `a11y_act.py` and
-  `a11y_text.py` through the off-by-default `accessibility` sense. It can replay a
+  `a11y_text.py` through the off-by-default `accessibility` sense. The separate
+  `context` sense runs `perception/a11y_context.py`, which reports only debounced
+  semantic text-change summaries; it never receives raw keys or clipboard data. The
+  `glances` sense runs the existing one-shot screen look at most every twenty minutes
+  while the user is active and is separate from the `screen` permission. It can replay a
   mixed sequence of application, accessible, text and assisted manual steps; a manual
   step waits for `buddy workflow continue` and never blind-clicks. `daemon/assist.rs`
   resolves requests,
@@ -248,7 +254,9 @@ lives in `memory/`; start at `memory/MEMORY.md`.
   `127.0.0.1:11435` with its own model store; first-run choice in `ai_setup.rs`.
 - Renderer and body: `renderer/main.gd`, `retriever.gd`, `sprites.gd`,
   `renderer/dog/retriever.json`, `tools/build_dog.py`, `tools/bake_sprites.py`.
-- Senses: `shell-extension/`, `perception/`, `crates/buddy/src/system.rs`.
+- Senses: `shell-extension/`, `perception/`, `crates/buddy/src/system.rs`;
+  semantic typing is `perception/a11y_context.py`, bounded glances are scheduled by
+  `daemon.rs` on top of `perception/screen_glance.py`.
 - Control panel and desktop identity: `ui/buddy_ui.py`, `ui/buddy.css`, `ui/buddy.svg`,
   `dist/buddy-ui.desktop`, `scripts/install.sh`.
 - Evidence and limits: `spikes/RESULTS.md`, `docs/proportions.md`, README "Known gaps".

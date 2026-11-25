@@ -2,7 +2,10 @@
 //! settings survive the daemon being stopped and started again, whether it was
 //! asked to quit or terminated by the session ending.
 
-use serde_json::Value;
+use buddy_core::ClientMsg;
+use serde_json::{Value, json};
+use std::io::Write;
+use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::thread::sleep;
@@ -49,6 +52,20 @@ impl Sandbox {
 
     fn json(&self, args: &[&str]) -> Value {
         serde_json::from_str(&self.run(args)).unwrap()
+    }
+
+    fn socket(&self) -> PathBuf {
+        self.dir.join("s.sock")
+    }
+
+    fn sense(&self, source: &str, kind: &str, data: Value) {
+        let mut stream = UnixStream::connect(self.socket()).unwrap();
+        for msg in [
+            ClientMsg::Hello { role: "sense".into() },
+            ClientMsg::Sense { source: source.into(), kind: kind.into(), data },
+        ] {
+            writeln!(stream, "{}", serde_json::to_string(&msg).unwrap()).unwrap();
+        }
     }
 }
 
@@ -175,4 +192,38 @@ fn he_does_computer_tasks_with_no_model_at_all_and_only_with_a_yes() {
     assert!(sandbox.run(&["folders"]).contains("docs"));
     sandbox.run(&["quit"]);
     again.wait().unwrap();
+}
+
+#[test]
+fn context_is_an_opt_in_short_lived_note_and_never_reaches_export() {
+    let sandbox = Sandbox::new("context");
+    let mut daemon = sandbox.start();
+    sandbox.run(&["sense", "context", "on"]);
+    sandbox.sense("context", "typing", json!({ "app": "gnome-text-editor", "kind": "prose", "words": 7, "chars": 42 }));
+    sleep(Duration::from_millis(300));
+
+    let shown = sandbox.run(&["context"]);
+    assert!(shown.contains("gnome-text-editor") && shown.contains("prose"), "{shown}");
+    let exported = sandbox.run(&["export"]);
+    assert!(!exported.contains("gnome-text-editor"), "the context note must not reach the database or export");
+
+    // Glances are separate and cannot run without the screen sense.
+    sandbox.run(&["sense", "glances", "on"]);
+    assert!(sandbox.run(&["context"]).contains("screen sense is off"));
+    sandbox.run(&["sense", "glances", "off"]);
+
+    // Privacy mode must erase the note, not merely hide it.
+    sandbox.run(&["privacy", "on"]);
+    sleep(Duration::from_millis(600));
+    assert!(sandbox.run(&["context"]).contains("No typing summary is being kept"));
+
+    // A fresh note, then the explicit clear path.
+    sandbox.run(&["privacy", "off"]);
+    sandbox.sense("context", "typing", json!({ "app": "gnome-text-editor", "kind": "code", "words": 3, "chars": 19 }));
+    sleep(Duration::from_millis(300));
+    sandbox.run(&["context", "clear"]);
+    assert!(sandbox.run(&["context"]).contains("No typing summary is being kept"));
+
+    sandbox.run(&["quit"]);
+    assert!(daemon.wait().unwrap().success());
 }

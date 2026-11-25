@@ -1649,6 +1649,18 @@ class BuddyWindow(Adw.ApplicationWindow):
         senses.append(self.senses_box)
         body.append(senses)
 
+        context = self._card(
+            "What he is keeping",
+            "The context sense stores one typing summary and the glances sense one screen summary, in memory only. Neither is written to the database or his journal.",
+            self._text_button("Clear", self._clear_context, "small-button", icon="edit-clear-symbolic"),
+        )
+        self.context_note_label = Gtk.Label(label="Nothing is being kept.")
+        self.context_note_label.set_xalign(0)
+        self.context_note_label.set_wrap(True)
+        self.context_note_label.add_css_class("field-hint")
+        context.append(self.context_note_label)
+        body.append(context)
+
         look = self._card(
             "Look once",
             "He can look at the screen, one image, or one webcam frame and keep only a one-line impression in memory. A camera look needs the camera sense on; the frame is deleted after the local vision model reads it.",
@@ -1673,6 +1685,8 @@ class BuddyWindow(Adw.ApplicationWindow):
             "The screen and window titles are off by default; turn them on here when you want him to use them.",
             "Camera and microphone wake only while allowed, and privacy mode silences both at once.",
             "Accessibility is only the focused control's semantic information, used for guided workflow capture.",
+            "Context reads semantic text changes in the focused accessible control, never raw keys or the clipboard. Passwords, terminals, shells, login/lock and consent surfaces are refused.",
+            "Glances need the screen sense too, wait until you are active and not fullscreen, and keep one local one-line summary. The desktop's screen-sharing indicator appears for the moment of each look.",
         ]:
             label = Gtk.Label(label="• " + line)
             label.set_xalign(0)
@@ -1729,7 +1743,41 @@ class BuddyWindow(Adw.ApplicationWindow):
                 row.append(switch)
                 self.senses_box.append(row)
 
+            self._show_context(data.get("context") or {}, data.get("glances") or {})
+
         self._run(work, done, busy=False)
+
+    def _show_context(self, context: dict, glances: dict):
+        parts = []
+        note = context.get("note")
+        if isinstance(note, dict):
+            parts.append(
+                f"Typing: {note.get('app') or '?'} — {note.get('kind') or '?'}, "
+                f"{int(note.get('words') or 0)} words, {int(note.get('chars') or 0)} chars, "
+                f"{float(note.get('secs_ago') or 0):.0f} s ago."
+            )
+        elif context.get("active"):
+            parts.append("Typing context is on; no summary is being kept right now.")
+        else:
+            parts.append("Typing context is off.")
+        if glances.get("needs_screen"):
+            parts.append("Screen glances need the screen sense.")
+        elif glances.get("active"):
+            parts.append("Screen glances are on; at most one every twenty minutes while you are active.")
+        else:
+            parts.append("Screen glances are off.")
+        glance = glances.get("note")
+        if isinstance(glance, dict):
+            parts.append(f"Last glance: {glance.get('summary') or '?'} ({float(glance.get('secs_ago') or 0):.0f} s ago).")
+        self.context_note_label.set_text(" ".join(parts))
+
+    def _clear_context(self):
+        def done(data, error):
+            if error is None:
+                self._toast("The short-lived context summary is cleared.")
+            self._refresh_senses()
+
+        self._command("context_clear", None, done=done)
 
     def _set_privacy(self, value: bool):
         def done(data, error):

@@ -31,6 +31,8 @@ const SOUND_WINDOW_SECS: f64 = 600.0;
 const REST_SPOT_BINS: usize = 12;
 /// With no input for this long, he takes it that you have gone.
 pub const AWAY_AFTER_SECS: f64 = 600.0;
+/// A learned routine earns at most one greeting in this long.
+const ROUTINE_GREET_EVERY: f64 = 45.0 * 60.0;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
@@ -248,6 +250,13 @@ pub struct Sim {
     load: f64,
     last_startle: f64,
     glimpse: Option<(f64, String)>,
+    /// The last debounced semantic typing report: when, a local kind, and word count.
+    /// The text itself never reaches the simulation.
+    typing: Option<(f64, String, u32)>,
+    /// A work burst ended; he has not yet looked up from it.
+    typing_look_pending: bool,
+    /// When a learned routine last earned a greeting, so it stays a greeting.
+    last_routine_greet: f64,
 
     pub training: Training,
     /// Doing something because he was asked, not because he felt like it.
@@ -316,6 +325,9 @@ impl Sim {
             load: 0.0,
             last_startle: f64::NEG_INFINITY,
             glimpse: None,
+            typing: None,
+            typing_look_pending: false,
+            last_routine_greet: f64::NEG_INFINITY,
             training: mind.training,
             performing: false,
             sit_on_arrival: false,
@@ -514,6 +526,15 @@ impl Sim {
         self.mood.advance(dt, &self.needs, self.activity.effort());
         self.greet_urge *= (-dt / 30.0).exp();
         self.attended *= (-dt / 300.0).exp();
+        if self.typing.as_ref().is_some_and(|(at, _, _)| now - at > 20.0) {
+            self.typing = None;
+            // The typing stopped. If he was quietly keeping you company, he looks up
+            // once, then goes back to being a dog.
+            let awake = self.activity != Activity::Sleep && !self.user_away && !self.settings.privacy_mode;
+            if std::mem::take(&mut self.typing_look_pending) && awake && now - self.last_glance >= 12.0 {
+                self.look("you", 2.0, now);
+            }
+        }
 
         let hide_expired = self.settings.hidden_until.is_some_and(|until| until != i64::MAX && now as i64 >= until);
         if hide_expired {
@@ -670,6 +691,7 @@ impl Sim {
             attended: self.attended,
             secs_since_asking: (now - self.last_asked) / self.ask_patience,
             user_busy: self.busy,
+            user_typing: self.typing.as_ref().is_some_and(|(at, _, _)| now - at < 15.0),
             user_away: self.user_away,
             at_favourite_spot: favourite.is_some_and(|f| (f - self.x_frac()).abs() < 0.06),
             current: self.activity,
@@ -1330,6 +1352,21 @@ impl Sim {
                     self.look("screen", 2.0, now);
                     self.out.push(journal("habit_noticed", json!({ "apps": habit.apps, "times": habit.times, "days": habit.days })));
                 }
+                let typing = self.typing.as_ref().is_some_and(|(at, _, _)| now - at < 15.0);
+                if self.patterns.in_habit(&app)
+                    && now - self.last_routine_greet > ROUTINE_GREET_EVERY
+                    && !self.settings.quiet
+                    && !self.user_away
+                    && !self.fullscreen
+                    && !self.overview
+                    && !typing
+                    && self.busy < 0.7
+                {
+                    // The start of a routine he has learned is a good moment to say hello.
+                    self.greet_urge = self.greet_urge.max(0.55);
+                    self.last_routine_greet = now;
+                    self.out.push(journal("routine_greeting", json!({ "app": app })));
+                }
             }
             Stimulus::Notification { .. } => {
                 if self.activity != Activity::Sleep && !self.user_away {
@@ -1367,6 +1404,13 @@ impl Sim {
                 }
             }
             Stimulus::Load(level) => self.load = level,
+            Stimulus::Typing { kind, words, .. } => {
+                // He knows only that you are typing, roughly what kind of thing, and
+                // for how long. The text stays in the daemon's short-lived note.
+                self.typing = Some((now, kind, words));
+                self.typing_look_pending = true;
+                self.busy += (1.0 - self.busy) * 0.25;
+            }
         }
         std::mem::take(&mut self.out)
     }
@@ -1451,6 +1495,9 @@ impl Sim {
             "favourite_spot": self.habits.favourite(),
             "you": { "away": self.user_away, "busy": (self.busy * 100.0).round() / 100.0 },
             "last_look_at_the_screen": self.glimpse.as_ref().filter(|(at, _)| now - at < 600.0).map(|(_, what)| what),
+            "typing": self.typing.as_ref().filter(|(at, _, _)| now - at < 120.0).map(|(at, kind, words)| {
+                json!({ "kind": kind, "words": words, "secs_ago": (now - at).max(0.0).round() })
+            }),
             "habits_noticed": self.patterns.habits(),
             "workflows": self.workflows.list(),
             "doing_as_asked": self.performing,
@@ -1555,6 +1602,43 @@ mod tests {
         s.apply(Command::Play, 1.0);
         assert_eq!(s.activity(), Activity::PlayBow, "a play invitation is a bow");
         assert!(s.needs.boredom < 0.7, "playing should settle the urge: {}", s.needs.boredom);
+    }
+
+    #[test]
+    fn a_learned_routine_earns_a_greeting_but_not_one_on_every_focus() {
+        let mut s = sim(0);
+        s.tick(1.0, 12.0);
+        let day = 86_400.0;
+        for d in 0..6 {
+            for (i, app) in ["terminal", "editor", "browser"].iter().enumerate() {
+                s.patterns.focus(app, 1000.0 + day * f64::from(d) + 30.0 * i as f64);
+            }
+        }
+        assert!(s.patterns.in_habit("editor"));
+        s.greet_urge = 0.0;
+        let first = s.sense(Stimulus::Focus { app: "editor".into() }, 300_000.0);
+        assert!(s.greet_urge > 0.5, "a known routine is a right moment to greet");
+        assert!(first.iter().any(|output| matches!(output, Output::Journal(entry) if entry.kind == "routine_greeting")));
+        s.greet_urge = 0.0;
+        let second = s.sense(Stimulus::Focus { app: "editor".into() }, 300_030.0);
+        assert_eq!(s.greet_urge, 0.0, "not constantly");
+        assert!(!second.iter().any(|output| matches!(output, Output::Journal(entry) if entry.kind == "routine_greeting")));
+    }
+
+    #[test]
+    fn typing_keeps_him_quiet_company_and_he_looks_up_when_the_burst_ends() {
+        let mut s = sim(0);
+        s.tick(1.0, 12.0);
+        s.apply(Command::Sense { source: "context".into(), on: true }, 1.0);
+        let typing = Stimulus::Typing { app: "gnome-text-editor".into(), kind: "prose".into(), words: 8, chars: 48 };
+        let seen = s.sense(typing, 2.0);
+        assert!(seen.is_empty(), "the report itself is not an event to show");
+        assert!(s.context(2.0).user_typing);
+        assert_eq!(behavior::appeal(Activity::SeekAttention, &s.context(2.0)).0, 0.0, "no pestering while you type");
+        let (now, outputs) = live(&mut s, 2.0, 22.0, 12.0);
+        assert!(!s.context(now).user_typing);
+        assert!(!s.typing_look_pending, "the look-up happens once");
+        assert!(outputs.iter().any(|output| matches!(output, Output::Look { at: "you", .. })), "after a work burst he looks up at you: {outputs:?}");
     }
 
     #[test]

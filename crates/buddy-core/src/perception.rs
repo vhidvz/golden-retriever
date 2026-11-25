@@ -23,15 +23,31 @@ pub struct Senses {
     pub microphone: bool,
     /// The semantic accessibility tree, used only by guided workflow capture.
     pub accessibility: bool,
+    /// Debounced semantic text changes in the focused accessible control. Never raw
+    /// keys, clipboard content or a history; the daemon keeps one short summary.
+    pub context: bool,
+    /// A bounded, low-frequency screen glance while the user is active, summarized
+    /// locally by the vision model and kept as one line in memory.
+    pub glances: bool,
 }
 
 impl Default for Senses {
     fn default() -> Self {
-        Self { system: true, desktop: true, window_titles: false, screen: false, camera: false, microphone: false, accessibility: false }
+        Self {
+            system: true,
+            desktop: true,
+            window_titles: false,
+            screen: false,
+            camera: false,
+            microphone: false,
+            accessibility: false,
+            context: false,
+            glances: false,
+        }
     }
 }
 
-pub const SOURCES: [&str; 7] = ["system", "desktop", "window_titles", "screen", "camera", "microphone", "accessibility"];
+pub const SOURCES: [&str; 9] = ["system", "desktop", "window_titles", "screen", "camera", "microphone", "accessibility", "context", "glances"];
 
 impl Senses {
     pub fn get(&self, source: &str) -> Option<bool> {
@@ -43,6 +59,8 @@ impl Senses {
             "camera" => self.camera,
             "microphone" => self.microphone,
             "accessibility" => self.accessibility,
+            "context" => self.context,
+            "glances" => self.glances,
             _ => return None,
         })
     }
@@ -56,6 +74,8 @@ impl Senses {
             "camera" => &mut self.camera,
             "microphone" => &mut self.microphone,
             "accessibility" => &mut self.accessibility,
+            "context" => &mut self.context,
+            "glances" => &mut self.glances,
             _ => return false,
         };
         *slot = on;
@@ -95,6 +115,14 @@ pub enum Stimulus {
     },
     /// How hard the machine is working, 0..=1.
     Load(f64),
+    /// A debounced semantic summary of typing in the focused accessible control:
+    /// the application, a local classification and counts. Never the text itself.
+    Typing {
+        app: String,
+        kind: String,
+        words: u32,
+        chars: u32,
+    },
 }
 
 impl Stimulus {
@@ -108,6 +136,7 @@ impl Stimulus {
             Stimulus::Presence(_) => "camera",
             Stimulus::Sound { .. } => "microphone",
             Stimulus::Glimpse { .. } => "screen",
+            Stimulus::Typing { .. } => "context",
         }
     }
 
@@ -127,6 +156,12 @@ impl Stimulus {
             "sound" => Stimulus::Sound { level: data["level"].as_f64()?.clamp(0.0, 1.0) },
             "glimpse" => Stimulus::Glimpse { summary: text("summary")? },
             "load" => Stimulus::Load(data["level"].as_f64()?.clamp(0.0, 1.0)),
+            "typing" => Stimulus::Typing {
+                app: text("app")?,
+                kind: text("kind")?,
+                words: data["words"].as_u64().unwrap_or(0).min(100_000) as u32,
+                chars: data["chars"].as_u64().unwrap_or(0).min(1_000_000) as u32,
+            },
             _ => return None,
         })
     }
@@ -171,5 +206,31 @@ mod tests {
         assert!(senses.set("accessibility", true));
         assert!(senses.accessibility);
         assert!(SOURCES.contains(&"accessibility"));
+    }
+
+    #[test]
+    fn context_and_glances_are_off_by_default_and_separate_from_the_other_senses() {
+        let mut senses = Senses::default();
+        assert!(!senses.context && !senses.glances);
+        assert!(senses.set("context", true));
+        assert!(senses.set("glances", true));
+        assert!(senses.context && senses.glances);
+        assert!(!senses.accessibility && !senses.screen, "neither turns on an older content sense");
+        assert!(SOURCES.contains(&"context") && SOURCES.contains(&"glances"));
+    }
+
+    #[test]
+    fn older_settings_without_context_or_glances_migrate_to_off() {
+        let old: Senses = serde_json::from_value(json!({ "system": true, "desktop": true, "accessibility": false })).unwrap();
+        assert!(old.system && old.desktop);
+        assert!(!old.context && !old.glances && !old.screen && !old.camera && !old.microphone);
+    }
+
+    #[test]
+    fn typing_is_context_and_carries_no_raw_text() {
+        let typed = Stimulus::parse("typing", &json!({ "app": "gnome-text-editor", "kind": "prose", "words": 7, "chars": 42 })).unwrap();
+        assert_eq!(typed.source(), "context");
+        assert_eq!(typed, Stimulus::Typing { app: "gnome-text-editor".into(), kind: "prose".into(), words: 7, chars: 42 });
+        assert_eq!(Stimulus::parse("typing", &json!({ "app": "x" })), None, "malformed reports are dropped");
     }
 }

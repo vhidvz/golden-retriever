@@ -94,7 +94,7 @@ Create the directory when needed; it is not part of the repository.
 
 ## Testing and runtime traps
 
-- `cargo test` currently runs 119 tests in under 30 seconds. Unit tests sit beside their
+- `cargo test` currently runs 129 tests in under 30 seconds. Unit tests sit beside their
   modules; the daemon lifecycle test is `crates/buddy/tests/lifecycle.rs`.
 - **Wall-clock time:** tests must not depend on the hour. The lifecycle sandbox sets
   `BUDDY_HOUR=12` because a sleeping dog answers differently; a test that passes at noon
@@ -188,11 +188,30 @@ Create the directory when needed; it is not part of the repository.
 - `spikes/workflow-a11y/` — the AT-SPI accessibility spike for inside-application
   workflows. The GTK4 probe and event/action probes are run manually; they are not part
   of the installer or the test suite.
+- `spikes/context-a11y/` — the Phase 10 semantic text-change probe for
+  `gnome-text-editor`; it measures event names, duplicate text objects, capture gaps and
+  listener CPU. It is run manually against a real app and is not part of the installer
+  or the test suite.
 - `docs/proportions.md` — how Buddy's body was measured against breed standards,
   photographs and skeletal studies, and what changed as a result.
 - `README.md` "Known gaps" — the current, maintained list of what is not done. Prefer it
   over older notes when they disagree.
 
+- **Context sense:** `buddy sense context on` starts `perception/a11y_context.py` only
+  while privacy is off. It subscribes to AT-SPI `object:text-changed`, filters the
+  FOCUSED editable text object, debounces 1.2 s, and prints one summary line; it never
+  prints text. Check with `buddy context` (the one in-memory note, two-minute retention)
+  and `buddy context clear`. Password fields, terminals, shells, password managers,
+  login/lock and consent/portal surfaces are refused by the helper and again by the
+  daemon; `buddy senses` shows whether it is reporting. The probe in
+  `spikes/context-a11y/` measures the event path with `gnome-text-editor`; it is not
+  part of the test suite and does not use a hardware keyboard.
+- **Screen glances:** `buddy sense screen on` then `buddy sense glances on`. The first
+  automatic look waits five minutes, then runs at most every twenty minutes while the
+  user is present and not locked/fullscreen/overview. It uses the same portal path as
+  `buddy look`; a first-run consent prompt is expected. Only a local one-line summary is
+  kept, for five minutes, and `buddy context clear` erases it. The portal's sharing
+  indicator is the visible sign of the moment of capture.
 - **Camera one-shot:** `perception/camera_still.py` captures one frame for
   `buddy look --camera`. It requires the camera sense and privacy off; the daemon pauses
   the continuous presence helper while it runs, reads and deletes the JPEG, and sends it

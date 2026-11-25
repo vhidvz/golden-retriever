@@ -109,9 +109,11 @@ buddy ai doctor | repair            # diagnose the runtime / re-pull the selecte
 buddy quiet on|off      # no sounds and no asking for attention
 buddy privacy on|off    # suspends every sense at once
 buddy senses            # what he may perceive, and what is actually reporting
+buddy context           # the short-lived typing/screen summary; buddy context clear to erase it
 buddy sense camera on   # camera presence (motion); no frames go to the model
 buddy voice on          # microphone + local audio model; buddy voice off to stop
-buddy sense screen on   # switch one sense: system, desktop, window_titles, screen, camera, microphone, accessibility
+buddy sense screen on   # switch one sense: system, desktop, window_titles, screen, camera, microphone,
+                        # accessibility, context, glances
 buddy look              # have him look at the screen once and say what he makes of it
 buddy look --file IMAGE # have him look at one image with the vision model
 buddy look --camera     # one webcam frame to the vision model; deleted after reading
@@ -171,23 +173,40 @@ it that is restored automatically if the database is ever damaged.
 | `camera` | off | Whether someone is there | Movement in a 64×48 greyscale picture; no frame is kept |
 | `microphone` | off | That there was a sound, and how loud | Loudness only; nothing is recorded |
 | `accessibility` | off | The focused control's app, frame, role and accessible name, only while capturing a workflow | AT-SPI on demand; `Super+Shift+B` captures; no text, keys or coordinates |
+| `context` | off | A short summary of semantic text changes in the focused accessible control: application, kind, word and character counts | AT-SPI text-change events, debounced; never raw keys, clipboard or a history; one in-memory note for two minutes |
+| `glances` | off | A local one-line description of the screen while you are active | One portal frame at most every twenty minutes, summarized by the local vision model; needs `screen` too |
 
 A sense that is off is not consulted at all: the extension is told to send
-nothing, the camera and microphone helpers are not running, and the accessibility
-helpers are only started for a capture or replay step. Privacy mode
+nothing, the camera, microphone and context helpers are not running, and the
+accessibility helpers are only started for a capture or replay step. Privacy mode
 does the same for all of them at once. `buddy senses` shows what is allowed and
 what has actually reported; the journal records when each sense first became
 active and each look at the screen. A look keeps only its one-line summary, in
 memory; the frame is deleted as soon as the model has seen it, and nothing
 leaves the machine.
 
+`context` is deliberately narrower than a keyboard listener. It reads only the
+focused accessible text control, only after a typing burst has paused, and keeps
+only a summary such as "gnome-text-editor — prose, 42 words". The typed text is
+not printed, journaled, exported or sent to a model. Password fields, terminals,
+shells, password managers, login/lock and consent surfaces are refused, and the
+daemon refuses them again if a helper reports one. `buddy context` shows the one
+summary he is keeping; `buddy context clear` erases it at once, and turning the
+sense or privacy mode off erases it too. `glances` is opt-in on top of `screen`:
+the first automatic look may ask the desktop for screen-sharing consent, the
+desktop's sharing indicator appears for the moment of each look, fullscreen,
+overview and lock screens are skipped, and the one-line result is held in memory
+for five minutes, never journaled.
+
 What he does with it: he greets you when you come back, steps aside for the
 lock screen, the overview and fullscreen applications, glances up at a
 notification, watches the pointer when it comes near, stays calmer and does
 not ask for attention while you are busy, and takes less of the machine when
-it is working hard. He also keeps count of which applications follow which,
-and notes a sequence as a habit of yours once it has recurred on different
-days (`buddy why` lists them). Acting on those habits is a later phase.
+it is working hard. While you are typing he settles nearby instead of asking
+for attention, and looks up once when the burst ends. He also keeps count of
+which applications follow which, notes a sequence as a habit of yours once it
+has recurred on different days (`buddy why` lists them), and a learned routine
+earns at most one greeting every 45 minutes.
 
 ## Talking to him and training him
 
@@ -494,8 +513,17 @@ is native; the client retries registration if the watcher starts late.
   publish/upload job was not exercised because no tag was created. Windows is explicitly
   unsupported for this release line. `buddy upgrade` downloads and checksum-verifies a
   user-local artifact but never installs it; system packages and checkouts are refused.
-- Looking at the screen is on request only (`buddy look`), sees the whole monitor
-  at reduced size, and has no OCR, so small text is beyond it.
+- Looking at the screen is on request only (`buddy look`) unless the separate
+  `glances` sense is enabled; even then it is one low-frequency frame, sees the whole
+  monitor at reduced size, and has no OCR, so small text is beyond it.
+- Context is semantic AT-SPI text-change observation, not a keyboard listener. It
+  sees no raw keys, clipboard, password fields, terminals, shells, login/lock or
+  consent surfaces, and applications without an accessibility tree are invisible to
+  it. The summary is counts and a category, not the text.
+- The first automatic glance can ask for screen-sharing consent; a declined or
+  missing portal leaves glances unavailable without affecting his life. Automatic
+  glances use the same local vision model as `buddy look` and therefore cost a model
+  call; they are not a continuous recording.
 - The camera sense itself detects presence only (64×48 greyscale motion) and never sends
   frames to the vision model. `buddy look --camera` is an explicit one-shot vision
   look, not continuous camera vision; the frame is deleted after it is read. The
@@ -563,9 +591,15 @@ is native; the client retries registration if the watcher starts late.
    daemon still depends on Unix sockets, systemd and the Linux desktop bridges. `buddy
    upgrade` downloads and verifies a user-local artifact but does not install it. The
    tag-only Release upload remains unexercised. See `docs/release-direction.md`.
-10. Context and companionship — pointer/click foundation implemented 2026-11-23. The
-   Shell sense now reports a click by button, application and coarse screen region, with
-   no content or click history; semantic text changes in accessible controls (not raw
-   global keystrokes), bounded screen glances, routines-aware greetings and warmth remain.
-   Off by default where content is involved, local-only and explicitly not a keylogger.
-   See `docs/context-direction.md`.
+10. Context and companionship — **complete on the safe path (2026-11-25).** The Shell
+   sense reports a click by button, application and coarse screen region, with no
+   content or click history. Semantic text changes in the focused accessible control
+   are available through the off-by-default `context` sense: debounced, summarized,
+   local-only, password/terminal/login/consent surfaces refused, one in-memory note for
+   two minutes, clearable with `buddy context clear`, and never raw keys or clipboard.
+   Bounded screen glances are the separate `glances` sense, require `screen`, run at
+   most once every twenty minutes while the user is active, and keep one local
+   one-line summary for five minutes. Typing makes him settle quietly and look up
+   after the burst, and a learned routine earns at most one greeting every 45 minutes.
+   The research is in
+   `spikes/context-a11y/RESULTS.md` and the design in `docs/context-direction.md`.

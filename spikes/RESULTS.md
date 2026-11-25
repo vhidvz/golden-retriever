@@ -202,3 +202,22 @@ development machine.
   gain was restored to 27%. The transcript itself is not stored in this record.
 - These tests use only the local Ollama endpoint on `127.0.0.1:11435`; no audio or image
   left the machine.
+
+## Context accessibility (2026-11-25)
+
+The Phase 10 context sense needed the real AT-SPI text-change signal before it could be
+implemented. `spikes/context-a11y/probe.py` measured `gnome-text-editor` 50.1 on the
+GNOME/Wayland session:
+
+- one focused editable text object, plus a second unfocused text object in the same
+  frame that duplicates every event;
+- `object:text-changed:insert` and `object:text-changed:delete`, with one of each per
+  text change after filtering on the FOCUSED state;
+- no missed inserts at 10 ms, 80 ms or 250 ms spacing (100/100, 40/40, 60/60);
+- 0.0003 s user+system CPU over 8 s idle (0.0–0.01 % of one core);
+- application name and frame title available on the event source, but no dedicated
+  action/focus event from the programmatic change.
+
+The implementation therefore filters on FOCUSED, debounces 1.2 s, reads only a bounded
+amount for classification and never emits the text. Full numbers and caveats are in
+`spikes/context-a11y/RESULTS.md`.

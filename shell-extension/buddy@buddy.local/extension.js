@@ -14,6 +14,7 @@ import Shell from 'gi://Shell';
 import St from 'gi://St';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 
 const RECONNECT_SECONDS = 5;
 const POINTER_MILLISECONDS = 200;
@@ -108,18 +109,21 @@ export default class BuddySense extends Extension {
     _addTrayButton() {
         if (this._trayButton)
             return;
-        const button = new St.Button({
-            style_class: 'panel-button',
-            reactive: true,
-            can_focus: true,
-            track_hover: true,
-            accessible_name: 'Buddy messages',
-            child: new St.Icon({
-                gicon: Gio.icon_new_for_string('buddy'),
-                style_class: 'system-status-icon',
-            }),
+        // addToStatusArea only accepts a PanelMenu.Button on GNOME 50. The empty
+        // menu is never opened: a primary-button press is handled here and stopped,
+        // so one click goes straight to Buddy's own panel.
+        const button = new PanelMenu.Button(0.0, 'Buddy messages', true);
+        button.add_child(new St.Icon({
+            gicon: Gio.icon_new_for_string('buddy'),
+            style_class: 'system-status-icon',
+        }));
+        button.connect('button-press-event', (_actor, event) => {
+            if (event.get_button() === 1) {
+                this._toggleTrayPanel();
+                return Clutter.EVENT_STOP;
+            }
+            return Clutter.EVENT_PROPAGATE;
         });
-        button.connect('clicked', () => this._toggleTrayPanel());
         Main.panel.addToStatusArea('buddy-tray', button, 0, 'right');
         this._trayButton = button;
     }

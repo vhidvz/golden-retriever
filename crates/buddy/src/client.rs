@@ -89,6 +89,30 @@ pub fn status(as_json: bool) -> Result<()> {
     println!("  pictures:    {}", s["pictures"].as_str().unwrap_or("?"));
     println!("  privacy:     {}", if st["privacy"] == true { "ON — all observation suspended" } else { "off" });
     println!("  observing:   {}", text(&s["observing"]));
+    let context = &s["context"];
+    if context["privacy"] == true {
+        println!("  context:     suspended by privacy mode");
+    } else if context["active"] == true {
+        match context["note"].as_object() {
+            Some(note) => println!(
+                "  context:     on; last typing in {} ({}), {:.0} s ago",
+                note["app"].as_str().unwrap_or("?"),
+                note["kind"].as_str().unwrap_or("?"),
+                note["secs_ago"].as_f64().unwrap_or(0.0)
+            ),
+            None => println!("  context:     on; no typing summary is being kept"),
+        }
+    } else {
+        println!("  context:     off");
+    }
+    let glances = &s["glances"];
+    if glances["active"] == true {
+        println!("  glances:     on; one local screen summary at most every twenty minutes");
+    } else if glances["needs_screen"] == true {
+        println!("  glances:     off (needs the screen sense)");
+    } else {
+        println!("  glances:     off");
+    }
     println!("  memory:      {} (schema v{})", text(&s["database"]), s["schema_version"]);
     Ok(())
 }
@@ -168,7 +192,75 @@ pub fn senses() -> Result<()> {
             println!("  {:<14}      title: {title}", "");
         }
     }
+    if let Some(note) = s["context"]["note"].as_object() {
+        println!(
+            "  {:<14}      typing in {}: {}, {} words, {} chars, {:.0} s ago",
+            "context",
+            note["app"].as_str().unwrap_or("?"),
+            note["kind"].as_str().unwrap_or("?"),
+            note["words"].as_u64().unwrap_or(0),
+            note["chars"].as_u64().unwrap_or(0),
+            note["secs_ago"].as_f64().unwrap_or(0.0)
+        );
+    }
+    if let Some(note) = s["glances"]["note"].as_object() {
+        println!(
+            "  {:<14}      last glance: {} ({:.0} s ago)",
+            "",
+            note["summary"].as_str().unwrap_or("?"),
+            note["secs_ago"].as_f64().unwrap_or(0.0)
+        );
+    }
     Ok(())
+}
+
+/// The short-lived context note. It is in memory only and can be cleared at once.
+pub fn context() -> Result<()> {
+    let data = request("context", Value::Null)?;
+    print_context(&data["context"], &data["glances"]);
+    Ok(())
+}
+
+pub fn context_clear() -> Result<()> {
+    let data = request("context_clear", Value::Null)?;
+    println!("Context cleared. Nothing new will be kept until the next report.");
+    print_context(&data["context"], &data["glances"]);
+    Ok(())
+}
+
+fn print_context(context: &Value, glances: &Value) {
+    if context["privacy"] == true {
+        println!("Context: suspended by privacy mode.");
+    } else if context["allowed"] == true {
+        println!(
+            "Context: on. He keeps one typing summary for at most {:.0} s, in memory only.",
+            context["retention_secs"].as_f64().unwrap_or(120.0)
+        );
+    } else {
+        println!("Context: off (turn it on with: buddy sense context on).");
+    }
+    match context["note"].as_object() {
+        Some(note) => println!(
+            "  Last typing: {} — {}, {} words, {} chars, {:.0} s ago",
+            note["app"].as_str().unwrap_or("?"),
+            note["kind"].as_str().unwrap_or("?"),
+            note["words"].as_u64().unwrap_or(0),
+            note["chars"].as_u64().unwrap_or(0),
+            note["secs_ago"].as_f64().unwrap_or(0.0)
+        ),
+        None => println!("  No typing summary is being kept."),
+    }
+    if glances["needs_screen"] == true {
+        println!("Screen glances: off because the screen sense is off (turn it on with: buddy sense screen on).");
+    } else if glances["active"] == true {
+        println!("Screen glances: on, at most one every twenty minutes, only while you are active and not in fullscreen.");
+    } else {
+        println!("Screen glances: off (turn them on with: buddy sense glances on, with the screen sense on).");
+    }
+    if let Some(note) = glances["note"].as_object() {
+        println!("  Last glance: {} ({:.0} s ago)", note["summary"].as_str().unwrap_or("?"), note["secs_ago"].as_f64().unwrap_or(0.0));
+    }
+    println!("  Clear this with: buddy context clear");
 }
 
 pub fn look(file: Option<&str>, camera: bool) -> Result<()> {

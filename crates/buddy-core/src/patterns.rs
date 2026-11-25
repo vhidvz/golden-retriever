@@ -145,6 +145,11 @@ impl Patterns {
             .map(|(key, _)| (key.clone(), key[begun.len()..].to_string()))
     }
 
+    /// Whether this application is part of any sequence he has learned as a habit.
+    pub fn in_habit(&self, app: &str) -> bool {
+        self.sequences.iter().any(|(key, seen)| seen.is_habit() && key.split(" > ").any(|part| part == app))
+    }
+
     /// The record for one habit, by its key ("app > app > app").
     pub fn habit_mut(&mut self, key: &str) -> Option<&mut Seen> {
         self.sequences.get_mut(key)
@@ -205,6 +210,17 @@ mod tests {
         assert!(habits.iter().any(|h| h.apps == ["terminal", "editor", "browser"]), "{habits:?}");
         assert!(habits.iter().all(|h| h.days >= HABIT_DAYS && h.times >= HABIT_TIMES));
         assert_eq!(noticed.len(), habits.len(), "each habit is announced exactly once, when it forms: {noticed:?}");
+    }
+
+    #[test]
+    fn a_learned_routine_can_be_recognised_by_each_application_in_it() {
+        let mut p = Patterns::default();
+        let day = 86_400.0;
+        for d in 0..6 {
+            work(&mut p, 1000.0 + day * f64::from(d), &["terminal", "editor", "browser"]);
+        }
+        assert!(p.in_habit("terminal") && p.in_habit("editor") && p.in_habit("browser"));
+        assert!(!p.in_habit("chat"));
     }
 
     #[test]

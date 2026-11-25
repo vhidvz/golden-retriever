@@ -141,6 +141,8 @@ pub struct Context<'a> {
     pub secs_since_asking: f64,
     /// 0..=1: how steadily the user has been typing and pointing for the last couple of minutes.
     pub user_busy: f64,
+    /// A debounced semantic text-change report arrived in the last few seconds.
+    pub user_typing: bool,
     /// Nobody has touched the computer for a while, or the screen is locked.
     pub user_away: bool,
     pub at_favourite_spot: bool,
@@ -203,7 +205,12 @@ pub fn appeal(activity: Activity, c: &Context) -> (f64, &'static str) {
             ("his favourite spot", if c.at_favourite_spot { 0.3 } else { 0.0 }),
             ("nobody is around", if c.user_away { 0.2 } else { 0.0 }),
         ]),
-        Activity::Sit => total(&[("settled", 0.28), ("keeping you company", 0.2 * t.sociability), ("calm", 0.1 * t.calmness)]),
+        Activity::Sit => total(&[
+            ("settled", 0.28),
+            ("keeping you company", 0.2 * t.sociability),
+            ("calm", 0.1 * t.calmness),
+            ("keeping you company while you type", if c.user_typing { 0.35 * t.sociability } else { 0.0 }),
+        ]),
         Activity::Stand => total(&[("watching", 0.28 + 0.25 * c.mood.arousal)]),
         Activity::Walk => total(&[("restless", 0.75 * drive), ("energetic", 0.2 * t.energy * energy), ("wandering", 0.12)]),
         Activity::Sniff => {
@@ -214,7 +221,9 @@ pub fn appeal(activity: Activity, c: &Context) -> (f64, &'static str) {
             total(&[("bursting with energy", 2.2 * drive * drive * t.playfulness * youth * (1.0 - 0.5 * c.user_busy))])
         }
         Activity::TailChase if energy > 0.4 => total(&[("playful", 1.4 * drive * t.playfulness * youth * youth)]),
-        Activity::PlayBow if energy > 0.4 => total(&[("wants to play with you", 0.9 * drive * t.playfulness * c.attended)]),
+        Activity::PlayBow if energy > 0.4 => {
+            total(&[("wants to play with you", 0.9 * drive * t.playfulness * c.attended * if c.user_typing { 0.25 } else { 1.0 })])
+        }
         Activity::Roll => total(&[("feeling good", 0.5 * pleasant * t.playfulness * n.boredom), ("itchy back", 0.35 * n.itch)]),
         Activity::Stretch => total(&[("stiff", 1.3 * n.stiffness.powf(1.3))]),
         Activity::Yawn => total(&[("sleepy", 0.45 * n.fatigue), ("stiff", 0.25 * n.stiffness)]),
@@ -224,7 +233,9 @@ pub fn appeal(activity: Activity, c: &Context) -> (f64, &'static str) {
         Activity::Greet => total(&[("happy to see you", 2.5 * c.greet_urge)]),
         // Rare by construction: never in quiet mode or at night, never twice within twenty minutes.
         // He does not ask when nobody is there to answer, or when you are plainly busy.
-        Activity::SeekAttention if !c.quiet && day && c.secs_since_asking > ASKING_INTERVAL && !c.user_away && c.user_busy < 0.7 => {
+        Activity::SeekAttention
+            if !c.quiet && day && c.secs_since_asking > ASKING_INTERVAL && !c.user_away && !c.user_typing && c.user_busy < 0.7 =>
+        {
             total(&[("wants company", 1.1 * excess(n.social) * t.attention_seeking * (1.0 - 0.6 * t.independence))])
         }
         Activity::Eat if c.food_out && n.hunger > 0.2 => total(&[("hungry", 0.4 + 2.0 * n.hunger)]),
@@ -314,6 +325,7 @@ mod tests {
             secs_since_asking: 1e9,
             user_busy: 0.0,
             user_away: false,
+            user_typing: false,
             at_favourite_spot: false,
             current: Activity::Stand,
             inhibited: None,
@@ -378,6 +390,17 @@ mod tests {
         c.user_away = false;
         c.night = 1.0;
         assert_eq!(appeal(Activity::SeekAttention, &c).0, 0.0, "never at night");
+    }
+
+    #[test]
+    fn typing_makes_quiet_company_more_appealing_and_attention_seeking_impossible() {
+        let (mood, traits) = (Mood::default(), Personality::default());
+        let needs = Needs::default();
+        let mut c = context(&needs, &mood, &traits);
+        let before = appeal(Activity::Sit, &c).0;
+        c.user_typing = true;
+        assert!(appeal(Activity::Sit, &c).0 > before, "he settles beside you while you type");
+        assert_eq!(appeal(Activity::SeekAttention, &c).0, 0.0, "typing is not an invitation to pester");
     }
 
     #[test]

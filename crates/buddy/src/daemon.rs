@@ -32,6 +32,14 @@ const SAVE_EVERY: Duration = Duration::from_secs(30);
 const REPLAY_STEP_TIMEOUT: f64 = 30.0;
 /// How long a manual step waits for the user to perform it and run `workflow continue`.
 const MANUAL_STEP_TIMEOUT: f64 = 900.0;
+/// The semantic context note is short-lived and never persisted.
+const CONTEXT_RETENTION: f64 = 120.0;
+/// An automatic screen glance is summarized locally and kept for a few minutes.
+const GLANCE_RETENTION: f64 = 300.0;
+/// Wait this long after glances are enabled before the first automatic look.
+const GLANCE_FIRST: f64 = 300.0;
+/// Then at most one look this often; it is a glance, not a recording.
+const GLANCE_EVERY: f64 = 20.0 * 60.0;
 
 pub(crate) enum Incoming {
     Connected(u64, UnixStream),
@@ -43,6 +51,8 @@ pub(crate) enum Incoming {
         requester: u64,
         outcome: Result<Value, String>,
     },
+    /// An automatic, low-frequency screen glance has finished.
+    Glanced(Result<Value, String>),
     /// The local model has written down something the microphone picked up.
     Transcribed(Result<String, String>),
     /// The local model has said what an utterance meant, for the client that asked.
@@ -167,6 +177,70 @@ impl Helper {
 struct Reporting {
     reports: u64,
     last: f64,
+}
+
+/// What the context sense is allowed to keep: a few counts and a category, never
+/// the text that was typed. It lives in memory for two minutes and can be cleared.
+struct ContextNote {
+    app: String,
+    kind: String,
+    words: u32,
+    chars: u32,
+    at: f64,
+}
+
+/// The one-line result of an automatic screen glance. It is never journaled and
+/// is kept only for a few minutes.
+struct GlanceNote {
+    summary: String,
+    at: f64,
+}
+
+/// The categories the context helper may report. Anything else is "unknown", so a
+/// buggy or hostile helper cannot smuggle a free-form string into his state.
+fn clean_context_kind(raw: &str) -> String {
+    match raw {
+        "prose" | "code" | "search" | "url" | "email" | "form" | "empty" | "unknown" => raw.to_string(),
+        _ => "unknown".to_string(),
+    }
+}
+
+/// The helper already refuses terminals, shells, password managers and consent
+/// surfaces. The daemon checks again: a bad helper must not widen the permission.
+fn context_app_allowed(app: &str) -> bool {
+    let app = app.trim().to_ascii_lowercase();
+    if app.is_empty()
+        || matches!(
+            app.as_str(),
+            "gnome-shell"
+                | "gdm"
+                | "gdm3"
+                | "kgx"
+                | "sddm"
+                | "lightdm"
+                | "polkit"
+                | "policykit"
+                | "gnome-session"
+                | "xdg-desktop-portal"
+                | "xdg-desktop-portal-gnome"
+                | "xdg-desktop-portal-gtk"
+                | "buddy"
+                | "buddy-ui"
+                | "buddy-tray"
+                | "keepassxc"
+                | "bitwarden"
+                | "1password"
+                | "seahorse"
+        )
+    {
+        return false;
+    }
+    !["terminal", "konsole", "alacritty", "kitty", "xterm", "console", "shell", "password", "keyring"].iter().any(|token| app.contains(token))
+}
+
+/// Keep a short label printable and bounded before it enters his in-memory note.
+fn clean_label(raw: &str, max: usize) -> String {
+    raw.chars().filter(|c| !c.is_control()).take(max).collect()
 }
 
 fn now() -> f64 {
@@ -397,8 +471,14 @@ struct Daemon {
     baker: Option<Baker>,
     reporting: HashMap<String, Reporting>,
     tx: Sender<Incoming>,
-    helpers: [Helper; 2],
+    helpers: Vec<Helper>,
     looking: bool,
+    /// The most recent semantic typing summary, and the last automatic glance.
+    context_note: Option<ContextNote>,
+    glance_note: Option<GlanceNote>,
+    glancing: bool,
+    /// When the next automatic glance is due; 0 means "start the timer now".
+    glance_due: f64,
     /// A one-shot camera look has paused the presence helper so the device is free.
     camera_paused: bool,
     /// When he was last spoken to by name; for a little while after, he takes what he hears as meant for him.
@@ -542,6 +622,8 @@ impl Daemon {
         let camera = args["camera"].as_bool().unwrap_or(false);
         let refusal = if self.looking {
             Some("he is already looking")
+        } else if self.glancing {
+            Some("he is already taking a quick glance")
         } else if file.is_some() && camera {
             Some("choose either an image file or the camera, not both")
         } else if camera && self.sim.settings.privacy_mode {
@@ -574,6 +656,90 @@ impl Daemon {
         thread::spawn(move || {
             let outcome = look(&model, file, camera, token).map_err(|e| format!("{e:#}"));
             let _ = tx.send(Incoming::Looked { requester, outcome });
+        });
+    }
+
+    /// Context is deliberately short-lived: one in-memory note, no database row,
+    /// no journal entry, no export. Turning the sense or privacy mode off erases it.
+    fn keep_context_bounded(&mut self, at: f64) {
+        let senses = &self.sim.settings.senses;
+        let open = !self.sim.settings.privacy_mode;
+        if !open || !senses.context || self.context_note.as_ref().is_some_and(|note| at - note.at >= CONTEXT_RETENTION) {
+            self.context_note = None;
+        }
+        if !open || !senses.glances || !senses.screen || self.glance_note.as_ref().is_some_and(|note| at - note.at >= GLANCE_RETENTION) {
+            self.glance_note = None;
+        }
+        if !open || !senses.glances || !senses.screen {
+            self.glance_due = 0.0;
+        }
+    }
+
+    fn context_status(&self, at: f64) -> Value {
+        let senses = &self.sim.settings.senses;
+        let active = !self.sim.settings.privacy_mode && senses.context;
+        let note = self.context_note.as_ref().filter(|note| at - note.at < CONTEXT_RETENTION).map(|note| {
+            json!({ "app": note.app, "kind": note.kind, "words": note.words, "chars": note.chars, "secs_ago": (at - note.at).max(0.0).round() })
+        });
+        json!({
+            "allowed": senses.context,
+            "active": active,
+            "privacy": self.sim.settings.privacy_mode,
+            "retention_secs": CONTEXT_RETENTION,
+            "note": note,
+        })
+    }
+
+    fn glance_status(&self, at: f64) -> Value {
+        let senses = &self.sim.settings.senses;
+        let active = !self.sim.settings.privacy_mode && senses.glances && senses.screen;
+        let note = self
+            .glance_note
+            .as_ref()
+            .filter(|note| at - note.at < GLANCE_RETENTION)
+            .map(|note| json!({ "summary": note.summary, "secs_ago": (at - note.at).max(0.0).round() }));
+        let next_in = if active && self.glance_due > at { Some((self.glance_due - at).round()) } else { None };
+        json!({
+            "allowed": senses.glances,
+            "needs_screen": !senses.screen,
+            "active": active,
+            "retention_secs": GLANCE_RETENTION,
+            "next_in_secs": next_in,
+            "note": note,
+        })
+    }
+
+    /// A bounded, opt-in glance. It waits until the user is present and not
+    /// locked/fullscreen/overview, runs the same one-shot portal path as `buddy
+    /// look`, and keeps only a local one-line summary for a few minutes.
+    fn maybe_glance(&mut self, at: f64) {
+        let senses = &self.sim.settings.senses;
+        if self.sim.settings.privacy_mode || !senses.glances || !senses.screen || self.glancing {
+            return;
+        }
+        if self.glance_due == 0.0 {
+            self.glance_due = at + GLANCE_FIRST;
+            return;
+        }
+        if at < self.glance_due {
+            return;
+        }
+        let state = self.sim.snapshot(at);
+        if !state.user_here || state.ducked {
+            return;
+        }
+        if self.looking {
+            self.glance_due = at + 30.0;
+            return;
+        }
+        self.glancing = true;
+        self.glance_due = at + GLANCE_EVERY;
+        let model = self.sim.settings.vision_model.clone();
+        let token: Option<String> = self.store.load("screen_token").ok().flatten();
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            let outcome = look(&model, None, false, token).map_err(|error| format!("{error:#}"));
+            let _ = tx.send(Incoming::Glanced(outcome));
         });
     }
 
@@ -886,6 +1052,23 @@ impl Daemon {
         if self.sim.settings.privacy_mode {
             return;
         }
+        // Semantic typing is the only context source. It carries counts and a
+        // category; the daemon never accepts or stores the text itself.
+        if kind == "typing" {
+            if !senses.context {
+                return;
+            }
+            let Some(Stimulus::Typing { app, kind, words, chars }) = Stimulus::parse(kind, data) else { return };
+            if !context_app_allowed(&app) {
+                return;
+            }
+            let kind = clean_context_kind(&kind);
+            self.context_note = Some(ContextNote { app: clean_label(&app, 80), kind: kind.clone(), words, chars, at });
+            self.noted("context", at);
+            let outputs = self.sim.sense(Stimulus::Typing { app, kind, words, chars }, at);
+            self.absorb(outputs, at);
+            return;
+        }
         // The pointer is not something he reacts to as an event; the renderer just follows it with his eyes.
         if kind == "pointer" {
             if senses.desktop {
@@ -935,6 +1118,8 @@ impl Daemon {
             "camera" => "whether someone is in front of the camera",
             "microphone" => "sounds and speech",
             "accessibility" => "the focused control's accessibility information, for guided workflow capture",
+            "context" => "a short summary of semantic text changes in the focused accessible control; never raw keys, clipboard or a history",
+            "glances" => "a low-frequency local screen glance while you are active; one local one-line summary, requires the screen sense too",
             _ => "",
         };
         let list: Vec<Value> = buddy_core::perception::SOURCES
@@ -953,7 +1138,12 @@ impl Daemon {
                 json!({ "source": source, "allowed": self.sim.settings.senses.get(source), "what": describe(source), "reporting": reporting, "title": title })
             })
             .collect();
-        json!({ "privacy_mode": self.sim.settings.privacy_mode, "senses": list })
+        json!({
+            "privacy_mode": self.sim.settings.privacy_mode,
+            "senses": list,
+            "context": self.context_status(at),
+            "glances": self.glance_status(at),
+        })
     }
 
     fn status(&mut self, at: f64) -> Result<Value> {
@@ -979,6 +1169,8 @@ impl Daemon {
             "pictures": self.baker.as_ref().map_or("not drawn (--no-renderer)", |b| b.note()),
             "renderers_connected": self.clients.values().filter(|c| c.is_renderer).count(),
             "observing": observing,
+            "context": self.context_status(at),
+            "glances": self.glance_status(at),
             "database": paths::db_path(),
             "schema_version": self.store.schema_version()?,
         }))
@@ -1042,6 +1234,12 @@ impl Daemon {
                 return Ok(Value::Null);
             }
             "senses" => return Ok(self.senses(at)),
+            "context" => return Ok(json!({ "context": self.context_status(at), "glances": self.glance_status(at) })),
+            "context_clear" => {
+                self.context_note = None;
+                self.glance_note = None;
+                return Ok(json!({ "cleared": true, "context": self.context_status(at), "glances": self.glance_status(at) }));
+            }
             "export" => return self.store.export(at as i64),
             "journal" => {
                 return Ok(Value::Array(self.store.recent_journal(args["limit"].as_u64().unwrap_or(20) as usize)?));
@@ -1329,6 +1527,27 @@ impl Daemon {
                 };
                 self.send(requester, &reply);
             }
+            Incoming::Glanced(outcome) => {
+                self.glancing = false;
+                // Even a failed glance waits the full interval; a portal prompt or a
+                // missing model must not turn this into a retry loop.
+                self.glance_due = at + GLANCE_EVERY;
+                if let Ok(seen) = outcome {
+                    let senses = &self.sim.settings.senses;
+                    if !self.sim.settings.privacy_mode && senses.glances && senses.screen {
+                        if let Some(token) = seen["restore_token"].as_str().filter(|token| !token.is_empty()) {
+                            let _ = self.store.save("screen_token", &token, at as i64);
+                        }
+                        let summary = clean_label(seen["summary"].as_str().unwrap_or_default(), 200);
+                        if !summary.is_empty() {
+                            self.glance_note = Some(GlanceNote { summary: summary.clone(), at });
+                            self.noted("glances", at);
+                            let outputs = self.sim.sense(Stimulus::Glimpse { summary }, at);
+                            self.absorb(outputs, at);
+                        }
+                    }
+                }
+            }
             Incoming::Malformed(id, error) => self.send(id, &ServerMsg::Reply { ok: false, data: Value::Null, error: Some(error) }),
             Incoming::Message(id, msg) => match msg {
                 ClientMsg::Hello { role } => {
@@ -1409,7 +1628,7 @@ pub fn run(no_renderer: bool) -> Result<()> {
         baker: (!no_renderer).then(Baker::new),
         reporting: HashMap::new(),
         tx: tx.clone(),
-        helpers: [
+        helpers: vec![
             Helper::new("camera", "camera_watch.py", Vec::new()),
             // Speech is written, briefly, next to the socket: a directory only this user can read.
             Helper::new(
@@ -1417,8 +1636,13 @@ pub fn run(no_renderer: bool) -> Result<()> {
                 "mic_listen.py",
                 vec!["--utterances".into(), paths::socket_path().with_file_name("").to_string_lossy().into_owned()],
             ),
+            Helper::new("context", "a11y_context.py", Vec::new()),
         ],
         looking: false,
+        context_note: None,
+        glance_note: None,
+        glancing: false,
+        glance_due: 0.0,
         camera_paused: false,
         addressed_at: f64::NEG_INFINITY,
         permissions,
@@ -1481,11 +1705,18 @@ pub fn run(no_renderer: bool) -> Result<()> {
             last_save = Instant::now();
         }
         daemon.let_lapse(at);
-        // The camera and microphone are open only while their sense is allowed and privacy mode is off.
+        daemon.keep_context_bounded(at);
+        daemon.maybe_glance(at);
+        // Content helpers run only while their sense is allowed and privacy mode is off.
         let open = !daemon.sim.settings.privacy_mode;
-        let wanted = [open && daemon.sim.settings.senses.camera && !daemon.camera_paused, open && daemon.sim.settings.senses.microphone];
         let tx = daemon.tx.clone();
-        for (helper, wanted) in daemon.helpers.iter_mut().zip(wanted) {
+        for helper in &mut daemon.helpers {
+            let wanted = match helper.source {
+                "camera" => open && daemon.sim.settings.senses.camera && !daemon.camera_paused,
+                "microphone" => open && daemon.sim.settings.senses.microphone,
+                "context" => open && daemon.sim.settings.senses.context,
+                _ => false,
+            };
             helper.poll(wanted, &tx);
         }
         // While he is hidden the renderer is not running at all, so hiding frees the GPU entirely.
@@ -1525,5 +1756,23 @@ mod tests {
     fn packaged_perception_helpers_are_found_under_usr_share() {
         let candidates = perception_candidates(Some(Path::new("/usr/bin/buddy")));
         assert!(candidates.contains(&PathBuf::from("/usr/share/buddy/perception")));
+    }
+
+    #[test]
+    fn the_context_sense_never_accepts_a_terminal_password_manager_or_shell() {
+        for app in ["gnome-terminal", "org.gnome.Console", "kgx", "konsole", "alacritty", "xterm", "gnome-shell", "keepassxc", "bitwarden"] {
+            assert!(!context_app_allowed(app), "{app} must be refused");
+        }
+        for app in ["gnome-text-editor", "firefox", "org.gnome.Nautilus", "libreoffice-writer"] {
+            assert!(context_app_allowed(app), "{app} is an ordinary application");
+        }
+    }
+
+    #[test]
+    fn context_kinds_are_a_small_fixed_set_and_labels_cannot_inject_control_characters() {
+        assert_eq!(clean_context_kind("prose"), "prose");
+        assert_eq!(clean_context_kind("a private message"), "unknown");
+        assert_eq!(clean_label("note\nwith\tcontrol", 40), "notewithcontrol");
+        assert_eq!(clean_label(&"x".repeat(200), 80).chars().count(), 80);
     }
 }

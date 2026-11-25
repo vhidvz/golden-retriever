@@ -69,8 +69,10 @@ On the computer (try: buddy say 'find my tax report'):
   buddy why                      what he is doing, why, and how he feels
   buddy privacy on|off           suspend / resume every perception source
   buddy senses                   what he may perceive, and what is actually reporting
+  buddy context [clear]          the short-lived typing/screen summary, or clear it
   buddy look [--file IMAGE|--camera]  look once at the screen, an image, or one webcam frame
-  buddy sense SOURCE on|off      system | desktop | window_titles | screen | camera | microphone
+  buddy sense SOURCE on|off      system | desktop | window_titles | screen | camera | microphone |
+                                 accessibility | context | glances
   buddy set KEY VALUE            name | size_px (adult height) | adult_days (growth timeline) |
                                  stay_in_fullscreen (on/off) | vision_model | language_model | audio_model |
                                  pictures (away: draw his pictures only while you are away,
@@ -105,6 +107,8 @@ fn main() -> Result<()> {
         (Some("simulate"), _) => return client::simulate(&args[1..]),
         (Some("why"), _) => return client::why(),
         (Some("senses"), _) => return client::senses(),
+        (Some("context"), Some("clear")) => return client::context_clear(),
+        (Some("context"), _) => return client::context(),
         (Some("look"), Some("--camera")) => return client::look(None, true),
         (Some("look"), Some("--file")) => return client::look(arg(2), false),
         (Some("look"), _) => return client::look(None, false),

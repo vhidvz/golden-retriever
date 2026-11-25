@@ -307,6 +307,40 @@ implementation. The evidence, options and recommendation are in
   behaviour remains the interface. A spike, written plan and explicit approval are still
   required before any implementation.
 
+### Implementation (owner approved 2026-11-25)
+
+The owner asked for Phase 10 to be completed, which is the explicit approval the earlier
+record required. The implementation keeps every gate from `docs/context-direction.md`:
+
+- **`context` is a new off-by-default sense.** `perception/a11y_context.py` listens to
+  `object:text-changed` only, filters the FOCUSED editable text object, debounces 1.2 s
+  and refuses password fields, terminals, shells, password managers, login/lock and
+  consent/portal surfaces by application and frame title. The daemon checks the
+  application again. Only app, fixed category, word count and character count leave the
+  helper; the text itself never reaches the daemon, journal, export or model prompt.
+- **One bounded note, clearable.** The daemon keeps one in-memory context note for two
+  minutes, never persists it, and clears it when the sense or privacy mode is turned off
+  or `buddy context clear` is run. `buddy context`, `buddy senses`, `buddy status` and the
+  control panel expose the summary and state.
+- **`glances` is a separate off-by-default sense and needs `screen`.** It runs the same
+  one-shot portal path as `buddy look`, waits five minutes after being enabled, then at
+  most once every twenty minutes while the user is present and not locked/fullscreen/
+  overview. The local vision model produces one line, kept five minutes in memory and
+  never journaled. The desktop's screen-sharing indicator is visible for each look.
+- **Warmth in the simulation.** A typing report raises quiet company (`Sit`), suppresses
+  attention-seeking and play invitations, and triggers one look up when the burst ends.
+  A learned routine earns at most one greeting per 45 minutes, never in quiet mode, while
+  away, in fullscreen/overview or while the user is typing. A glance makes him look up
+  and settles boredom mildly.
+- **Evidence.** `spikes/context-a11y/RESULTS.md` measured real `gnome-text-editor` events:
+  one insert and one delete per change, duplicate unfocused text objects, no gaps at
+  10–250 ms spacing, and 0.0–0.01 % idle CPU. The spike did not drive a hardware keyboard;
+  the implementation relies on the measured semantic event contract and keeps refusals
+  in code.
+- **Still open, deliberately:** no raw global keycodes or clipboard, no OCR, and no
+  observation of password/terminal/login/consent surfaces. A future raw-input mode would
+  be a separate high-risk decision with its own consent flow.
+
 
 ## Tray icon and custom notifications (2026-11-24)
 

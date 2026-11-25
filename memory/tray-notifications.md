@@ -11,6 +11,11 @@ KDE/other hosts `ui/buddy_tray.py` registers a standard **StatusNotifierItem**. 
 way the icon lives in the desktop's own tray. The panel is Buddy's own GTK4 UI; it does
 **not** use `org.freedesktop.Notifications` or any native toast daemon.
 
+GNOME 50's `addToStatusArea` accepts only a `PanelMenu.Button`, so the extension uses
+an empty `PanelMenu.Button` and handles `button-press-event` itself, returning
+`Clutter.EVENT_STOP` so the empty menu never opens. A plain `St.Button` makes the whole
+extension fail to enable on GNOME 50; the headless Shell harness catches that.
+
 - **Notifications:** the daemon's existing `waiting` list supplies his own offers
   (including pattern/habit offers); the tray adds need messages for hunger, thirst,
   boredom, company and fatigue above thresholds, with cooldowns. A returning-user message is
@@ -33,7 +38,8 @@ way the icon lives in the desktop's own tray. The panel is Buddy's own GTK4 UI; 
   tar, DEB, RPM, Arch, AppImage and metadata with the tray files in every package; the
   tag-only publish job was intentionally skipped. The installed user service is active;
   `local.buddy.TrayControl` answered `TogglePanel`/`OpenPanelAt` smoke tests with GNOME
-  coordinates, and the top-bar button is present. GNOME Shell caches extension JS at
+  coordinates. The headless Shell harness now loads the extension and verifies the
+  desktop sense after the `PanelMenu.Button` fix. GNOME Shell caches extension JS at
   login, so a new top-bar button implementation appears after the next login.
 - **Install:** `scripts/install.sh` installs `buddy-tray`, its user service and the UI
   files; `--no-tray` opts out. Packaging includes the launcher and unit; a system

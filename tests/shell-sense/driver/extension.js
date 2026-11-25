@@ -27,6 +27,8 @@ export default class Driver extends Extension {
 
     async _run() {
         await sleep(4000);   // let Buddy's extension connect and receive its policy
+        if (!Main.panel.statusArea['buddy-tray'])
+            throw new Error("Buddy's top-bar tray button did not load");
         const alpha = await this._open('alpha');
         const beta = await this._open('beta');
         for (const window of [alpha, beta, alpha, beta, alpha]) {

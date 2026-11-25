@@ -39,7 +39,7 @@ case "$file" in
         exit 2
         ;;
 esac
-required="usr/bin/buddy usr/bin/buddy-ui usr/bin/buddy-tray usr/share/buddy/ui/buddy_ui.py usr/share/buddy/ui/buddy_tray.py usr/share/buddy/ui/buddy_tray.css usr/share/buddy/renderer/project.godot usr/share/buddy/perception/camera_watch.py usr/share/buddy/tools/bake_sprites.py usr/lib/systemd/user/buddy.service usr/lib/systemd/user/buddy-tray.service usr/share/applications/buddy.desktop usr/share/icons/hicolor/scalable/apps/buddy.svg"
+required="usr/bin/buddy usr/bin/buddy-ui usr/bin/buddy-tray usr/share/buddy/ui/buddy_ui.py usr/share/buddy/ui/buddy_tray.py usr/share/buddy/ui/buddy_tray.css usr/share/buddy/renderer/project.godot usr/share/buddy/perception/camera_watch.py usr/share/buddy/perception/a11y_context.py usr/share/buddy/tools/bake_sprites.py usr/lib/systemd/user/buddy.service usr/lib/systemd/user/buddy-tray.service usr/share/applications/buddy.desktop usr/share/icons/hicolor/scalable/apps/buddy.svg"
 for path in $required; do
     [ -e "$root/$path" ] || { echo "missing from package: $path" >&2; exit 1; }
 done

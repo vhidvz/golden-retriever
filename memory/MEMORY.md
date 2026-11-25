@@ -14,7 +14,7 @@
 - [Name recognition](name-recognition.md) — configured name is user data; typed/voice name recognition, first-call greeting, later recall, persisted name_calls
 - [Camera one-shot vision](camera-look.md) — buddy look --camera sends one explicit webcam frame to local vision, deletes it; continuous camera sense remains presence-only
 - [Release direction (Phase 9 Linux complete locally)](release-direction.md) — hardened Linux artifacts with checksums/SBOM/optional GPG/pinned Actions and download-only upgrade; Windows explicitly unsupported; tag publish/AppImage UX open
-- [Context direction (Phase 10, pointer/click foundation)](context-direction.md) — clicks by app/coarse region implemented; semantic text, screen glances and warmth remain; not a keylogger
+- [Context direction (Phase 10, implemented safely)](context-direction.md) — semantic text context, bounded glances and warmth; not a keylogger
 - [Helper registry (Phase 7 Stage 1)](helper-registry.md) — owner-registered argv-only helpers with dry-run, timeout, approved cwd and always-ask execution; model selection/synthetic input remain
 - [Phase 6 body refinement](phase6-body-refinement.md) — measured-skeleton-preserving cheek/lip/ear/tail surface pass; sprite bakes invalidated; KDE focus/pointer/overview/titles added; native click source and more craft remain
 - [Phase 8 realism spike](phase8-realism-spike.md) — first measured stills baseline: 72.2 s/frame at 150k/24, still visibly CG; full photoreal acceptance remains
