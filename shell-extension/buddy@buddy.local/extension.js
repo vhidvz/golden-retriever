@@ -14,7 +14,6 @@ import Shell from 'gi://Shell';
 import St from 'gi://St';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 
 const RECONNECT_SECONDS = 5;
 const POINTER_MILLISECONDS = 200;
@@ -109,34 +108,44 @@ export default class BuddySense extends Extension {
     _addTrayButton() {
         if (this._trayButton)
             return;
-        const button = new PanelMenu.Button(0.0, 'Buddy messages', false);
-        button.add_child(new St.Icon({
-            gicon: Gio.icon_new_for_string('buddy'),
-            style_class: 'system-status-icon',
-        }));
-        // PanelMenu.Button owns the click and opens its menu. Keep that menu
-        // empty and turn its opening into the direct panel action, so a single
-        // left click never shows a native menu.
-        button.menu.removeAll();
-        button.menu.connect('open-state-changed', (_menu, open) => {
-            if (!open)
-                return;
-            button.menu.close();
-            this._toggleTrayPanel();
+        const button = new St.Button({
+            style_class: 'panel-button',
+            reactive: true,
+            can_focus: true,
+            track_hover: true,
+            accessible_name: 'Buddy messages',
+            child: new St.Icon({
+                gicon: Gio.icon_new_for_string('buddy'),
+                style_class: 'system-status-icon',
+            }),
         });
+        button.connect('clicked', () => this._toggleTrayPanel());
         Main.panel.addToStatusArea('buddy-tray', button, 0, 'right');
         this._trayButton = button;
     }
 
-    _toggleTrayPanel() {
-        this._callTray('TogglePanel', () => this._spawnTray());
+    _trayPoint() {
+        try {
+            const [x, y] = this._trayButton.get_transformed_position();
+            const [width, height] = this._trayButton.get_size();
+            return [Math.round(x + width / 2), Math.round(y + height / 2)];
+        } catch {
+            return [0, 0];
+        }
     }
 
-    _callTray(method, onError) {
+    _toggleTrayPanel() {
+        log('Buddy: toggle tray panel');
+        const [x, y] = this._trayPoint();
+        this._callTray('TogglePanelAt', () => this._spawnTray(),
+            new GLib.Variant('(ii)', [x, y]));
+    }
+
+    _callTray(method, onError, parameters = null) {
         try {
             Gio.DBus.session.call(
                 'local.buddy.TrayControl', '/Control', 'local.buddy.TrayControl', method,
-                null, null, Gio.DBusCallFlags.NONE, -1, null,
+                parameters, null, Gio.DBusCallFlags.NONE, -1, null,
                 (connection, result) => {
                     try {
                         connection.call_finish(result);
@@ -157,7 +166,8 @@ export default class BuddySense extends Extension {
                 GLib.build_filenamev([GLib.get_home_dir(), '.local', 'bin', 'buddy-tray']);
             GLib.spawn_command_line_async(path);
             GLib.timeout_add(700, () => {
-                this._callTray('OpenPanel');
+                const [x, y] = this._trayPoint();
+                this._callTray('OpenPanelAt', null, new GLib.Variant('(ii)', [x, y]));
                 return GLib.SOURCE_REMOVE;
             });
         } catch (error) {

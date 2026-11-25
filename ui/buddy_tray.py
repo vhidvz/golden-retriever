@@ -433,7 +433,7 @@ class PanelWindow(Gtk.Window):
             scale = monitor.get_scale_factor() if monitor else 1
             width, height = PANEL_WIDTH * scale, PANEL_HEIGHT * scale
             ax, ay = self._anchor
-            x = ax - width + 24 * scale
+            x = ax - width // 2
             y = ay + 8 * scale
             x = max(geometry.x + 8 * scale, min(x, geometry.x + geometry.width - width - 8 * scale))
             if y + height > geometry.y + geometry.height - 8 * scale:
@@ -527,7 +527,9 @@ class TrayControl:
     XML = """<node>
       <interface name="local.buddy.TrayControl">
         <method name="TogglePanel"/>
+        <method name="TogglePanelAt"><arg name="x" type="i" direction="in"/><arg name="y" type="i" direction="in"/></method>
         <method name="OpenPanel"/>
+        <method name="OpenPanelAt"><arg name="x" type="i" direction="in"/><arg name="y" type="i" direction="in"/></method>
         <method name="ClosePanel"/>
         <property name="Unread" type="u" access="read"/>
       </interface>
@@ -548,6 +550,12 @@ class TrayControl:
     def _method_call(self, _connection, _sender, _path, _iface, method, _parameters, invocation):
         if method == "TogglePanel":
             GLib.idle_add(self.app.toggle_panel, 0, 0)
+        elif method in ("TogglePanelAt", "OpenPanelAt"):
+            x, y = _parameters.unpack()
+            if method == "TogglePanelAt":
+                GLib.idle_add(self.app.toggle_panel, int(x), int(y))
+            else:
+                GLib.idle_add(self.app.open_panel, int(x), int(y))
         elif method == "OpenPanel":
             GLib.idle_add(self.app.open_panel, 0, 0)
         elif method == "ClosePanel":
