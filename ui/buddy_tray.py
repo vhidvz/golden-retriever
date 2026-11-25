@@ -492,6 +492,10 @@ class PanelWindow(Gtk.Window):
             self.subtitle.set_label("Buddy is not running")
 
     def clear(self):
+        now = time.monotonic()
+        for notice in self.app.model.notices:
+            if notice.kind == "need":
+                self.app.model._last_need[notice.key] = now
         self.app.model.notices.clear()
         self.app.model.unread = 0
         self._cards_signature = ()
@@ -907,7 +911,9 @@ class TrayApp(Gtk.Application):
             self.open_panel(x, y)
 
     def dismiss(self, notice: Notice):
-        self.model.remove(notice.key)
+        # "Later" and the close button put a need on its cooldown; otherwise it
+        # would be re-added on the very next poll.
+        self.model.remove(notice.key, cooldown=notice.kind == "need")
         if self.panel:
             self.panel.refresh()
         if self.sni:
