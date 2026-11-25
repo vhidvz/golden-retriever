@@ -57,3 +57,19 @@ Raw result (40 turns, 80 ms):
 - This spike did not exercise a real hardware keyboard or a password dialog.
   Those are deliberate refusals in the implementation, not captured data. The
   event contract is what the implementation relies on.
+
+## Installed end-to-end check
+
+After installing the new binary and helper, `buddy sense context on` started
+`~/.local/share/buddy/perception/a11y_context.py`; a real text change in
+`gnome-text-editor` produced this one in-memory summary:
+
+```
+Context: on. He keeps one typing summary for at most 120 s, in memory only.
+  Last typing: gnome-text-editor — prose, 12 words, 63 chars, 1 s ago
+```
+
+`buddy sense context off` stopped the helper and cleared the note. `buddy context`
+then reported `Context: off` and `No typing summary is being kept`. This confirms the
+installed daemon, helper path, CLI and privacy gating work together, not only the
+source checkout.
