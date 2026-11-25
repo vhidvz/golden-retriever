@@ -30,6 +30,10 @@ daemon.
   no SNI watcher the app retries registration. The icon is not a floating window.
   GNOME's extension uses single-click-for-menu/double-click-for-activate; KDE activates
   directly according to its own tray settings.
+- **Verification:** manual GitHub Actions run 45533077343 on 2026-11-25 passed tests,
+  tar, DEB, RPM, Arch, AppImage and metadata with the tray files in every package; the
+  tag-only publish job was intentionally skipped. The installed user service is active
+  and its SNI/DBusMenu answered an `Activate`/`Event` smoke test locally.
 - **Install:** `scripts/install.sh` installs `buddy-tray`, its user service and the UI
   files; `--no-tray` opts out. Packaging includes the launcher and unit; a system
   package user enables `buddy-tray.service` explicitly. The AppImage starts the tray
