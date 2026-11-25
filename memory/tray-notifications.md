@@ -31,8 +31,10 @@ way the icon lives in the desktop's own tray. The panel is Buddy's own GTK4 UI; 
   window.
 - **Verification:** manual GitHub Actions run 45533077343 on 2026-11-25 passed tests,
   tar, DEB, RPM, Arch, AppImage and metadata with the tray files in every package; the
-  tag-only publish job was intentionally skipped. The installed user service is active
-  and its SNI/DBusMenu answered an `Activate`/`Event` smoke test locally.
+  tag-only publish job was intentionally skipped. The installed user service is active;
+  `local.buddy.TrayControl` answered `TogglePanel`/`OpenPanelAt` smoke tests with GNOME
+  coordinates, and the top-bar button is present. GNOME Shell caches extension JS at
+  login, so a new top-bar button implementation appears after the next login.
 - **Install:** `scripts/install.sh` installs `buddy-tray`, its user service and the UI
   files; `--no-tray` opts out. Packaging includes the launcher and unit; a system
   package user enables `buddy-tray.service` explicitly. The AppImage starts the tray
