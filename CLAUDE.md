@@ -34,7 +34,7 @@ The invariants that matter most:
 
 ```sh
 cargo build --release
-cargo test                                    # 129 tests, under 30 s on the dev machine
+cargo test                                    # 130 tests, under 30 s on the dev machine
 cargo test -p buddy-core <test_name>          # one unit test
 cargo test -p buddy --test lifecycle          # daemon persistence/lifecycle integration test
 cargo fmt --check                             # rustfmt.toml: max_width 150 (currently reports pre-existing diffs)

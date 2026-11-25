@@ -243,6 +243,12 @@ fn clean_label(raw: &str, max: usize) -> String {
     raw.chars().filter(|c| !c.is_control()).take(max).collect()
 }
 
+/// A report counts as live only while its sense is still allowed. A source can
+/// have reported a moment before the user switched it off; "off" must win at once.
+fn reporting_is_live(source: &str, last: f64, now: f64, privacy: bool, senses: &buddy_core::Senses) -> bool {
+    !privacy && now - last < 60.0 && senses.get(source) == Some(true)
+}
+
 fn now() -> f64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64())
 }
@@ -1151,7 +1157,12 @@ impl Daemon {
             Some(r) => r.status(),
             None => "disabled (--no-renderer)",
         };
-        let active: Vec<&str> = self.reporting.iter().filter(|(_, r)| at - r.last < 60.0).map(|(source, _)| source.as_str()).collect();
+        let active: Vec<&str> = self
+            .reporting
+            .iter()
+            .filter(|(source, r)| reporting_is_live(source, r.last, at, self.sim.settings.privacy_mode, &self.sim.settings.senses))
+            .map(|(source, _)| source.as_str())
+            .collect();
         let observing = if self.sim.settings.privacy_mode {
             "nothing (privacy mode)".to_string()
         } else if active.is_empty() {
@@ -1766,6 +1777,17 @@ mod tests {
         for app in ["gnome-text-editor", "firefox", "org.gnome.Nautilus", "libreoffice-writer"] {
             assert!(context_app_allowed(app), "{app} is an ordinary application");
         }
+    }
+
+    #[test]
+    fn a_sense_that_was_just_switched_off_does_not_stay_in_the_observing_line() {
+        let mut senses = buddy_core::Senses::default();
+        let now = 100.0;
+        assert!(!reporting_is_live("context", 99.0, now, false, &senses), "off is off, even after a recent report");
+        senses.context = true;
+        assert!(reporting_is_live("context", 99.0, now, false, &senses));
+        assert!(!reporting_is_live("context", 99.0, now, true, &senses), "privacy mode suspends it");
+        assert!(!reporting_is_live("context", 1.0, now, false, &senses), "an old report is not live");
     }
 
     #[test]
