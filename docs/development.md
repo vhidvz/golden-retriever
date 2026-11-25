@@ -151,12 +151,6 @@ Create the directory when needed; it is not part of the repository.
   when the project has measurements.
 - **Claude Code:** removed on 2026-11-22. The historical spike remains under
   `spikes/claude-code/` for the record; it is not part of Buddy's runtime.
-- **Tray:** `ui/buddy_tray.py` registers a StatusNotifierItem and shows a custom GTK
-  panel; it needs a watcher (GNOME AppIndicator extension or KDE). Test with
-  `systemctl --user status buddy-tray.service`, `gdbus introspect --session --dest
-  org.kde.StatusNotifierWatcher --object-path /StatusNotifierWatcher`, and
-  `org.kde.StatusNotifierItem.Activate X Y`. The tray is a socket client like the panel;
-  every action is a daemon command. `scripts/install.sh --no-tray` opts out.
 - **Tray client:** `ui/buddy_tray.py` registers a StatusNotifierItem on the session bus
   and opens its own GTK panel from `Activate`/the native `com.canonical.dbusmenu` item.
   GNOME needs the AppIndicator extension; KDE has SNI natively. It polls `status` and
